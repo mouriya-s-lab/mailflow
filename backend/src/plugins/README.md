@@ -58,6 +58,7 @@ Everything a plugin may do, grouped:
 - **Archive:** `archiveInboxCopy`
 - **Realtime:** `broadcast` (scoped to one user)
 - **Summarize:** `summarizeMessage`, `summarizeAvailable` (fails closed when the AI provider is off)
+- **Jev decisions (fork-only):** `jevDecide`, `jevStatus` (typed answers or a typed error; see `backend/fork-features/README.md`)
 - **Per-plugin storage:** `storage.*` (the `plugin_data` table — KV + blobs, owner-scoped, cascade-cleaned)
 - **Per-account plugin config:** `getAccountConfig`, `setAccountConfig` (the `plugin_account_config` table)
 - **Per-message annotations:** `getMessageAnnotations`, `setMessageAnnotation` (namespaced `messages.plugin_annotations`)

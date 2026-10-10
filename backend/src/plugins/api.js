@@ -57,6 +57,11 @@ export const broadcast = (payload, userId) => getMailEngine().broadcast(payload,
 // provider is off / the summarize feature is disabled). No access to keys or the provider itself.
 export { summarizeMessage, summarizeAvailable } from '../services/summarize.js';
 
+// ── Jev decisions ─────────────────────────────────────────────────────────────
+// Ask the configured Jev endpoint typed questions about a state; typed answers or a typed error
+// come back (fork-only, see fork-features/jev). No access to the key or the HTTP client itself.
+export { decide as jevDecide, status as jevStatus } from '../../fork-features/jev/index.js';
+
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
 // cleaned. A plugin can persist its own data without a schema migration or DB access.

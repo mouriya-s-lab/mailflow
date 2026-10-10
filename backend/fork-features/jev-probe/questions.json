@@ -1,10 +1,10 @@
 {
   "spam": {
-    "type": "noul",
+    "kind": "noul",
     "instructions": "Is this email spam, a scam, or phishing? Weigh sender authentication, reply-to and link destinations, not only the wording."
   },
   "category": {
-    "type": "choice",
+    "kind": "choice",
     "instructions": "Which category does this email belong to?",
     "criteria": {
       "billing": "Legitimate invoices, receipts, payment and bank account notices from the real organization.",
@@ -15,7 +15,7 @@
     }
   },
   "urgency": {
-    "type": "score",
+    "kind": "score",
     "instructions": "How urgently does the recipient genuinely need to act?",
     "criteria": ["None", "Low", "Medium", "High"]
   }
