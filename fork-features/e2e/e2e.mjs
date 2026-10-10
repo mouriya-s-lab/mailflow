@@ -199,9 +199,13 @@ function requireSlot(inst) {
 
 const appUrl = (slot) => `http://localhost:${PORT_BASE + slot}`;
 
-function composeEnv(inst, slot, { jevKey }) {
+// JEV_API_KEY is left out, even when the caller's shell exports one: compose renders the
+// resolved environment in `config` output, so only the `up` that creates the backend gets
+// the key (composeUp).
+function composeEnv(inst, slot) {
+  const { JEV_API_KEY: _withheld, ...inherited } = process.env;
   return {
-    ...process.env,
+    ...inherited,
     E2E_GIT_SHA: gitHead(),
     E2E_FRONTEND_PORT: String(PORT_BASE + slot),
     E2E_APP_URL: appUrl(slot),
@@ -211,15 +215,18 @@ function composeEnv(inst, slot, { jevKey }) {
     E2E_DB_PASSWORD: derived('db-password', inst).slice(0, 32),
     E2E_REDIS_URL: `redis://host.docker.internal:${REDIS_HOST_PORT}/${slot}`,
     E2E_IMAP_PASSWORD: IMAP_PASSWORD,
-    JEV_API_KEY: jevKey,
   };
 }
 
-function compose(inst, slot, args, opts = {}) {
-  return run('docker', ['compose', '-p', inst.project, '-f', COMPOSE_FILE, ...args], {
-    env: composeEnv(inst, slot, { jevKey: readJevKey() }),
-    inherit: true,
-    ...opts,
+function compose(inst, slot, args, { env = composeEnv(inst, slot), ...opts } = {}) {
+  return run('docker', ['compose', '-p', inst.project, '-f', COMPOSE_FILE, ...args], { env, inherit: true, ...opts });
+}
+
+// The one compose call that creates or recreates containers, and so the only one whose
+// environment carries the key.
+function composeUp(inst, slot) {
+  compose(inst, slot, ['up', '-d', '--build', '--wait', '--remove-orphans'], {
+    env: { ...composeEnv(inst, slot), JEV_API_KEY: readJevKey() },
   });
 }
 
@@ -265,7 +272,7 @@ async function up(inst) {
   if (gitDirty()) console.error('warning: the checkout has uncommitted changes; the images include them, but BUILD_SHA reports HEAD');
   const { slot, created } = ensureInstanceDatabase(inst);
   console.log(`${created ? 'created' : 'reusing'} database ${inst.database} (slot ${slot})`);
-  compose(inst, slot, ['up', '-d', '--build', '--wait', '--remove-orphans']);
+  composeUp(inst, slot);
   await waitForApp(inst, slot);
   status(inst);
 }
@@ -507,7 +514,23 @@ function rawlog(inst) {
   }
 }
 
+// Read-only subcommands only, and only as the first argument: Compose accepts its global
+// options (-f, --env-file, --project-directory, -p) only before the subcommand, so the
+// project and environment chosen here cannot be swapped. They run without the key
+// (composeEnv), so `config` renders JEV_API_KEY without a value; `config --environment`,
+// which prints the whole interpolation environment, is refused anyway. Anything that creates
+// containers (up, create, run) would give the backend no key, and exec/run can print a
+// container's environment, so the rest is refused rather than forwarded.
+const PASSTHROUGH = ['ps', 'logs', 'top', 'config', 'images', 'port'];
+
 function composePassthrough(inst, argv) {
+  const [sub] = argv;
+  if (!PASSTHROUGH.includes(sub)) {
+    fail(`compose passes through only ${PASSTHROUGH.join(', ')}, as the first argument (got ${sub === undefined ? 'nothing' : JSON.stringify(sub)}). Start or recreate containers with up, remove them with stop or destroy; see fork-features/e2e/README.md.`);
+  }
+  if (sub === 'config' && argv.some((a) => a === '--environment' || a.startsWith('--environment='))) {
+    fail('compose config --environment is refused: it prints the environment of the compose process');
+  }
   const res = compose(inst, requireSlot(inst), argv, { allowFailure: true });
   process.exitCode = res.status;
 }
@@ -522,7 +545,8 @@ const USAGE = `usage: [E2E_INSTANCE=<name>] node fork-features/e2e/e2e.mjs <comm
   reset                    recreate its database and Redis DB (restarts it if running)
   destroy                  remove containers, images, database, role and Redis DB
   rawlog                   print the Dovecot IMAP rawlogs (needs E2E_DOVECOT_RAWLOG=1 at up)
-  compose <args…>          docker compose for this instance, e.g. "compose logs backend"
+  compose <sub> [args…]    read-only docker compose for this instance (ps, logs, top, config,
+                           images, port), e.g. "compose logs backend"
 See fork-features/e2e/README.md.`;
 
 async function main() {

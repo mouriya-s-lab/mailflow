@@ -15,9 +15,14 @@ It runs on the local OrbStack Docker engine and is not used in CI.
   with their start definitions, in the OrbStack ledger `~/Ext/work/orbstack/README.md`.
   `up` starts them when they are stopped; no command here stops, recreates or reconfigures
   them.
-- `~/.commandcode/auth.json` with an `apiKey`. `up` passes it to the backend as
-  `JEV_API_KEY` through the environment of the `docker compose` process only: it is not
-  printed and not written to any file.
+- `~/.commandcode/auth.json` with an `apiKey`. `up` reads it and passes it to the backend as
+  `JEV_API_KEY` through the environment of the one `docker compose up` it runs; no other
+  command, `compose` passthrough included, has it in its environment. `e2e.mjs` never prints
+  the key and writes it to no file of its own. Like any container environment variable, it
+  is stored in the Docker engine's metadata for the backend container (on the engine's disk)
+  for as long as that container exists, and anyone with access to the Docker engine can read
+  it, for example with `docker inspect`; `stop` and `destroy` remove the container and with
+  it that copy.
 
 ## Instances
 
@@ -61,7 +66,7 @@ E2E_INSTANCE=<name> node fork-features/e2e/e2e.mjs <command>
 | `reset` | Drops and recreates the instance database (same slot) and flushes its Redis database. A running instance is restarted, which also gives it an empty Dovecot and re-applies the migrations |
 | `destroy` | Removes containers, network and images, drops the database and its role, and flushes the Redis database. Run it when you are done |
 | `rawlog` | Prints the Dovecot IMAP rawlogs; see [Logs](#logs) |
-| `compose <args…>` | `docker compose` for this instance, e.g. `compose logs -f backend`, `compose ps` |
+| `compose <sub> [args…]` | Read-only `docker compose` for this instance: `<sub>` is one of `ps`, `logs`, `top`, `config`, `images`, `port`, e.g. `compose logs -f backend`. It runs without `JEV_API_KEY`, so `config` shows that variable without a value; `config --environment` is refused. Every other subcommand is refused, because it would either create containers without the key (`up`, `create`, `run`) or could print a container's environment (`exec`): (re)create containers with `up`, remove them with `stop` or `destroy` |
 
 Because Dovecot is not persistent, an instance that was stopped comes back with the same
 MailFlow data but empty mailboxes; MailFlow then syncs the empty server. Seed again after

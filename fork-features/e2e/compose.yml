@@ -46,8 +46,9 @@ services:
       DB_PASSWORD: ${E2E_DB_PASSWORD:?}
       REDIS_URL: ${E2E_REDIS_URL:?}
       ALLOW_PRIVATE_IMAP_HOSTS: "true"
-      # Value comes from the environment of the docker compose process (e2e.mjs reads it
-      # from ~/.commandcode/auth.json); it is never interpolated into this file.
+      # Value comes from the environment of the docker compose up that `e2e.mjs up` runs
+      # (read from ~/.commandcode/auth.json); it is never interpolated into this file, and
+      # every other compose call through e2e.mjs runs without it.
       JEV_API_KEY:
     depends_on:
       dovecot:
