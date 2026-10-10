@@ -46,6 +46,13 @@ async function waitForState(provider, controlFlowId, states, timeoutMs) {
   }
 }
 
+// Drop a flow here and end its proxy-side wait, so the address can start again
+// at once instead of being held for the proxy's consent window.
+async function endFlow(flow) {
+  flows.delete(flow.id);
+  await controlRequest(flow.provider, 'DELETE', `/flows/${flow.controlFlowId}`).catch(() => {});
+}
+
 const router = Router();
 router.use(requireAuth);
 
@@ -60,8 +67,9 @@ router.post('/start', async (req, res) => {
   const existing = await query(
     'SELECT 1 FROM email_accounts WHERE user_id = $1 AND lower(email_address) = lower($2)', [userId, email]);
   if (existing.rows.length) return res.status(409).json({ error: 'This mailbox is already added' });
-  for (const flow of flows.values()) {
-    if (flow.userId === userId && flow.email.toLowerCase() === email.toLowerCase()) flows.delete(flow.id);
+  // Starting again for the same address supersedes the earlier attempt.
+  for (const flow of [...flows.values()]) {
+    if (flow.userId === userId && flow.email.toLowerCase() === email.toLowerCase()) await endFlow(flow);
   }
 
   const password = randomBytes(24).toString('base64url');
@@ -130,9 +138,9 @@ router.post('/:flowId/complete', async (req, res) => {
   res.json(created.account);
 });
 
-router.delete('/:flowId', (req, res) => {
+router.delete('/:flowId', async (req, res) => {
   const flow = flows.get(req.params.flowId);
-  if (flow && flow.userId === req.session.userId) flows.delete(flow.id);
+  if (flow && flow.userId === req.session.userId) await endFlow(flow);
   res.json({ ok: true });
 });
 
