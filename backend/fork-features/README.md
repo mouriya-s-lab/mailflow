@@ -64,3 +64,15 @@ JEV_API_KEY=… node fork-features/jev-probe/probe.js [--fixtures DIR] [--questi
 | `backend/fork-features/jev-probe/probe.js` | State builder, Jev call, comparison table |
 | `backend/fork-features/jev-probe/questions.json` | Default question set: spam (noul), category (choice), urgency (score) |
 | `backend/fork-features/jev-probe/fixtures/*.json` | Sample messages |
+
+## Local end-to-end environment
+
+A MailFlow stack built from the current checkout, with a Dovecot IMAP server offering a full and a degraded (no `MOVE`/`UIDPLUS`) endpoint, for runtime acceptance on the maintainer's OrbStack machine. Each run is a named instance with its own containers, port, database on the shared PostgreSQL and logical database on the shared Redis, so several agents can use it at once. It lives at the repository root because it spans frontend, backend and an external service; usage is in its README.
+
+| Path | What |
+|---|---|
+| `fork-features/e2e/README.md` | Commands, instances and ports, IMAP endpoints, seeding and fixture format, logs |
+| `fork-features/e2e/e2e.mjs` | `up`, `seed`, `status`, `stop`, `reset`, `destroy`, `rawlog`, `compose` |
+| `fork-features/e2e/compose.yml` | One instance's services |
+| `fork-features/e2e/dovecot.conf` | Dovecot additions: degraded endpoint, optional rawlog and `mail_debug` |
+| `fork-features/e2e/fixtures/*.eml` | Sample messages |

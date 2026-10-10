@@ -1,0 +1,106 @@
+# One MailFlow e2e instance. Run it through e2e.mjs, which picks the project name,
+# port, database and Redis logical DB for the instance and supplies the E2E_* values.
+# PostgreSQL and Redis are the long-lived shared-postgres / shared-redis containers on
+# the host, reached through host.docker.internal.
+
+services:
+  frontend:
+    build:
+      context: ../..
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_BUILD_SHA: ${E2E_GIT_SHA:?run through fork-features/e2e/e2e.mjs}
+    environment:
+      NGINX_TLS: "off"
+    ports:
+      - "127.0.0.1:${E2E_FRONTEND_PORT:?}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO/dev/null http://127.0.0.1:80/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - mailflow
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+      args:
+        BUILD_SHA: ${E2E_GIT_SHA:?}
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_URL: ${E2E_APP_URL:?}
+      FRONTEND_URL: ${E2E_APP_URL:?}
+      SESSION_SECRET: ${E2E_SESSION_SECRET:?}
+      ENCRYPTION_KEY: ${E2E_ENCRYPTION_KEY:?}
+      DB_HOST: host.docker.internal
+      DB_PORT: 65432
+      DB_NAME: ${E2E_DB_NAME:?}
+      DB_USER: ${E2E_DB_NAME:?}
+      DB_PASSWORD: ${E2E_DB_PASSWORD:?}
+      REDIS_URL: ${E2E_REDIS_URL:?}
+      ALLOW_PRIVATE_IMAP_HOSTS: "true"
+      # Value comes from the environment of the docker compose process (e2e.mjs reads it
+      # from ~/.commandcode/auth.json); it is never interpolated into this file.
+      JEV_API_KEY:
+    depends_on:
+      dovecot:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - mailflow
+
+  dovecot:
+    image: dovecot/dovecot:latest
+    environment:
+      USER_PASSWORD: "{PLAIN}${E2E_IMAP_PASSWORD:?}"
+      E2E_DOVECOT_RAWLOG: ${E2E_DOVECOT_RAWLOG:-0}
+      E2E_DOVECOT_MAIL_DEBUG: ${E2E_DOVECOT_MAIL_DEBUG:-0}
+    entrypoint: ["/usr/bin/tini", "--"]
+    command:
+      - sh
+      - -c
+      - |
+        openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj /CN=dovecot \
+          -addext subjectAltName=DNS:dovecot,DNS:dovecot-degraded \
+          -keyout /run/e2e/tls.key -out /run/e2e/tls.crt 2>/dev/null || exit 1
+        if [ "$$E2E_DOVECOT_RAWLOG" = 1 ]; then
+          printf 'protocol imap {\n  rawlog_dir = /var/log/rawlog\n}\n' > /run/e2e/rawlog.conf
+        fi
+        if [ "$$E2E_DOVECOT_MAIL_DEBUG" = 1 ]; then
+          printf 'mail_debug = yes\n' > /run/e2e/mail-debug.conf
+        fi
+        exec /dovecot/sbin/dovecot -F
+    volumes:
+      - ./dovecot.conf:/etc/dovecot/conf.d/zz-e2e.conf:ro
+    # tmpfs everywhere Dovecot writes: mail does not outlive the container, and the
+    # image's declared /srv/vmail volume is not created.
+    tmpfs:
+      - /srv/vmail:uid=1000,gid=1000
+      - /run/e2e:uid=1000,gid=1000
+      - /var/log/rawlog:uid=1000,gid=1000
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "31993"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    networks:
+      mailflow:
+        aliases:
+          - dovecot-degraded
+
+networks:
+  mailflow:

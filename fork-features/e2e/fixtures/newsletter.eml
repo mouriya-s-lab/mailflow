@@ -1,0 +1,21 @@
+Return-Path: <news@letters.e2e.test>
+Authentication-Results: mx.e2e.test;
+	spf=softfail smtp.mailfrom=letters.e2e.test;
+	dkim=none;
+	dmarc=fail header.from=letters.e2e.test
+Message-ID: <e2e-newsletter-1@letters.e2e.test>
+Date: Sat, 10 Oct 2026 10:30:00 +0000
+From: Weekly Letters <news@letters.e2e.test>
+Reply-To: replies@other.e2e.test
+To: alice@e2e.test
+Subject: =?UTF-8?B?W2UyZV0g5LuK6YCx44Gu44OL44Ol44O844K5?=
+List-Id: Weekly Letters <weekly.letters.e2e.test>
+List-Unsubscribe: <https://letters.e2e.test/unsubscribe?u=alice>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+<html lang="ja"><body>
+<p>今週のニュースをお届けします。</p>
+<p><a href="https://track.e2e.test/c?u=1">https://letters.e2e.test/read</a></p>
+</body></html>

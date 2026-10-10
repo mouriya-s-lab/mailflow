@@ -1,0 +1,21 @@
+Return-Path: <billing@bank.e2e.test>
+Received-SPF: pass (mx.e2e.test: domain of bank.e2e.test designates 192.0.2.10 as permitted sender) client-ip=192.0.2.10;
+Authentication-Results: mx.e2e.test;
+	spf=pass smtp.mailfrom=bank.e2e.test;
+	dkim=pass header.d=bank.e2e.test header.s=sel1;
+	dmarc=pass header.from=bank.e2e.test
+Message-ID: <e2e-auth-results-1@bank.e2e.test>
+Date: Sat, 10 Oct 2026 09:00:00 +0000
+From: Example Bank <billing@bank.e2e.test>
+To: alice@e2e.test
+Subject: [e2e] Your October statement is ready
+Content-Language: en
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+Hello Alice,
+
+Your October statement is now available in online banking.
+
+Example Bank
