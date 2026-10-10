@@ -5,8 +5,8 @@
 // pastes it back here and MailFlow finishes adding the account.
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api } from '../utils/api.js';
-import { copyToClipboard } from '../utils/clipboard.js';
+import { copyToClipboard } from '../src/utils/clipboard.js';
+import { proxyApi } from './api.js';
 
 // Brand names, not translated.
 const PROVIDERS = [
@@ -46,7 +46,7 @@ export function ProxyAccountForm({ onAdded, onCancel }) {
     setError('');
     setPhase('starting');
     try {
-      const started = await api.startProxyAccount({ provider, email_address: email.trim(), name: name.trim() || undefined });
+      const started = await proxyApi.startAccount({ provider, email_address: email.trim(), name: name.trim() || undefined });
       setFlow(started);
       setPhase('awaiting');
     } catch (err) {
@@ -59,7 +59,7 @@ export function ProxyAccountForm({ onAdded, onCancel }) {
     setError('');
     setPhase('completing');
     try {
-      const account = await api.completeProxyAccount(flow.flow_id, responseUrl.trim());
+      const account = await proxyApi.completeAccount(flow.flow_id, responseUrl.trim());
       onAdded(account);
     } catch (err) {
       setError(err.message);
@@ -75,7 +75,7 @@ export function ProxyAccountForm({ onAdded, onCancel }) {
   };
 
   const cancel = async () => {
-    if (flow) await api.cancelProxyAccount(flow.flow_id).catch(() => {});
+    if (flow) await proxyApi.cancelAccount(flow.flow_id).catch(() => {});
     onCancel();
   };
 

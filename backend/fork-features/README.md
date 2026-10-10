@@ -10,8 +10,9 @@ Settings → Accounts → Add account offers "Sign in via OAuth proxy": the user
 |---|---|
 | `backend/fork-features/emailproxy.js` | Proxy hosts/ports, `proxyProviderOf(account)`, control API client, edit guard, delete cleanup |
 | `backend/fork-features/emailproxyAccounts.js` | `/api/accounts/proxy` routes: start, complete, cancel |
-| `frontend/src/fork-features/ProxyAccountForm.jsx` | Add-account mode switch and the proxy sign-in form |
-| `frontend/src/fork-features/ProxyAccountForm.render.test.js` | Render test of the form |
+| `frontend/fork-features/ProxyAccountForm.jsx` | Add-account mode switch and the proxy sign-in form |
+| `frontend/fork-features/api.js` | Proxy-only start, complete and cancel API calls |
+| `frontend/fork-features/ProxyAccountForm.render.test.js` | Render test of the form |
 
 ## Patches to upstream files (re-check on every upstream sync)
 
@@ -24,7 +25,6 @@ Settings → Accounts → Add account offers "Sign in via OAuth proxy": the user
 | `backend/src/services/diagnosticsReport.js` | Reports proxy accounts' auth type as `emailproxy` |
 | `backend/Dockerfile` | Copies `backend/fork-features` into the image |
 | `frontend/src/components/AdminPanel.jsx` | Add-account view uses `AddAccountView` |
-| `frontend/src/utils/api.js` | `startProxyAccount`, `completeProxyAccount`, `cancelProxyAccount` |
 | `frontend/src/locales/*.json` | `admin.accounts.proxy.*` strings |
 | `backend/src/routes/accounts.autoRecipients.test.js`, `backend/src/services/smtpTransport.test.js` | Ownership-query mock; proxy SMTP regression test |
 
