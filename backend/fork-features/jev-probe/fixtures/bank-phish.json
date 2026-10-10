@@ -1,0 +1,18 @@
+{
+  "from_name": "招商银行",
+  "from_email": "service@cmbchina-secure.top",
+  "sender_email": null,
+  "reply_to": [{ "address": "refund-desk@gmail.com" }],
+  "to_addresses": [{ "address": "user@example.org" }],
+  "cc_addresses": [],
+  "subject": "【招商银行】您的账户存在异常交易，请立即验证",
+  "date": "2026-10-10T03:12:00+08:00",
+  "trusted_authserv_id": "mx.example.org",
+  "headers": ["Authentication-Results: mx.example.org; spf=fail smtp.mailfrom=cmbchina-secure.top; dkim=none; dmarc=fail header.from=cmbchina-secure.top"],
+  "list_unsubscribe": null,
+  "is_bulk": false,
+  "in_reply_to": null,
+  "attachments": [{ "filename": "验证工具.zip", "type": "application/zip" }],
+  "body_text": null,
+  "body_html": "<html lang=\"en\"><body><p>尊敬的客户，系统检测到您的账户于今日发生一笔异常交易（¥8,600.00）。为保障资金安全，请在2小时内点击下方链接完成身份验证，逾期账户将被冻结。</p><p><a href=\"https://cmb-verify-login.xyz/auth?id=8812\">https://www.cmbchina.com/verify</a></p></body></html>"
+}
