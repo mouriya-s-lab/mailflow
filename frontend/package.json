@@ -31,7 +31,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test",
-    "lint": "eslint src --max-warnings 0",
+    "lint": "eslint src fork-features --max-warnings 0",
     "electron:dev": "electron .",
     "preelectron:dist": "node packages/scripts/prepare-electron-icons.cjs && node packages/scripts/prepare-linux-metainfo.cjs",
     "electron:dist": "electron-builder --publish never",

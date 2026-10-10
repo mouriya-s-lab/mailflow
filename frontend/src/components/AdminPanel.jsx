@@ -39,7 +39,7 @@ import { formatRelativeTime, daysSince } from '../utils/relativeTime.js';
 import { htmlLang } from '../utils/browserLanguage.js';
 import SpamSettings from './SpamSettings.jsx';
 import BackupSettings from './BackupSettings.jsx';
-import { AddAccountView } from '../fork-features/ProxyAccountForm.jsx';
+import { AddAccountView } from '../../fork-features/ProxyAccountForm.jsx';
 
 // ─── Shared field component ───────────────────────────────────────────────────
 function Field({ label, required, children }) {

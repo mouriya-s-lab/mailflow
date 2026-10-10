@@ -47,7 +47,7 @@ globalThis.__VITE_ENV__ = { MODE: 'test', DEV: false, PROD: true };
 
 const React = await import('react');
 const { createRoot } = await import('react-dom/client');
-const { api } = await import('../utils/api.js');
+const { proxyApi } = await import('./api.js');
 const { ProxyAccountForm } = await import('./ProxyAccountForm.jsx');
 
 const FLOW = {
@@ -64,9 +64,9 @@ describe('OAuth-proxy add-account form', () => {
   let root;
 
   before(() => {
-    api.startProxyAccount = async (data) => { calls.push(['start', data]); return FLOW; };
-    api.completeProxyAccount = async (flowId, url) => { calls.push(['complete', flowId, url]); return completeReply(); };
-    api.cancelProxyAccount = async (flowId) => { calls.push(['cancel', flowId]); return { ok: true }; };
+    proxyApi.startAccount = async (data) => { calls.push(['start', data]); return FLOW; };
+    proxyApi.completeAccount = async (flowId, url) => { calls.push(['complete', flowId, url]); return completeReply(); };
+    proxyApi.cancelAccount = async (flowId) => { calls.push(['cancel', flowId]); return { ok: true }; };
   });
   afterEach(() => React.act(async () => root.unmount()));
 
