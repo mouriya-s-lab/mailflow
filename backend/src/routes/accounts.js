@@ -12,6 +12,7 @@ import { pluginRegistry } from '../plugins/registry.js';
 import { createKeyedSerializer } from '../utils/keyedSerializer.js';
 import { uuidParam } from '../utils/uuid.js';
 import { normalizeAddressList } from '../utils/addressList.js';
+import { proxyAccountEditError, releaseProxyAccount } from '../../fork-features/emailproxy.js';
 
 // Serialize an account's reconnect triggers so a rapid settings change (e.g. a
 // gtd_enabled double-toggle) can't fire two overlapping disconnect→connect chains —
@@ -108,7 +109,10 @@ router.get('/', async (req, res) => {
   res.json(enriched);
 });
 
-router.post('/', async (req, res) => {
+// Validate, encrypt, insert and start connecting one account. Shared by POST / and
+// the email-oauth2-proxy flow (backend/fork-features/emailproxyAccounts.js).
+// Returns { ok: true, account } (safe fields) or { ok: false, status, error }.
+export async function createAccount(userId, fields) {
   const {
     name, sender_name = null, email_address, color = '#6366f1', protocol = 'imap',
     imap_host, imap_port = 993, imap_skip_tls_verify = false,
@@ -116,15 +120,16 @@ router.post('/', async (req, res) => {
     auth_user, auth_pass, smtp_auth_user = null, smtp_auth_pass = null,
     oauth_provider, oauth_access_token, oauth_refresh_token,
     signature = null, signature_enabled = true
-  } = req.body;
+  } = fields;
+  const fail = (status, error) => ({ ok: false, status, error });
 
-  if (!name || !email_address) return res.status(400).json({ error: 'Name and email required' });
-  if (typeof signature_enabled !== 'boolean') return res.status(400).json({ error: 'signature_enabled must be a boolean' });
+  if (!name || !email_address) return fail(400, 'Name and email required');
+  if (typeof signature_enabled !== 'boolean') return fail(400, 'signature_enabled must be a boolean');
   if (hasHeaderInjectionChars(name) || hasHeaderInjectionChars(email_address)) {
-    return res.status(400).json({ error: 'Name and email address cannot contain control characters' });
+    return fail(400, 'Name and email address cannot contain control characters');
   }
   if (sender_name && hasHeaderInjectionChars(sender_name)) {
-    return res.status(400).json({ error: 'Sender name cannot contain control characters' });
+    return fail(400, 'Sender name cannot contain control characters');
   }
 
   const policy = await getConnectionPolicy();
@@ -132,12 +137,12 @@ router.post('/', async (req, res) => {
   if (imap_host) {
     const err = (await validateHost(imap_host, { allowPrivate: policy.allowPrivateHosts }))
       || (!policy.allowNonstandardPorts && validatePort(imap_port, ALLOWED_IMAP_PORTS));
-    if (err) return res.status(400).json({ error: `IMAP: ${err}` });
+    if (err) return fail(400, `IMAP: ${err}`);
   }
   if (smtp_host) {
     const err = (await validateHost(smtp_host, { allowPrivate: policy.allowPrivateHosts }))
       || (!policy.allowNonstandardPorts && validatePort(smtp_port, ALLOWED_SMTP_PORTS));
-    if (err) return res.status(400).json({ error: `SMTP: ${err}` });
+    if (err) return fail(400, `SMTP: ${err}`);
   }
 
   try {
@@ -150,7 +155,7 @@ router.post('/', async (req, res) => {
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
       RETURNING *
     `, [
-      req.session.userId, name, sender_name || null, email_address, color, protocol,
+      userId, name, sender_name || null, email_address, color, protocol,
       imap_host, imap_port, Number(imap_port) % 1000 === 993, !!imap_skip_tls_verify, smtp_host, smtp_port, smtp_tls,
       auth_user, encrypt(auth_pass), smtp_auth_user || null, encrypt(smtp_auth_pass) || null,
       oauth_provider, encrypt(oauth_access_token), encrypt(oauth_refresh_token),
@@ -164,11 +169,17 @@ router.post('/', async (req, res) => {
       imapManager.connectAccount(account).catch(console.error);
     }
 
-    res.json(safeAccount(account));
+    return { ok: true, account: safeAccount(account) };
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to add account' });
+    return fail(500, 'Failed to add account');
   }
+}
+
+router.post('/', async (req, res) => {
+  const result = await createAccount(req.session.userId, req.body);
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+  res.json(result.account);
 });
 
 router.put('/:id', async (req, res) => {
@@ -176,8 +187,10 @@ router.put('/:id', async (req, res) => {
   const updates = req.body;
 
   // Verify ownership.
-  const check = await query('SELECT id FROM email_accounts WHERE id = $1 AND user_id = $2', [id, req.session.userId]);
+  const check = await query('SELECT imap_host, imap_port, smtp_host, smtp_port, smtp_tls, auth_user FROM email_accounts WHERE id = $1 AND user_id = $2', [id, req.session.userId]);
   if (!check.rows.length) return res.status(404).json({ error: 'Account not found' });
+  const proxyEditErr = proxyAccountEditError(check.rows[0], updates);
+  if (proxyEditErr) return res.status(400).json({ error: proxyEditErr });
 
   if ('name' in updates && hasHeaderInjectionChars(updates.name)) {
     return res.status(400).json({ error: 'Name cannot contain control characters' });
@@ -350,8 +363,13 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const check = await query('SELECT id FROM email_accounts WHERE id = $1 AND user_id = $2', [id, req.session.userId]);
+    const check = await query('SELECT id, imap_host, auth_user FROM email_accounts WHERE id = $1 AND user_id = $2', [id, req.session.userId]);
     if (!check.rows.length) return res.status(404).json({ error: 'Account not found' });
+
+    // A proxy account's tokens live in email-oauth2-proxy: disconnect, drop them
+    // there, and only then delete the row, so a failure leaves a retryable account.
+    const proxyCleanupErr = await releaseProxyAccount(check.rows[0], () => imapManager.disconnectAccount(id));
+    if (proxyCleanupErr) return res.status(502).json({ error: proxyCleanupErr });
 
     // Delete from DB first (cascades to messages and folders immediately).
     // Disconnect IMAP afterward — fire-and-forget so a slow server logout

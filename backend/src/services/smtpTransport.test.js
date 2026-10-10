@@ -318,6 +318,33 @@ describe('createAccountSmtpTransport', () => {
     expect(result.account.oauth_access_token).toBe('valid-token');
   });
 
+  it('sends an OAuth-proxy account with its proxy password, without refreshing tokens it does not have', async () => {
+    const result = await createAccountSmtpTransport({
+      id: 'account-4',
+      oauth_provider: 'microsoft',
+      oauth_access_token: null,
+      oauth_refresh_token: null,
+      oauth_token_expiry: null,
+      auth_user: 'me@outlook.example',
+      auth_pass: 'proxy-password',
+      email_address: 'me@outlook.example',
+      imap_host: 'emailproxy-microsoft',
+      imap_port: 993,
+      smtp_host: 'emailproxy-microsoft',
+      smtp_port: 465,
+      smtp_tls: 'SSL',
+    });
+    await result.transport.sendMail({ to: 'user@example.com' });
+
+    expect(refreshMicrosoftToken).not.toHaveBeenCalled();
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        secure: true,
+        auth: { user: 'me@outlook.example', pass: 'proxy-password' },
+      })
+    );
+  });
+
   it('returns a policy error instead of creating a plain-text transport', async () => {
     const result = await createAccountSmtpTransport({
       smtp_host: 'smtp.example.com',

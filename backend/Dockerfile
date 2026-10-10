@@ -17,6 +17,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . /repo
 RUN cp /repo/backend/package.json ./package.json && \
     cp -R /repo/backend/src ./src && \
+    cp -R /repo/backend/fork-features ./fork-features && \
     cp -R /repo/backend/migrations ./migrations && \
     APP_VERSION_VALUE="${APP_VERSION:-$(node -p "require('./package.json').version")}"; \
     APP_VERSION_VALUE="$(printf '%s' "$APP_VERSION_VALUE" | sed 's/^v[.]//' | sed 's/^v//')"; \

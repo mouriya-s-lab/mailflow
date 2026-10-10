@@ -296,6 +296,10 @@ export const api = {
   // Accounts
   getAccounts: () => request('GET', '/accounts'),
   addAccount: (data) => request('POST', '/accounts', data),
+  // Fork: add a mailbox through the email-oauth2-proxy (frontend/src/fork-features/ProxyAccountForm.jsx).
+  startProxyAccount: (data) => request('POST', '/accounts/proxy/start', data),
+  completeProxyAccount: (flowId, responseUrl) => request('POST', `/accounts/proxy/${flowId}/complete`, { response_url: responseUrl }),
+  cancelProxyAccount: (flowId) => request('DELETE', `/accounts/proxy/${flowId}`),
   updateAccount: (id, data) => request('PUT', `/accounts/${id}`, data),
   deleteAccount: (id) => request('DELETE', `/accounts/${id}`),
   reconnectAccount: (id) => request('POST', `/accounts/${id}/reconnect`),
