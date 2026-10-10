@@ -5,17 +5,17 @@
 //
 //   JEV_API_KEY=… node backend/fork-features/jev-probe/probe.js [--fixtures DIR] [--questions FILE] [--mode full|body|both] [--print-state]
 //
-// JEV_BASE_URL defaults to the Command Code provider endpoint and JEV_MODEL to typesafe/jev.
+// The request goes through the Jev client (../jev), which reads JEV_API_KEY, JEV_BASE_URL and
+// JEV_MODEL; the base URL defaults to the Command Code provider endpoint and the model to typesafe/jev.
 
 import { readFile, readdir } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Parser } from 'htmlparser2';
+import { decide, status } from '../jev/index.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_BASE_URL = 'https://api.commandcode.ai/provider/v1/systemone';
-const DEFAULT_MODEL = 'typesafe/jev';
 const MAX_BODY_CHARS = 20_000;
 
 const SCRIPTS = [
@@ -139,26 +139,12 @@ function bodyOnlyState(msg) {
   return `Subject: ${msg.subject || ''}\n\n${body.slice(0, MAX_BODY_CHARS)}`;
 }
 
-async function decide(config, state, questions) {
-  const started = Date.now();
-  const response = await fetch(config.baseUrl, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: config.model, state: typeof state === 'string' ? state : JSON.stringify(state), questions }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  const latencyMs = Date.now() - started;
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) return { ok: false, status: response.status, latencyMs, error: payload?.error ?? payload };
-  return { ok: true, latencyMs, answers: payload.answers, inputTokens: payload.usage?.input_tokens ?? null };
-}
-
 function summarize(answer) {
-  switch (answer?.type) {
-    case 'noul': return answer.noul.toFixed(2);
+  switch (answer.kind) {
+    case 'noul': return answer.probability.toFixed(2);
     case 'choice': return `${answer.choice} (${answer.confidence})`;
     case 'score': return `${answer.score} (${answer.confidence})`;
-    default: return JSON.stringify(answer);
+    default: throw new Error(`unhandled answer kind ${answer.kind}`);
   }
 }
 
@@ -172,16 +158,15 @@ async function main() {
     },
   });
   if (!['full', 'body', 'both'].includes(values.mode)) throw new Error(`--mode must be full, body or both (got ${values.mode})`);
-  const apiKey = process.env.JEV_API_KEY;
-  if (!apiKey) throw new Error('JEV_API_KEY is not set');
-  const config = { apiKey, baseUrl: process.env.JEV_BASE_URL || DEFAULT_BASE_URL, model: process.env.JEV_MODEL || DEFAULT_MODEL };
+  const jev = status();
+  if (jev.kind === 'unconfigured') throw new Error('JEV_API_KEY is not set');
 
   const questions = JSON.parse(await readFile(values.questions, 'utf8'));
   const files = (await readdir(values.fixtures)).filter(f => f.endsWith('.json')).sort();
   const modes = values.mode === 'both' ? ['full', 'body'] : [values.mode];
   const questionIds = Object.keys(questions);
 
-  console.log(`endpoint ${config.baseUrl}  model ${config.model}\n`);
+  console.log(`endpoint ${jev.baseUrl}  model ${jev.model}\n`);
   console.log(['fixture', 'mode', ...questionIds, 'tokens', 'ms'].join('\t'));
   let failures = 0;
   for (const file of files) {
@@ -189,14 +174,16 @@ async function main() {
     for (const mode of modes) {
       const state = mode === 'full' ? fullState(msg) : bodyOnlyState(msg);
       if (values['print-state']) console.log(JSON.stringify(state, null, 2));
-      const result = await decide(config, state, questions);
+      const started = Date.now();
+      const result = await decide({ state: typeof state === 'string' ? state : JSON.stringify(state), questions });
+      const latencyMs = Date.now() - started;
       const name = basename(file, '.json');
-      if (!result.ok) {
+      if (result.kind === 'error') {
         failures++;
-        console.log([name, mode, `HTTP ${result.status} ${JSON.stringify(result.error)}`].join('\t'));
+        console.log([name, mode, JSON.stringify(result.error)].join('\t'));
         continue;
       }
-      console.log([name, mode, ...questionIds.map(id => summarize(result.answers?.[id])), result.inputTokens, result.latencyMs].join('\t'));
+      console.log([name, mode, ...questionIds.map(id => summarize(result.answers[id])), result.inputTokens, latencyMs].join('\t'));
     }
   }
   if (failures) process.exitCode = 1;
