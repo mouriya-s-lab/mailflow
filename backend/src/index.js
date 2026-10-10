@@ -17,6 +17,7 @@ import oauthRoutes from './routes/oauth.js';
 import integrationsRoutes, { loadIntegrationConfigs } from './routes/integrations.js';
 import authRoutes from './routes/auth.js';
 import accountRoutes from './routes/accounts.js';
+import emailproxyAccountRoutes from '../fork-features/emailproxyAccounts.js';
 import mailRoutes from './routes/mail.js';
 import searchRoutes from './routes/search.js';
 import adminRoutes from './routes/admin.js';
@@ -174,6 +175,8 @@ app.use('/api/auth/oidc', oidcApiRouter);
 app.use('/auth/oidc', oidcBrowserRouter);
 app.use('/oauth', oauthRoutes);
 app.use('/api/integrations', integrationsRoutes);
+// Fork: OAuth-proxy account flow; before the generic router so `proxy` is not taken as an :id.
+app.use('/api/accounts/proxy', emailproxyAccountRoutes);
 app.use('/api/accounts', accountRoutes);
 // Per-account antispam GDPR reset (mounted before the generic /api/accounts
 // router's own :id routes to avoid path shadowing; shares the namespace).

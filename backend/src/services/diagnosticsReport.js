@@ -16,6 +16,7 @@ import { loadAiConfig } from './aiProvider.js';
 import { getActivatedPlugins } from '../plugins/activation.js';
 import { getWarningsRaw, getConnectionStats, getSyncSignalsRaw } from './diagnosticsRing.js';
 import { getPerformanceSnapshot } from './performanceMetrics.js';
+import { proxyProviderOf } from '../../fork-features/emailproxy.js';
 
 const packageMeta = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'));
 const BACKEND_VERSION = (process.env.APP_VERSION || packageMeta.version || '0.0.0').replace(/^v[.]?/, '');
@@ -150,7 +151,7 @@ export async function buildServerReport(userId, salt) {
     accounts.push({
       ref,
       provider: deriveProvider(a.imap_host, a.oauth_provider),
-      authType: a.oauth_provider ? 'oauth' : 'password',
+      authType: proxyProviderOf(a) ? 'emailproxy' : a.oauth_provider ? 'oauth' : 'password',
       enabled: a.enabled !== false,
       inUnifiedInbox: inUnified,
       unread,

@@ -41,7 +41,10 @@ function buildApp() {
 // The UPDATE returns the values it was given, as RETURNING * would after node-pg parses a text[].
 function stubQueries() {
   query.mockImplementation(async (sql, params) => {
-    if (sql.startsWith('SELECT id FROM email_accounts')) return { rows: [{ id: ACCOUNT_ID }] };
+    // Ownership check; the fork also reads the connection fields to guard proxy accounts.
+    if (/^SELECT [\w, ]+ FROM email_accounts WHERE id = \$1 AND user_id = \$2$/.test(sql)) {
+      return { rows: [{ id: ACCOUNT_ID, imap_host: 'imap.example.invalid' }] };
+    }
     if (sql.startsWith('SELECT * FROM email_accounts')) return { rows: [ACCOUNT_ROW] };
     if (sql.startsWith('UPDATE email_accounts')) {
       const row = { ...ACCOUNT_ROW };

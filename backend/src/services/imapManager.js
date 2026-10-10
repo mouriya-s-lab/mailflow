@@ -18,6 +18,7 @@ import { redactEmail } from '../utils/redact.js';
 import { adjustFolderCounts, resolveSpamFolder } from '../utils/mailUtils.js';
 import { getAccountAddresses } from './mailAccess.js';
 import { resolveForConnection, createPinnedLookup } from './hostValidation.js';
+import { proxyProviderOf } from '../../fork-features/emailproxy.js';
 import { getConnectionPolicy } from './connectionPolicy.js';
 import { applyInboxRules, applyBlockList } from './inboxRules.js';
 import { classifyAndTagMessage } from './spamPipeline.js';
@@ -1171,7 +1172,8 @@ export async function emitSectionsChanged(mgr, account, changedCount) {
 
 export function providerProfile(account) {
   const host = (account.imap_host || '').toLowerCase();
-  if (host.includes('.gmail.com') || host.includes('.googlemail.com')) return PROVIDERS.google;
+  const proxyProvider = proxyProviderOf(account);
+  if (host.includes('.gmail.com') || host.includes('.googlemail.com') || proxyProvider === 'google') return PROVIDERS.google;
   if (host.includes('.yahoo.com') || host.includes('.ymail.com')) return PROVIDERS.yahoo;
   if (host.includes('.icloud.com') || host.includes('.apple.com') || host.includes('.me.com')) return PROVIDERS.apple;
   if (host.includes('.outlook.com') || host.includes('office365.com') || host.includes('.hotmail.com') || host.includes('.live.com') || (account.oauth_provider === 'microsoft')) return PROVIDERS.microsoft;
