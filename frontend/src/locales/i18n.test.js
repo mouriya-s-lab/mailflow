@@ -551,6 +551,16 @@ const SAME_VALUE_ALLOWED = {
   // "Editar" is the same word in Spanish and Portuguese.
   'admin.users.edit':      [['es', 'ptBR']],
   'admin.users.editTitle': [['es', 'ptBR']],
+
+  // ── External services (fork) ──────────────────────────────────────────────
+  // Jev and URLhaus's "Auth-Key" are product names; "Model", "Status", "Optional" and
+  // "Configurado" are the same word in the listed languages.
+  'admin.externalServices.jev.title':                   'any',
+  'admin.externalServices.reputation.urlhausAuthKey':   'any',
+  'admin.externalServices.jev.configured':              [['es', 'ptBR']],
+  'admin.externalServices.jev.model':                   [['cs', 'en', 'pl'], ['es', 'ptBR']],
+  'admin.externalServices.jev.status':                  [['de', 'en', 'pl', 'ptBR']],
+  'admin.externalServices.reputation.keyPh':            [['de', 'en'], ['es', 'ptBR']],
 };
 
 // Locale-specific plural forms are allowed per locale. A locale may add forms

@@ -800,7 +800,34 @@
       "groupSecurityIntegrations": "Security & Integrations",
       "groupAdmin": "Administration",
       "plugins": "Plugins",
-      "backup": "Backup"
+      "backup": "Backup",
+      "externalServices": "External services"
+    },
+    "externalServices": {
+      "description": "Services MailFlow asks when it classifies mail and checks the links in it. Keys are stored encrypted and are never shown again after saving.",
+      "saved": "Saved",
+      "keepKey": "A key is stored. Leave the dots to keep it, clear the field to remove it, or paste a new key to replace it.",
+      "jev": {
+        "title": "Jev",
+        "description": "Jev answers MailFlow's classification questions about messages. The endpoint and model start at their defaults; add an API key to turn Jev on.",
+        "status": "Status",
+        "configured": "Configured",
+        "unconfigured": "Not configured (no API key)",
+        "baseUrl": "Endpoint URL",
+        "model": "Model",
+        "apiKey": "API key",
+        "apiKeyPh": "Paste the Jev API key"
+      },
+      "reputation": {
+        "title": "Link reputation",
+        "description": "Lookup services that report on the domains and links in mail. MailFlow only asks these services; it never opens the links themselves.",
+        "rdap": "Look up when link domains were registered (RDAP)",
+        "spamhausDqsKey": "Spamhaus DQS key",
+        "urlhausAuthKey": "URLhaus Auth-Key",
+        "safeBrowsingApiKey": "Google Safe Browsing API key",
+        "keyPh": "Optional",
+        "keyUnset": "No key: this source is reported as not configured."
+      }
     },
     "rules": {
       "title": "Inbox rules",

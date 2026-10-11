@@ -5,15 +5,16 @@
 //
 //   JEV_API_KEY=… node backend/fork-features/jev-probe/probe.js [--fixtures DIR] [--questions FILE] [--mode full|body|both] [--print-state]
 //
-// The request goes through the Jev client (../jev), which reads JEV_API_KEY, JEV_BASE_URL and
-// JEV_MODEL; the base URL defaults to the Command Code provider endpoint and the model to typesafe/jev.
+// The probe runs outside MailFlow, so it builds the Jev client's configuration from its own
+// command-line environment: JEV_API_KEY, JEV_BASE_URL and JEV_MODEL, the last two defaulting to
+// the client's defaults (the Command Code provider endpoint and typesafe/jev).
 
 import { readFile, readdir } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Parser } from 'htmlparser2';
-import { decide, status } from '../jev/index.js';
+import { JEV_DEFAULTS, decide, status } from '../jev/index.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MAX_BODY_CHARS = 20_000;
@@ -158,7 +159,12 @@ async function main() {
     },
   });
   if (!['full', 'body', 'both'].includes(values.mode)) throw new Error(`--mode must be full, body or both (got ${values.mode})`);
-  const jev = status();
+  const config = {
+    baseUrl: process.env.JEV_BASE_URL || JEV_DEFAULTS.baseUrl,
+    model: process.env.JEV_MODEL || JEV_DEFAULTS.model,
+    apiKey: process.env.JEV_API_KEY || null,
+  };
+  const jev = status(config);
   if (jev.kind === 'unconfigured') throw new Error('JEV_API_KEY is not set');
 
   const questions = JSON.parse(await readFile(values.questions, 'utf8'));
@@ -175,7 +181,7 @@ async function main() {
       const state = mode === 'full' ? fullState(msg) : bodyOnlyState(msg);
       if (values['print-state']) console.log(JSON.stringify(state, null, 2));
       const started = Date.now();
-      const result = await decide({ state: typeof state === 'string' ? state : JSON.stringify(state), questions });
+      const result = await decide(config, { state: typeof state === 'string' ? state : JSON.stringify(state), questions });
       const latencyMs = Date.now() - started;
       const name = basename(file, '.json');
       if (result.kind === 'error') {

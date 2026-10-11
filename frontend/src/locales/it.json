@@ -800,7 +800,34 @@
       "groupSecurityIntegrations": "Sicurezza e integrazioni",
       "groupAdmin": "Amministrazione",
       "plugins": "Plugin",
-      "backup": "Backup"
+      "backup": "Backup",
+      "externalServices": "Servizi esterni"
+    },
+    "externalServices": {
+      "description": "Servizi consultati da MailFlow quando classifica la posta e controlla i link al suo interno. Le chiavi vengono memorizzate in modo cifrato e non vengono mai più mostrate dopo il salvataggio.",
+      "saved": "Salvato",
+      "keepKey": "È memorizzata una chiave. Lascia i puntini per mantenerla, svuota il campo per rimuoverla oppure incolla una nuova chiave per sostituirla.",
+      "jev": {
+        "title": "Jev",
+        "description": "Jev risponde alle domande di classificazione di MailFlow sui messaggi. Endpoint e modello partono dai valori predefiniti; aggiungi una chiave API per attivare Jev.",
+        "status": "Stato",
+        "configured": "Configurato",
+        "unconfigured": "Non configurato (nessuna chiave API)",
+        "baseUrl": "URL dell'endpoint",
+        "model": "Modello",
+        "apiKey": "Chiave API",
+        "apiKeyPh": "Incolla la chiave API di Jev"
+      },
+      "reputation": {
+        "title": "Reputazione dei link",
+        "description": "Servizi di ricerca che forniscono informazioni sui domini e sui link presenti nelle email. MailFlow interroga solo questi servizi e non apre mai i link.",
+        "rdap": "Controlla quando sono stati registrati i domini dei link (RDAP)",
+        "spamhausDqsKey": "Chiave Spamhaus DQS",
+        "urlhausAuthKey": "URLhaus Auth-Key",
+        "safeBrowsingApiKey": "Chiave API Google Safe Browsing",
+        "keyPh": "Facoltativo",
+        "keyUnset": "Nessuna chiave: questa fonte viene indicata come non configurata."
+      }
     },
     "rules": {
       "title": "Regole posta in arrivo",

@@ -800,7 +800,34 @@
       "groupSecurityIntegrations": "安全与集成",
       "groupAdmin": "管理",
       "plugins": "插件",
-      "backup": "备份"
+      "backup": "备份",
+      "externalServices": "外部服务"
+    },
+    "externalServices": {
+      "description": "MailFlow 在分类邮件和检查其中的链接时所请求的服务。密钥会加密存储，保存后不会再次显示。",
+      "saved": "已保存",
+      "keepKey": "已有密钥存储。保留圆点即可继续使用；清空字段可移除密钥；粘贴新密钥可将其替换。",
+      "jev": {
+        "title": "Jev",
+        "description": "Jev 会回答 MailFlow 关于邮件分类的问题。端点和模型使用默认值；添加 API 密钥即可启用 Jev。",
+        "status": "状态",
+        "configured": "已配置",
+        "unconfigured": "未配置（没有 API 密钥）",
+        "baseUrl": "端点网址",
+        "model": "模型",
+        "apiKey": "API 密钥",
+        "apiKeyPh": "粘贴 Jev API 密钥"
+      },
+      "reputation": {
+        "title": "链接信誉",
+        "description": "提供邮件中域名和链接信息的查询服务。MailFlow 只会请求这些服务，绝不会打开链接本身。",
+        "rdap": "查询链接域名的注册时间（RDAP）",
+        "spamhausDqsKey": "Spamhaus DQS 密钥",
+        "urlhausAuthKey": "URLhaus Auth-Key",
+        "safeBrowsingApiKey": "Google Safe Browsing API 密钥",
+        "keyPh": "可选",
+        "keyUnset": "没有密钥：此来源会被报告为未配置。"
+      }
     },
     "rules": {
       "title": "收件箱规则",

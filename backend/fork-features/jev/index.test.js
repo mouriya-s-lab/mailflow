@@ -67,6 +67,7 @@ let server;
 let requests;
 let handler;
 let received;
+let config;
 let decide;
 let status;
 let warn;
@@ -81,7 +82,7 @@ function request() {
 }
 
 async function call(input = request(), options) {
-  const result = await decide(input, options);
+  const result = await decide(config, input, options);
   if (result.kind === 'error') errors.push(result);
   return result;
 }
@@ -112,9 +113,7 @@ beforeEach(async () => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
-  vi.stubEnv('JEV_BASE_URL', `http://127.0.0.1:${server.address().port}/decision`);
-  vi.stubEnv('JEV_API_KEY', TEST_KEY);
-  vi.stubEnv('JEV_MODEL', MODEL);
+  config = { baseUrl: `http://127.0.0.1:${server.address().port}/decision`, model: MODEL, apiKey: TEST_KEY };
   vi.stubEnv('LOG_LEVEL', 'warn');
   warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
   // Each import owns its warning throttle; fake timers would interfere with real sockets.
@@ -166,29 +165,38 @@ describe('Jev decision client over HTTP', () => {
     const input = request();
     mutate(input);
     expectError(await call(input), { kind: 'invalid_request', detail });
-    vi.stubEnv('JEV_API_KEY', '');
+    config = { ...config, apiKey: null };
     expectError(await call(input), { kind: 'invalid_request', detail });
     expect(requests).toHaveLength(0);
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('does not send an unconfigured decision and reports live configuration changes', async () => {
-    vi.stubEnv('JEV_API_KEY', '');
-    expectError(await call(), { kind: 'unconfigured' });
-    expect(status()).toEqual({ kind: 'unconfigured' });
+  it('does not send a decision without a key and reports status from the given configuration', async () => {
+    const configured = config;
+    for (const apiKey of [null, '']) {
+      config = { ...configured, apiKey };
+      expectError(await call(), { kind: 'unconfigured' });
+      expect(status(config)).toEqual({ kind: 'unconfigured' });
+    }
     expect(requests).toHaveLength(0);
     expect(warn).not.toHaveBeenCalled();
-    vi.stubEnv('JEV_API_KEY', TEST_KEY);
-    expect(status()).toEqual({ kind: 'configured', baseUrl: process.env.JEV_BASE_URL, model: MODEL });
-    vi.stubEnv('JEV_BASE_URL', undefined);
-    vi.stubEnv('JEV_MODEL', undefined);
-    expect(status()).toEqual({
-      kind: 'configured', baseUrl: 'https://api.commandcode.ai/provider/v1/systemone', model: 'typesafe/jev',
-    });
-    vi.stubEnv('JEV_API_KEY', undefined);
-    expect(status()).toEqual({ kind: 'unconfigured' });
+    expect(status(configured)).toEqual({ kind: 'configured', baseUrl: configured.baseUrl, model: MODEL });
+  });
+
+  it('ignores the JEV_* environment entirely', async () => {
+    vi.stubEnv('JEV_API_KEY', 'environment-key-must-not-be-used');
+    vi.stubEnv('JEV_BASE_URL', 'http://127.0.0.1:1/environment');
+    vi.stubEnv('JEV_MODEL', 'environment/model');
+    const configured = config;
+    config = { ...configured, apiKey: null };
     expectError(await call(), { kind: 'unconfigured' });
+    expect(status(config)).toEqual({ kind: 'unconfigured' });
     expect(requests).toHaveLength(0);
+    config = configured;
+    expect((await call()).kind).toBe('ok');
+    expect(requests).toHaveLength(1);
+    expect(requests[0].headers.authorization).toBe(`Bearer ${TEST_KEY}`);
+    expect(requests[0].body.model).toBe(MODEL);
   });
 
   it('sends authenticated POST JSON preserving state and translating every question kind', async () => {
@@ -335,9 +343,7 @@ describe('Jev decision client over HTTP', () => {
   });
 
   it('reports network failure when the previously bound server port is closed', async () => {
-    const url = process.env.JEV_BASE_URL;
     await closeServer(server);
-    vi.stubEnv('JEV_BASE_URL', url);
     expectError(await call(), { kind: 'network' });
     expect(requests).toHaveLength(0);
     expect(warn).toHaveBeenCalledTimes(1);

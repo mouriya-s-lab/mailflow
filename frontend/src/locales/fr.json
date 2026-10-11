@@ -800,7 +800,34 @@
       "groupSecurityIntegrations": "Sécurité et intégrations",
       "groupAdmin": "Administration",
       "plugins": "Extensions",
-      "backup": "Sauvegarde"
+      "backup": "Sauvegarde",
+      "externalServices": "Services externes"
+    },
+    "externalServices": {
+      "description": "Services interrogés par MailFlow pour classifier les e-mails et vérifier leurs liens. Les clés sont stockées chiffrées et ne sont plus jamais affichées après leur enregistrement.",
+      "saved": "Enregistré",
+      "keepKey": "Une clé est enregistrée. Laissez les points pour la conserver, videz le champ pour la supprimer ou collez une nouvelle clé pour la remplacer.",
+      "jev": {
+        "title": "Jev",
+        "description": "Jev répond aux questions de classification de MailFlow sur les messages. Le point de terminaison et le modèle utilisent leurs valeurs par défaut ; ajoutez une clé API pour activer Jev.",
+        "status": "Statut",
+        "configured": "Configuré",
+        "unconfigured": "Non configuré (aucune clé API)",
+        "baseUrl": "URL du point de terminaison",
+        "model": "Modèle",
+        "apiKey": "Clé API",
+        "apiKeyPh": "Collez la clé API Jev"
+      },
+      "reputation": {
+        "title": "Réputation des liens",
+        "description": "Services de consultation qui fournissent des informations sur les domaines et les liens des e-mails. MailFlow ne fait qu'interroger ces services ; il n'ouvre jamais les liens eux-mêmes.",
+        "rdap": "Rechercher la date d'enregistrement des domaines des liens (RDAP)",
+        "spamhausDqsKey": "Clé Spamhaus DQS",
+        "urlhausAuthKey": "URLhaus Auth-Key",
+        "safeBrowsingApiKey": "Clé API Google Safe Browsing",
+        "keyPh": "Facultatif",
+        "keyUnset": "Aucune clé : cette source est signalée comme non configurée."
+      }
     },
     "rules": {
       "title": "Règles de boîte de réception",
