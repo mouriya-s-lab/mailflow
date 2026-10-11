@@ -3,6 +3,7 @@ import net from 'node:net';
 import { domainToASCII } from 'node:url';
 import { redisClient } from './redis.js';
 import { safeFetch } from './safeFetch.js';
+import { registrableDomain } from '../../fork-features/domains/index.js';
 
 const PROVIDER_ORIGIN = 'https://twenty-icons.com';
 const MAX_BYTES = 65_536;
@@ -15,17 +16,6 @@ const TRANSIENT_TTL = 5 * 60;
 const MAX_LABELS = 10;
 const inflight = new Map();
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-
-// Pragmatic (NOT exhaustive) multi-label public suffixes: the parent walk never
-// queries one and never strips a subdomain down into one. No PSL dependency.
-const PUBLIC_SUFFIXES = new Set([
-  'co.uk', 'org.uk', 'gov.uk', 'ac.uk', 'me.uk', 'net.uk', 'sch.uk',
-  'co.jp', 'or.jp', 'ne.jp', 'ac.jp', 'go.jp',
-  'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au',
-  'com.br', 'com.mx', 'com.ar', 'com.sg', 'com.tw', 'com.cn', 'com.hk', 'com.tr', 'com.ua',
-  'co.in', 'co.za', 'co.nz', 'co.kr', 'co.il',
-  'github.io',
-]);
 
 export function normalizeSenderDomain(value) {
   if (typeof value !== 'string') return null;
@@ -74,15 +64,14 @@ function cacheKey(domain) {
   return `sender-favicon:v2:${digest}`;
 }
 
-// Registrable-domain walk: strip ONE leading label, keeping ≥2 labels and never
-// crossing into a listed public suffix. Returns the single parent candidate or
-// null at the boundary. Resolution recurses one parent per level; the MAX_LABELS
-// cap in normalize bounds the chain, so a domain's full ancestry is reached.
+// Registrable-domain walk: strip ONE leading label, never going above the domain's registrable
+// domain from the Public Suffix List, so the walk never reaches a public suffix (co.uk, com.cn,
+// github.io). Returns the single parent candidate or null at the boundary. Resolution recurses one
+// parent per level; the MAX_LABELS cap in normalize bounds the chain.
 function nextParent(domain) {
-  const labels = domain.split('.').slice(1);
-  if (labels.length < 2) return null;
-  const candidate = labels.join('.');
-  return PUBLIC_SUFFIXES.has(candidate) ? null : candidate;
+  const registrable = registrableDomain(domain);
+  if (!registrable || registrable === domain) return null;
+  return domain.slice(domain.indexOf('.') + 1);
 }
 
 function miss(reason) {
