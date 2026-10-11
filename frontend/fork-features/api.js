@@ -7,3 +7,10 @@ export const proxyApi = {
   ),
   cancelAccount: flowId => request('DELETE', `/accounts/proxy/${flowId}`),
 };
+
+export const serviceConfigApi = {
+  getJev: () => request('GET', '/admin/fork/jev'),
+  saveJev: data => request('PUT', '/admin/fork/jev', data),
+  getReputation: () => request('GET', '/admin/fork/reputation'),
+  saveReputation: data => request('PUT', '/admin/fork/reputation', data),
+};

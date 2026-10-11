@@ -40,6 +40,7 @@ import { htmlLang } from '../utils/browserLanguage.js';
 import SpamSettings from './SpamSettings.jsx';
 import BackupSettings from './BackupSettings.jsx';
 import { AddAccountView } from '../../fork-features/ProxyAccountForm.jsx';
+import { ExternalServicesTab } from '../../fork-features/ExternalServicesTab.jsx';
 
 // ─── Shared field component ───────────────────────────────────────────────────
 function Field({ label, required, children }) {
@@ -7243,7 +7244,7 @@ const TAB_GROUPS = [
   { id: 'account-mail', labelKey: 'admin.tabs.groupAccountMail', tabIds: ['accounts', 'notifications', 'rules', 'categories', 'cleanup', 'antispam'] },
   { id: 'display', labelKey: 'admin.tabs.groupDisplay', tabIds: ['appearance', 'shortcuts'] },
   { id: 'security-integrations', labelKey: 'admin.tabs.groupSecurityIntegrations', tabIds: ['security', 'integrations', 'ai', 'ai-actions', 'plugins'] },
-  { id: 'admin', labelKey: 'admin.tabs.groupAdmin', tabIds: ['users', 'sso', 'backup'] },
+  { id: 'admin', labelKey: 'admin.tabs.groupAdmin', tabIds: ['users', 'sso', 'backup', 'external-services'] },
 ];
 
 const TABS = [
@@ -7319,6 +7320,11 @@ const TABS = [
     id: 'backup', labelKey: 'admin.tabs.backup',
     adminOnly: true,
     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+  },
+  {
+    id: 'external-services', labelKey: 'admin.tabs.externalServices',
+    adminOnly: true,
+    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>,
   },
   // About (ungrouped, pinned to bottom)
   {
@@ -8808,6 +8814,8 @@ function makeSearchIndex(t) {
     { label: t('admin.systemEmail.tabEmail'), keywords: ['system email', 'smtp', 'admin email', 'invite email', 'outgoing email'], tab: 'users', adminOnly: true, breadcrumb: tabLabel('users') },
     { label: t('admin.sso.title'), keywords: ['sso', 'oidc', 'single sign on', 'oauth', 'provider', 'identity provider'], tab: 'sso', adminOnly: true, breadcrumb: tabLabel('sso') },
     { label: t('admin.backup.title'), keywords: ['backup', 'restore', 'export', 'import', 'migrate', 'move server', 'transfer', 'download settings'], tab: 'backup', adminOnly: true, breadcrumb: tabLabel('backup') },
+    { label: t('admin.externalServices.jev.title'), keywords: ['jev', 'classify', 'classification', 'api key', 'external service'], tab: 'external-services', adminOnly: true, breadcrumb: tabLabel('externalServices') },
+    { label: t('admin.externalServices.reputation.title'), keywords: ['link reputation', 'rdap', 'spamhaus', 'urlhaus', 'safe browsing', 'phishing', 'domain'], tab: 'external-services', adminOnly: true, breadcrumb: tabLabel('externalServices') },
   ];
 }
 
@@ -8931,6 +8939,7 @@ export default function AdminPanel() {
       {adminTab === 'users' && <UsersTab />}
       {adminTab === 'sso' && <SSOTab />}
       {adminTab === 'backup' && <BackupSettings />}
+      {adminTab === 'external-services' && <ExternalServicesTab />}
       {adminTab === 'security' && <SecurityPrivacyTab initialSubTab={pendingSubTab} />}
       {adminTab === 'notifications' && <NotificationsTab />}
       {adminTab === 'shortcuts' && !isMobile && <ShortcutsTab />}

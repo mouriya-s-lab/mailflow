@@ -21,6 +21,7 @@ import emailproxyAccountRoutes from '../fork-features/emailproxyAccounts.js';
 import mailRoutes from './routes/mail.js';
 import searchRoutes from './routes/search.js';
 import adminRoutes from './routes/admin.js';
+import forkServiceConfigRoutes from '../fork-features/service-config/routes.js';
 import totpRoutes from './routes/totp.js';
 import oidcApiRouter, { oidcBrowserRouter } from './routes/oidc.js';
 import rulesRoutes from './routes/rules.js';
@@ -187,6 +188,8 @@ app.use('/api/mail', sendRoutes);
 app.use('/api/mail', draftRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/admin/backup', backupRoutes);
+// Fork: Jev and link-reputation settings; before the generic admin router, which would also run requireAdmin.
+app.use('/api/admin/fork', forkServiceConfigRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/totp', totpRoutes);
 app.use('/api/rules', rulesRoutes);

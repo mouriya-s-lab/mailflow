@@ -799,7 +799,34 @@
       "groupAdmin": "관리",
       "plugins": "플러그인",
       "backup": "백업",
-      "groupSecurityIntegrations": "보안 및 연동"
+      "groupSecurityIntegrations": "보안 및 연동",
+      "externalServices": "외부 서비스"
+    },
+    "externalServices": {
+      "description": "MailFlow가 메일을 분류하고 메일에 포함된 링크를 확인할 때 요청하는 서비스입니다. 키는 암호화되어 저장되며 저장한 후에는 다시 표시되지 않습니다.",
+      "saved": "저장됨",
+      "keepKey": "키가 저장되어 있습니다. 유지하려면 점을 그대로 두고, 삭제하려면 필드를 비우거나, 새 키로 바꾸려면 새 키를 붙여넣으세요.",
+      "jev": {
+        "title": "Jev",
+        "description": "Jev는 메시지에 대한 MailFlow의 분류 질문에 답합니다. 엔드포인트와 모델은 기본값으로 시작하며, API 키를 추가하면 Jev가 활성화됩니다.",
+        "status": "상태",
+        "configured": "구성됨",
+        "unconfigured": "구성되지 않음 (API 키 없음)",
+        "baseUrl": "엔드포인트 URL",
+        "model": "모델",
+        "apiKey": "API 키",
+        "apiKeyPh": "Jev API 키를 붙여넣으세요"
+      },
+      "reputation": {
+        "title": "링크 평판",
+        "description": "메일의 도메인과 링크 정보를 제공하는 조회 서비스입니다. MailFlow는 이러한 서비스에만 요청하며 링크 자체는 열지 않습니다.",
+        "rdap": "링크 도메인의 등록 시점 조회(RDAP)",
+        "spamhausDqsKey": "Spamhaus DQS 키",
+        "urlhausAuthKey": "URLhaus Auth-Key",
+        "safeBrowsingApiKey": "Google Safe Browsing API 키",
+        "keyPh": "선택 사항",
+        "keyUnset": "키 없음: 이 소스는 구성되지 않은 것으로 보고됩니다."
+      }
     },
     "close": "닫기",
     "rules": {

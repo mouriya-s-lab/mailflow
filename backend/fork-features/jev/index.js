@@ -1,6 +1,10 @@
-// Jev decision client: sends one state and a set of questions to the configured Jev endpoint and
-// returns typed answers or a typed error. It knows nothing about mail; what the questions mean is
-// the caller's business. Contract K2 in mouriya-s-lab/mailflow#5.
+// Jev decision client: sends one state and a set of questions to a Jev endpoint and returns typed
+// answers or a typed error. It knows nothing about mail; what the questions mean is the caller's
+// business. Contract K2 in mouriya-s-lab/mailflow#5.
+//
+// The caller passes the configuration `{ baseUrl, model, apiKey }` on every call; inside MailFlow
+// it comes from the admin setting (fork-features/service-config), and this module reads no
+// environment. A null or empty apiKey means unconfigured.
 //
 // Every outcome of a decision, invalid questions included, is a value rather than a throw: a caller
 // switches on `kind` and decides what to retry, since this module never retries on its own.
@@ -8,8 +12,10 @@
 
 import { logger } from '../../src/services/logger.js';
 
-const DEFAULT_BASE_URL = 'https://api.commandcode.ai/provider/v1/systemone';
-const DEFAULT_MODEL = 'typesafe/jev';
+export const JEV_DEFAULTS = Object.freeze({
+  baseUrl: 'https://api.commandcode.ai/provider/v1/systemone',
+  model: 'typesafe/jev',
+});
 const MAX_DEADLINE_MS = 30_000;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const CHOICE_LABELS = { min: 2, max: 24 };
@@ -28,19 +34,10 @@ const sameKeys = (record, keys) => {
 class Invalid extends Error {}
 const invalid = detail => { throw new Invalid(detail); };
 
-function readConfig() {
-  const apiKey = process.env.JEV_API_KEY;
-  if (!apiKey) return null;
-  return {
-    apiKey,
-    baseUrl: process.env.JEV_BASE_URL || DEFAULT_BASE_URL,
-    model: process.env.JEV_MODEL || DEFAULT_MODEL,
-  };
-}
-
-export function status() {
-  const config = readConfig();
-  return config ? { kind: 'configured', baseUrl: config.baseUrl, model: config.model } : { kind: 'unconfigured' };
+export function status(config) {
+  return config.apiKey
+    ? { kind: 'configured', baseUrl: config.baseUrl, model: config.model }
+    : { kind: 'unconfigured' };
 }
 
 // ── Request ───────────────────────────────────────────────────────────────────
@@ -264,7 +261,7 @@ function warnExternal(error) {
   logger.warn(`[jev] decision failed: ${line}${suppressed}`);
 }
 
-export async function decide(request, options) {
+export async function decide(config, request, options) {
   const control = parseOptions(options);
   let parsed;
   try {
@@ -273,8 +270,7 @@ export async function decide(request, options) {
     if (err instanceof Invalid) return { kind: 'error', error: { kind: 'invalid_request', detail: err.message } };
     throw err;
   }
-  const config = readConfig();
-  if (!config) return { kind: 'error', error: { kind: 'unconfigured' } };
+  if (!config.apiKey) return { kind: 'error', error: { kind: 'unconfigured' } };
   const result = await exchange(config, parsed, control);
   if (result.kind === 'ok') return result;
   warnExternal(result);

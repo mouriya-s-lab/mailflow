@@ -990,7 +990,34 @@
       "groupSecurityIntegrations": "Zabezpečení a integrace",
       "groupAdmin": "Správa",
       "plugins": "Pluginy",
-      "backup": "Záloha"
+      "backup": "Záloha",
+      "externalServices": "Externí služby"
+    },
+    "externalServices": {
+      "description": "Služby, na které se MailFlow obrací při klasifikaci pošty a kontrole odkazů v ní. Klíče jsou uloženy šifrovaně a po uložení se již nikdy nezobrazí.",
+      "saved": "Uloženo",
+      "keepKey": "Klíč je uložen. Ponechte tečky, chcete-li jej zachovat, vymažte pole, chcete-li jej odstranit, nebo vložte nový klíč, chcete-li jej nahradit.",
+      "jev": {
+        "title": "Jev",
+        "description": "Jev odpovídá na klasifikační otázky MailFlow týkající se zpráv. Koncový bod a model začínají s výchozím nastavením; přidáním klíče API Jev zapnete.",
+        "status": "Stav",
+        "configured": "Nakonfigurováno",
+        "unconfigured": "Nenakonfigurováno (chybí klíč API)",
+        "baseUrl": "URL koncového bodu",
+        "model": "Model",
+        "apiKey": "Klíč API",
+        "apiKeyPh": "Vložte klíč API Jev"
+      },
+      "reputation": {
+        "title": "Reputace odkazů",
+        "description": "Služby pro vyhledávání informací o doménách a odkazech v poště. MailFlow se těchto služeb pouze dotazuje; samotné odkazy nikdy neotevírá.",
+        "rdap": "Zjistit, kdy byly domény odkazů zaregistrovány (RDAP)",
+        "spamhausDqsKey": "Klíč Spamhaus DQS",
+        "urlhausAuthKey": "URLhaus Auth-Key",
+        "safeBrowsingApiKey": "Klíč API Google Safe Browsing",
+        "keyPh": "Volitelné",
+        "keyUnset": "Bez klíče: tento zdroj je uveden jako nenakonfigurovaný."
+      }
     },
     "categories": {
       "title": "Kategorie e-mailů",

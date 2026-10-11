@@ -18,6 +18,8 @@
 import { getMailEngine } from './mailEngine.js';
 import * as labelsWrite from '../services/labels.js';
 import { archiveInboxCopy as _archiveInboxCopy } from '../services/archiveInbox.js';
+import { decide as decideJev, status as jevConfigStatus } from '../../fork-features/jev/index.js';
+import { loadJevConfig } from '../../fork-features/service-config/index.js';
 
 // ── Labels (read) ─────────────────────────────────────────────────────────────
 // Thread-aware read over a set of label folders: heads grouped by label with thread-level
@@ -58,9 +60,11 @@ export const broadcast = (payload, userId) => getMailEngine().broadcast(payload,
 export { summarizeMessage, summarizeAvailable } from '../services/summarize.js';
 
 // ── Jev decisions ─────────────────────────────────────────────────────────────
-// Ask the configured Jev endpoint typed questions about a state; typed answers or a typed error
-// come back (fork-only, see fork-features/jev). No access to the key or the HTTP client itself.
-export { decide as jevDecide, status as jevStatus } from '../../fork-features/jev/index.js';
+// Ask the Jev endpoint the admin configured typed questions about a state; typed answers or a typed
+// error come back (fork-only, see fork-features/jev). The configuration is read from the admin
+// setting on every call, so both are async. No access to the key or the HTTP client itself.
+export const jevDecide = async (request, options) => decideJev(await loadJevConfig(), request, options);
+export const jevStatus = async () => jevConfigStatus(await loadJevConfig());
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
