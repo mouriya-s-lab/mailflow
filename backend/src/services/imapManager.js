@@ -6502,6 +6502,92 @@ export class ImapManager {
     return newUid;
   }
 
+  // Fork (#13): move UIDs out of one folder only after this session has confirmed each one is
+  // the message the caller's row says it is: the folder's UIDVALIDITY, the UID and the RFC
+  // Message-ID, checked in the same session and under the same mailbox lock as the move, so
+  // nothing can change in between. Dates are never compared. Branches follow the capabilities
+  // the server declared after login: MOVE or COPY + UID-limited EXPUNGE (moveUids), and the
+  // COPYUID map only under UIDPLUS. A server without UIDPLUS is not bound by RFC 4315, so a
+  // COPYUID it sends anyway is ignored: the target's UIDNEXT is taken before the move, and after
+  // it the same session selects the target and searches from there for the Message-ID; only a
+  // single hit counts.
+  //
+  // items: [{ uid: number, messageId: string }], each messageId non-empty.
+  // Resolves to { kind: 'uidvalidity_changed', serverUidValidity } or { kind: 'checked', results }
+  // where results maps every item's uid to { kind: 'source_changed' } (not on the server, or
+  // another Message-ID), { kind: 'moved', uid }, { kind: 'moved_unlocated' } or
+  // { kind: 'failed', reason: 'imap_error' | 'move_not_confirmed' }. Throws when the session
+  // fails before the UIDs were checked; nothing after a confirmed move throws, since a move that
+  // happened must never be reported as one that did not.
+  async moveVerifiedUids(account, { fromFolder, uidValidity, items, toFolder }) {
+    const bare = value => String(value || '').replace(/[<>]/g, '').trim();
+    return withFreshClient(account, async (client) => {
+      const uidplus = Boolean(client.capabilities?.has('UIDPLUS'));
+      const results = new Map();
+      let matched;
+      let uidNext = null;
+      let moved;
+      const lock = await client.getMailboxLock(fromFolder);
+      try {
+        const seen = client.mailbox?.uidValidity;
+        if (seen == null || String(seen) !== String(uidValidity)) {
+          return { kind: 'uidvalidity_changed', serverUidValidity: seen == null ? null : String(seen) };
+        }
+        const onServer = new Map();
+        for await (const msg of client.fetch(items.map(item => item.uid), { uid: true, envelope: true }, { uid: true })) {
+          onServer.set(msg.uid, bare(msg.envelope?.messageId));
+        }
+        matched = items.filter(item => onServer.get(item.uid) === bare(item.messageId));
+        for (const item of items) if (!matched.includes(item)) results.set(item.uid, { kind: 'source_changed' });
+        if (!matched.length) return { kind: 'checked', results };
+        try {
+          if (!uidplus) {
+            uidNext = (await client.status(toFolder, { uidNext: true }))?.uidNext ?? null;
+            if (!uidNext) throw new Error(`STATUS ${toFolder} gave no UIDNEXT`);
+          }
+          moved = await moveUids(client, matched.map(item => String(item.uid)), toFolder);
+        } catch (err) {
+          logger.warn(`Verified move ${fromFolder} → ${toFolder} for account ${account.id}: ${matched.length} message(s) not moved (${err.message})`);
+          for (const item of matched) results.set(item.uid, { kind: 'failed', reason: 'imap_error' });
+          return { kind: 'checked', results };
+        }
+      } finally {
+        lock.release();
+      }
+
+      if (!moved) {
+        for (const item of matched) results.set(item.uid, { kind: 'failed', reason: 'move_not_confirmed' });
+        return { kind: 'checked', results };
+      }
+      if (uidplus) {
+        // A UID the server confirmed moving but left out of COPYUID has no known target UID.
+        for (const item of matched) {
+          const uid = moved.uidMap?.get(item.uid);
+          results.set(item.uid, uid ? { kind: 'moved', uid } : { kind: 'moved_unlocated' });
+        }
+        return { kind: 'checked', results };
+      }
+      try {
+        const targetLock = await client.getMailboxLock(toFolder);
+        try {
+          for (const item of matched) {
+            const hits = await client.search({ uid: `${uidNext}:*`, header: { 'Message-ID': item.messageId } }, { uid: true });
+            // `n:*` also names the highest UID when nothing reached n, so hits below UIDNEXT are
+            // older mail; a non-array result is a failed SEARCH.
+            const arrived = Array.isArray(hits) ? hits.map(Number).filter(uid => uid >= uidNext) : [];
+            results.set(item.uid, arrived.length === 1 ? { kind: 'moved', uid: arrived[0] } : { kind: 'moved_unlocated' });
+          }
+        } finally {
+          targetLock.release();
+        }
+      } catch (err) {
+        logger.warn(`Verified move ${fromFolder} → ${toFolder} for account ${account.id}: moved, but searching the target failed (${err.message})`);
+        for (const item of matched) if (!results.has(item.uid)) results.set(item.uid, { kind: 'moved_unlocated' });
+      }
+      return { kind: 'checked', results };
+    });
+  }
+
   async deleteFolder(account, path) {
     return withFreshClient(account, async (client) => {
       // If the pool connection has this folder selected, switch to INBOX first
