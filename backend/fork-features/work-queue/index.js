@@ -188,3 +188,26 @@ export async function countQueued(args) {
   }
   return counts;
 }
+
+// listMessagesInQueueState({ accountId, pluginId, state, afterId, limit }) → rows whose queue is in
+// `state`, by id, starting after `afterId` (null for the first page); at most 200. Rows have the
+// shape listQueuedMessages returns. A plugin pages through, say, its terminal rows with the last
+// id of each page.
+export async function listMessagesInQueueState(args) {
+  const { accountId, pluginId } = parseCommon(args);
+  if (!QUEUE_STATES.includes(args.state)) throw new TypeError(`state must be one of ${QUEUE_STATES.join(', ')}`);
+  const afterId = args.afterId ?? null;
+  if (afterId !== null && (typeof afterId !== 'string' || !afterId)) throw new TypeError('afterId must be a message row id or null');
+  const limit = parseLimit(args.limit, MAX_LIST_LIMIT);
+  const { rows } = await query(
+    `SELECT id, folder, uid, message_id, date, synced_at, plugin_annotations -> $2 AS plugin_annotation
+       FROM messages
+      WHERE account_id = $1
+        AND plugin_annotations -> $2 -> 'queue' ->> 'state' = $3
+        AND ($4::uuid IS NULL OR id > $4::uuid)
+      ORDER BY id
+      LIMIT $5`,
+    [accountId, pluginId, args.state, afterId, limit],
+  );
+  return rows;
+}

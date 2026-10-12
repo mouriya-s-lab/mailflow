@@ -6,7 +6,7 @@ import pg from 'pg';
 vi.mock('../../src/services/db.js', () => ({ query: vi.fn() }));
 import { query } from '../../src/services/db.js';
 import { setMessageAnnotation } from '../../src/services/mailAccess.js';
-import { countQueued, currentUidFloors, listQueuedMessages, markMessages } from './index.js';
+import { countQueued, currentUidFloors, listMessagesInQueueState, listQueuedMessages, markMessages } from './index.js';
 
 const accountId = '22222222-2222-4222-8222-222222222222';
 const otherAccountId = '33333333-3333-4333-8333-333333333333';
@@ -150,6 +150,28 @@ describe.skipIf(!process.env.MAILFLOW_TEST_DATABASE_URL)('plugin work queue Post
       pending: 201, retry: 0, done: 0, terminal: 0,
     });
     expect(await listQueuedMessages({ accountId, pluginId, now, limit: 3 })).toHaveLength(3);
+  });
+
+  it('pages through the rows in one queue state by id, within the account and plugin', async () => {
+    const pageIds = [];
+    for (let n = 1; n <= 5; n += 1) {
+      const id = `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+      pageIds.push(id);
+      await database.query(
+        `INSERT INTO messages(id, account_id, folder, uid, plugin_annotations) VALUES ($1, $2, 'INBOX', $3, $4::jsonb)`,
+        [id, accountId, n, JSON.stringify({ [pluginId]: queued('terminal', n % 2 ? 'backfill' : 'new_mail') })],
+      );
+    }
+    await insert({ uid: 10, annotations: { [pluginId]: queued('done') } });
+    await insert({ uid: 11, annotations: { other: queued('terminal') } });
+    await insert({ uid: 1, account: otherAccountId, annotations: { [pluginId]: queued('terminal') } });
+
+    const first = await listMessagesInQueueState({ accountId, pluginId, state: 'terminal', afterId: null, limit: 2 });
+    expect(first.map(row => row.id)).toEqual(pageIds.slice(0, 2));
+    expect(first[0].plugin_annotation).toEqual(queued('terminal', 'backfill'));
+    const rest = await listMessagesInQueueState({ accountId, pluginId, state: 'terminal', afterId: first[1].id, limit: 200 });
+    expect(rest.map(row => row.id)).toEqual(pageIds.slice(2));
+    await expect(listMessagesInQueueState({ accountId, pluginId, state: 'failed', afterId: null, limit: 1 })).rejects.toThrow(TypeError);
   });
 
   for (const mappedSent of [false, true]) {

@@ -326,3 +326,16 @@ export async function getAccountMessageSignals(accountId, messageIds, { deadline
   );
   return loadSignals(rows, deadlineMs);
 }
+
+// getAccountMessageBodyTexts(accountId, messageIds) → Map<id, string>: each message's body as
+// messageBodyText gives it (body_text, or the visible text of body_html), '' when neither is
+// stored. One query; an id that is not a message of the account is absent from the Map.
+export async function getAccountMessageBodyTexts(accountId, messageIds) {
+  const ids = [...new Set(messageIds)];
+  if (ids.length === 0) return new Map();
+  const { rows } = await query(
+    'SELECT id, body_text, body_html FROM messages WHERE account_id = $1 AND id = ANY($2::uuid[])',
+    [accountId, ids],
+  );
+  return new Map(rows.map(row => [row.id, messageBodyText({ bodyText: row.body_text, bodyHtml: row.body_html })]));
+}

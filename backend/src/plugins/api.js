@@ -89,15 +89,19 @@ export { ensureSpamVerdict } from '../services/spamPipeline.js';
 // namespace), and a move that first proves on the server, in the same session, that each row is
 // still the message it names (fork-only, see fork-features/work-queue and verified-move). Label-
 // store accounts (Gmail) are not moved; plugins label them with applyLabel.
-export { markMessages, currentUidFloors, listQueuedMessages, countQueued } from '../../fork-features/work-queue/index.js';
+export { markMessages, currentUidFloors, listQueuedMessages, listMessagesInQueueState, countQueued } from '../../fork-features/work-queue/index.js';
 export const moveMessagesVerified = (args) => _moveMessagesVerified(getMailEngine(), args);
 
 // ── Message signals ───────────────────────────────────────────────────────────
 // getMessageSignals(accountId, ids, { deadlineMs }) → Map<id, MessageSignals>: sender, recipients,
 // trusted authentication, links shown versus where they go, attachments, mailing-list marks and
 // language of the account's messages (fork-only, see fork-features/signals). An id that is not a
-// message of the account is absent from the Map.
-export { getAccountMessageSignals as getMessageSignals } from '../../fork-features/signals/index.js';
+// message of the account is absent from the Map. getMessageBodyTexts(accountId, ids) → Map<id,
+// string>: the body as text (body_text, or the visible text of body_html), same scoping.
+export {
+  getAccountMessageSignals as getMessageSignals,
+  getAccountMessageBodyTexts as getMessageBodyTexts,
+} from '../../fork-features/signals/index.js';
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-

@@ -5,7 +5,7 @@ vi.mock('../headers/index.js', () => ({ getMessageHeaders: vi.fn() }));
 
 import { query } from '../../src/services/db.js';
 import { getMessageHeaders } from '../headers/index.js';
-import { extractSignals, resolveLanguage, messageBodyText, getMessageSignals, getAccountMessageSignals } from './index.js';
+import { extractSignals, resolveLanguage, messageBodyText, getMessageSignals, getAccountMessageSignals, getAccountMessageBodyTexts } from './index.js';
 
 const stored = headers => ({ kind: 'stored', headers, source: 'ingest' });
 const AUTH = 'mx.example.org; spf=fail smtp.mailfrom=cmbchina-secure.top; dkim=none; dmarc=fail header.from=cmbchina-secure.top';
@@ -243,5 +243,21 @@ describe('getMessageSignals', () => {
     expect(query.mock.calls[0][0]).toMatch(/m\.account_id = \$1/);
     expect(query.mock.calls[0][1]).toEqual(['acct-1', [ids[0]]]);
     expect(getMessageHeaders).not.toHaveBeenCalled();
+  });
+});
+
+describe('getAccountMessageBodyTexts', () => {
+  beforeEach(() => query.mockReset());
+
+  it('gives each row of the account its body text, the visible HTML text when there is no body_text', async () => {
+    query.mockResolvedValueOnce({ rows: [
+      { id: 'm1', body_text: 'plain', body_html: '<p>html</p>' },
+      { id: 'm2', body_text: null, body_html: '<p>Only <b>HTML</b></p><script>x()</script>' },
+      { id: 'm3', body_text: null, body_html: null },
+    ] });
+    const bodies = await getAccountMessageBodyTexts('acct-1', ['m1', 'm2', 'm3', 'm4']);
+    expect([...bodies]).toEqual([['m1', 'plain'], ['m2', 'Only HTML'], ['m3', '']]);
+    expect(query.mock.calls[0][0]).toMatch(/account_id = \$1/);
+    expect(query.mock.calls[0][1]).toEqual(['acct-1', ['m1', 'm2', 'm3', 'm4']]);
   });
 });
