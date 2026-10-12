@@ -1960,5 +1960,103 @@
     "trash": "Kosz",
     "spam": "Spam",
     "archive": "Archiwum"
+  },
+  "jevClassify": {
+    "title": "Klasyfikacja Jev",
+    "description": "Jev czyta każdą wiadomość i przypisuje ją do jednej z Twoich kategorii. Dla każdego konta wybierz, czy klasyfikować pocztę, dokąd trafia każda kategoria i czy trenować antyspam.",
+    "loadFailed": "Nie udało się wczytać ustawień klasyfikacji Jev: {{error}}",
+    "actionFailed": "Operacja nie powiodła się: {{error}}",
+    "service": {
+      "title": "Usługi",
+      "refreshFailed": "Nie udało się odświeżyć stanu: {{error}}",
+      "jevUnconfigured": "Jev nie jest skonfigurowany, więc poczta nie jest klasyfikowana. Administrator może ustawić klucz API Jev w sekcji Ustawienia → Usługi zewnętrzne.",
+      "jevConfigured": "Jev jest skonfigurowany: model {{model}} pod adresem {{baseUrl}}",
+      "reputation": "Źródła reputacji linków",
+      "sourceEnabled": "włączone",
+      "sourceUnconfigured": "brak klucza",
+      "sourceDisabled": "wyłączone"
+    },
+    "categories": {
+      "title": "Kategorie",
+      "description": "Jev wybiera kategorię dla każdej wiadomości na podstawie opisów kategorii, więc opisz, co wyróżnia każdą z nich. Zmiana kategorii nie powoduje ponownej klasyfikacji już sklasyfikowanej poczty; w tym celu uruchom klasyfikację istniejącej poczty. Bieżąca wersja: {{revision}}.",
+      "name": "Nazwa kategorii",
+      "namePh": "Nazwa",
+      "descriptionLabel": "Opis kategorii",
+      "descriptionPh": "Co należy do tej kategorii",
+      "remove": "Usuń",
+      "sizeError": "Liczba kategorii musi wynosić od {{min}} do {{max}}; obecnie: {{current}}.",
+      "required": "To pole nie może być puste.",
+      "tooLong": "Maksymalna liczba znaków: {{max}}.",
+      "saved": "Zapisano kategorie.",
+      "saveFailed": "Nie udało się zapisać kategorii: {{error}}",
+      "save": "Zapisz kategorie",
+      "add": "Dodaj kategorię"
+    },
+    "accounts": {
+      "title": "Konta",
+      "none": "Dodaj konto pocztowe, aby klasyfikować jego pocztę.",
+      "labelStore": "Gmail: kategorie stają się etykietami",
+      "enabled": "Klasyfikuj pocztę tego konta",
+      "classifyNewMail": "Klasyfikuj nowe wiadomości po ich otrzymaniu",
+      "createFolders": "Utwórz folder docelowy, jeśli jeszcze nie istnieje",
+      "createLabels": "Utwórz etykietę docelową, jeśli jeszcze nie istnieje",
+      "trainSpam": "Trenuj antyspam na podstawie ocen Jev wskazujących z wysoką pewnością spam lub prawidłową pocztę",
+      "minConfidence": "Przenoś tylko przy co najmniej takim poziomie pewności Jev (0–1)",
+      "minConfidenceLabels": "Stosuj etykiety tylko przy co najmniej takim poziomie pewności Jev (0–1)",
+      "minConfidenceError": "Wprowadź liczbę od 0 do 1.",
+      "routingFolders": "Folder docelowy dla każdej kategorii",
+      "routingLabels": "Etykieta docelowa dla każdej kategorii",
+      "routingHint": "Tylko poczta ze skrzynki odbiorczej jest przenoszona lub oznaczana etykietami; poczta w innych folderach jest klasyfikowana i pozostaje na miejscu.",
+      "notRouted": "Pozostaw na miejscu",
+      "unavailableTarget": "{{path}} (już niedostępne)",
+      "unavailableTargetError": "{{path}} nie jest już dostępne na tym koncie. Wybierz inne miejsce docelowe lub pozostaw pocztę na miejscu.",
+      "saved": "Zapisano ustawienia konta.",
+      "saveFailed": "Nie udało się zapisać ustawień konta: {{error}}",
+      "save": "Zapisz ustawienia konta"
+    },
+    "run": {
+      "enabled": "Aktywne",
+      "paused": "Wstrzymane"
+    },
+    "backfill": {
+      "title": "Klasyfikacja istniejącej poczty",
+      "description": "Sklasyfikuj pocztę już znajdującą się na tym koncie: wszystkie foldery z wyjątkiem Wysłane, Szkice i Kosz.",
+      "idle": "Klasyfikacja istniejącej poczty nie była jeszcze uruchamiana.",
+      "running": "Trwa od {{startedAt}}. Przetworzone wiadomości: {{processed}} z {{marked}}; błędy: {{failed}}.",
+      "completed": "Zakończono {{finishedAt}}. Przetworzone wiadomości: {{processed}}; błędy: {{failed}}.",
+      "stopped": "Zatrzymano {{stoppedAt}}. Przetworzone wiadomości: {{processed}} z {{marked}}; błędy: {{failed}}.",
+      "start": "Rozpocznij klasyfikację istniejącej poczty",
+      "stop": "Zatrzymaj klasyfikację istniejącej poczty"
+    },
+    "queue": {
+      "title": "Kolejka",
+      "backfill": "Z klasyfikacji istniejącej poczty",
+      "newMail": "Nowa poczta",
+      "pending": "Oczekujące",
+      "retry": "Ponawianie",
+      "done": "Gotowe",
+      "terminal": "Nieudane",
+      "dueNow": "Wiadomości czekają na następne uruchomienie.",
+      "scheduled": "Następna próba: {{time}}."
+    },
+    "stats": {
+      "lastDecided": "Ostatnia klasyfikacja: {{time}}",
+      "neverDecided": "Nie sklasyfikowano jeszcze żadnych wiadomości.",
+      "jevCalls": "Żądania do Jev od uruchomienia serwera: {{calls}}"
+    },
+    "failures": {
+      "count": "Trwale nieudane: {{failed}}",
+      "retry": "Ponów nieudane",
+      "retried": "Ponownie dodane do kolejki: {{reset}}"
+    },
+    "incidents": {
+      "title": "Przeniesienia, których MailFlow nie mógł śledzić",
+      "description": "Serwer przeniósł te wiadomości, ale MailFlow nie mógł ich znaleźć w miejscu docelowym. Sprawdź miejsce docelowe, a następnie wyczyść listę.",
+      "messageId": "Message-ID",
+      "target": "Cel",
+      "at": "Kiedy",
+      "noMessageId": "(brak Message-ID)",
+      "clear": "Wyczyść listę"
+    }
   }
 }
