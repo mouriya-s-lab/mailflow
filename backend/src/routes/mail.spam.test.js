@@ -100,6 +100,15 @@ beforeEach(() => {
   });
 });
 
+// The flag features a record carries: the extracted ones plus the link flags of the row's body
+// (no links in it; anti-spam is not on for the account, so no lookup was made).
+function recordedFlagFeatures() {
+  return {
+    ...extractFlagFeatures.mock.results[0].value,
+    link_text_domain_mismatch: 0, link_domain_new: null, link_domain_listed: null,
+  };
+}
+
 function getSpamInserts() {
   return query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO spam_training_log'));
 }
@@ -159,7 +168,7 @@ describe('POST /api/mail/messages/:id/spam — no-op path (already in spam folde
     // Incremental training is fed once with the extracted features.
     expect(updateIncrementalForUser).toHaveBeenCalledTimes(1);
     expect(updateIncrementalForUser).toHaveBeenCalledWith(
-      USER_ID, 'en', ['cheap', 'viagra', 'buy', 'now'], extractFlagFeatures.mock.results[0].value, 'spam'
+      USER_ID, 'en', ['cheap', 'viagra', 'buy', 'now'], recordedFlagFeatures(), 'spam'
     );
   });
 });
@@ -204,7 +213,7 @@ describe('POST /api/mail/messages/:id/ham — move path (message leaves spam)', 
 
     expect(updateIncrementalForUser).toHaveBeenCalledTimes(1);
     expect(updateIncrementalForUser).toHaveBeenCalledWith(
-      USER_ID, 'en', ['cheap', 'viagra', 'buy', 'now'], extractFlagFeatures.mock.results[0].value, 'ham',
+      USER_ID, 'en', ['cheap', 'viagra', 'buy', 'now'], recordedFlagFeatures(), 'ham',
     );
   });
 

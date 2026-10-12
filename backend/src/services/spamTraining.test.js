@@ -8,13 +8,16 @@ vi.mock('./spamModelStore.js', async (importOriginal) => ({
   updateIncrementalForUser: vi.fn(),
 }));
 vi.mock('../../fork-features/headers/index.js', () => ({ getMessageHeaders: vi.fn() }));
+vi.mock('../../fork-features/reputation/index.js', () => ({ lookupDomains: vi.fn() }));
 
 import { query } from './db.js';
 import { logger } from './logger.js';
 import { updateIncrementalForUser } from './spamModelStore.js';
 import { captureManualSpamLabel, recordJevSpamVerdict, requestSpamRetrain } from './spamTraining.js';
 import { getMessageHeaders } from '../../fork-features/headers/index.js';
+import { lookupDomains } from '../../fork-features/reputation/index.js';
 import { TOKENIZER_VERSION } from './spamTokenizer.js';
+import { flagTokensFor } from './spamModel.js';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const ACCOUNT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -46,6 +49,7 @@ beforeEach(() => {
   getMessageHeaders.mockResolvedValue(new Map([[MESSAGE_ID, { kind: 'stored', headers: { 'content-language': 'en' } }]]));
   logger.warn.mockReset();
   updateIncrementalForUser.mockReset();
+  lookupDomains.mockReset();
 });
 
 describe('recordJevSpamVerdict', () => {
@@ -127,6 +131,65 @@ describe('captureManualSpamLabel', () => {
     query.mockResolvedValueOnce({ rows: [messageRow({ owner_id: 'someone-else' })] });
     await expect(captureManualSpamLabel({ userId: USER_ID, messageId: MESSAGE_ID, label: 'spam' }))
       .resolves.toEqual({ kind: 'message_missing' });
+  });
+});
+
+describe('link flags in the training record (mouriya-s-lab/mailflow#16)', () => {
+  const PHISH_HTML = '<p>Verify your account</p><a href="https://cmb-verify-login.xyz/login">www.cmbchina.com</a>';
+  const freshDomain = () => new Map([['cmb-verify-login.xyz', {
+    registration: { kind: 'known', registeredAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
+    listings: { spamhaus_dbl: { kind: 'unconfigured' }, urlhaus: { kind: 'unconfigured' } },
+  }]]);
+  const recordedFlags = () => JSON.parse(inserts()[0][1][10]);
+
+  it('a mark snapshots the three flags as they are at marking time and trains on their tokens', async () => {
+    lookupDomains.mockResolvedValue(freshDomain());
+    query.mockResolvedValueOnce({ rows: [messageRow({ body_html: PHISH_HTML, antispam_enabled: true, master_spam_enabled: null })] });
+    const mark = await captureManualSpamLabel({ userId: USER_ID, messageId: MESSAGE_ID, label: 'spam' });
+    expect(lookupDomains).toHaveBeenCalledTimes(1);
+    await mark.record({ uid: 9, folder: 'Junk' });
+
+    expect(recordedFlags()).toMatchObject({ link_text_domain_mismatch: 1, link_domain_new: 1, link_domain_listed: null });
+    const flagTokens = flagTokensFor(updateIncrementalForUser.mock.calls[0][3]);
+    expect(flagTokens).toEqual(expect.arrayContaining(['__link_text_domain_mismatch__', '__link_domain_new__']));
+    expect(flagTokens).not.toContain('__link_domain_listed__');
+  });
+
+  it('a Jev record carries the same snapshot', async () => {
+    lookupDomains.mockResolvedValue(freshDomain());
+    query.mockResolvedValueOnce({ rows: [messageRow({ body_html: PHISH_HTML, antispam_enabled: true })] });
+    query.mockResolvedValueOnce({ rows: [{ id: 'new-record' }] });
+    await recordJevSpamVerdict({ messageId: MESSAGE_ID, label: 'spam' });
+    expect(recordedFlags()).toMatchObject({ link_text_domain_mismatch: 1, link_domain_new: 1, link_domain_listed: null });
+  });
+
+  it('with anti-spam off for the account no lookup is made and the reputation flags are null', async () => {
+    query.mockResolvedValueOnce({ rows: [messageRow({ body_html: PHISH_HTML, antispam_enabled: false })] });
+    const mark = await captureManualSpamLabel({ userId: USER_ID, messageId: MESSAGE_ID, label: 'spam' });
+    await mark.record({ uid: 9, folder: 'Junk' });
+    expect(lookupDomains).not.toHaveBeenCalled();
+    expect(recordedFlags()).toMatchObject({ link_text_domain_mismatch: 1, link_domain_new: null, link_domain_listed: null });
+  });
+
+  it('a retrain uses the recorded snapshot and makes no lookup', async () => {
+    const linked = { link_text_domain_mismatch: 1, link_domain_new: 1, link_domain_listed: null };
+    query.mockImplementation(sql => Promise.resolve(sql.includes('SELECT t.language') ? {
+      rows: [
+        { language: 'en', label: 'spam', created_at: new Date().toISOString(), token_counts: { pills: 1 }, flag_features: linked },
+        { language: 'en', label: 'ham', created_at: new Date().toISOString(), token_counts: { meeting: 1 }, flag_features: {} },
+      ],
+    } : { rows: [] }));
+
+    await expect(requestSpamRetrain('user-links')).resolves.toEqual({ kind: 'retrained', records: 2 });
+    expect(lookupDomains).not.toHaveBeenCalled();
+    const saved = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO spam_models'));
+    const vocabulary = JSON.parse(saved[1].find(p => typeof p === 'string' && p.includes('__link_domain_new__')));
+    // The records were created a moment before the retrain, so decay leaves just under 1.
+    expect(vocabulary.__link_domain_new__.spam).toBeCloseTo(1, 6);
+    expect(vocabulary.__link_domain_new__.ham).toBe(0);
+    expect(vocabulary.__link_text_domain_mismatch__.spam).toBeCloseTo(1, 6);
+    expect(vocabulary.__link_text_domain_mismatch__.ham).toBe(0);
+    expect(vocabulary.__link_domain_listed__).toBeUndefined();
   });
 });
 

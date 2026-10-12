@@ -12,6 +12,7 @@
 import { query } from './db.js';
 import { logger } from './logger.js';
 import { getMessageHeaders } from '../../fork-features/headers/index.js';
+import { linkEvidenceFor, linkFlags } from '../../fork-features/link-evidence/index.js';
 import { tokenize, countTokens, extractFlagFeatures, TOKENIZER_VERSION } from './spamTokenizer.js';
 import { updateIncrementalForUser, retrainUser, partitionLanguage } from './spamModelStore.js';
 
@@ -25,11 +26,14 @@ function assertLabel(label) {
   if (!LABELS.has(label)) throw new TypeError(`spam training label must be 'spam' or 'ham', got ${label}`);
 }
 
-// The messages row a training record is built from, with its owner.
+// The messages row a training record is built from, with its owner and the anti-spam switches.
 async function loadMessage(messageId) {
   const { rows } = await query(
-    `SELECT m.*, a.user_id AS owner_id
-     FROM messages m JOIN email_accounts a ON a.id = m.account_id
+    `SELECT m.*, a.user_id AS owner_id, a.antispam_enabled,
+            u.preferences->>'spamEnabled' AS master_spam_enabled
+     FROM messages m
+     JOIN email_accounts a ON a.id = m.account_id
+     JOIN users u ON u.id = a.user_id
      WHERE m.id = $1`,
     [messageId],
   );
@@ -46,8 +50,9 @@ async function messageLanguage(message) {
 }
 
 // The feature payload for a messages row. Shape matches spam_training_log (migrations 0052,
-// 9004) + spamModelStore inputs.
-function extractSpamFeatures(message, language) {
+// 9004) + spamModelStore inputs. The link flags are the conclusion at the time the record is
+// made; a retrain reads them from the record and never looks anything up again.
+function extractSpamFeatures(message, language, linkFlagValues) {
   const attachments = Array.isArray(message.attachments) ? message.attachments : [];
   const attachmentNames = attachments
     .map(a => a?.filename || a?.name)
@@ -73,10 +78,22 @@ function extractSpamFeatures(message, language) {
     language,
     tokens,
     token_counts: countTokens(tokens),
-    flag_features: extractFlagFeatures(msg),
+    flag_features: { ...extractFlagFeatures(msg), ...linkFlagValues },
     sender_domain: message.from_email ? message.from_email.split('@').pop()?.toLowerCase() || null : null,
     attachment_types: attachmentNames.length ? attachmentNames : null,
   };
+}
+
+// The language and the link evidence are independent reads, so they run side by side. The domain
+// lookup services are asked only while anti-spam is on for the message's account and user, as at
+// classification.
+async function messageFeatures(message) {
+  const lookUpReputation = message.master_spam_enabled !== 'false' && Boolean(message.antispam_enabled);
+  const [language, linkEvidence] = await Promise.all([
+    messageLanguage(message),
+    linkEvidenceFor(message, { lookUpReputation }),
+  ]);
+  return extractSpamFeatures(message, language, linkFlags(linkEvidence));
 }
 
 function recordParams(userId, message, placement, label, features) {
@@ -103,7 +120,7 @@ export async function captureManualSpamLabel({ userId, messageId, label }) {
   assertLabel(label);
   const message = await loadMessage(messageId);
   if (!message || message.owner_id !== userId) return { kind: 'message_missing' };
-  const features = extractSpamFeatures(message, await messageLanguage(message));
+  const features = await messageFeatures(message);
 
   const record = async placement => {
     await query(
@@ -140,7 +157,7 @@ export async function recordJevSpamVerdict({ messageId, label }) {
   const message = await loadMessage(messageId);
   if (!message) return { kind: 'message_missing' };
   if (!message.message_id) return { kind: 'no_message_id' };
-  const features = extractSpamFeatures(message, await messageLanguage(message));
+  const features = await messageFeatures(message);
 
   const { rows } = await query(
     `INSERT INTO spam_training_log

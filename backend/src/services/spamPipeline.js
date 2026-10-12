@@ -8,7 +8,8 @@
 //   3. messages.spam_user_override — ALWAYS wins, skip if set (user intent)
 //   2. the user's model of the message's language partition — active when that
 //      partition has training_records >= 50 (mouriya-s-lab/mailflow#15)
-//   1. 15-rule engine — always on, sole classifier below 50 records
+//   1. rule engine — always on, sole classifier below 50 records; its link rules read the link
+//      evidence (fork-features/link-evidence, mouriya-s-lab/mailflow#16) gathered before scoring
 //
 // The move is delegated to the caller via an injected `imap` facade so this
 // module never imports imapManager (avoids an import cycle mail.js ↔ index):
@@ -33,6 +34,7 @@
 import { query } from './db.js';
 import { logger } from './logger.js';
 import { getMessageHeaders } from '../../fork-features/headers/index.js';
+import { linkEvidenceFor, linkFlags } from '../../fork-features/link-evidence/index.js';
 import { tokenize, extractFlagFeatures } from './spamTokenizer.js';
 import { scoreRules } from './spamRules.js';
 import { extractAuthservIds, normalizeAuthservId } from './spamParser.js';
@@ -113,12 +115,23 @@ export async function classifyAndTagMessage(messageId, opts = {}) {
     contentLanguage: Array.isArray(msg.headers) ? null : msg.headers['content-language'] ?? null,
   });
   const tokens = tokenize(msg, language);
-  const flagFeatures = extractFlagFeatures(msg, { trustedAuthservIds: trustedAuthservId });
+
+  // The links and what the domain lookup services say about where they go, gathered once before
+  // the rules (at most LINK_LOOKUP_DEADLINE_MS). A message whose body is not stored yet — the usual
+  // case at ingest, where bodies are fetched later — has no link evidence and the link rules stay
+  // silent.
+  const linkEvidence = await linkEvidenceFor(row, { lookUpReputation: true });
+  const linkFlagValues = linkFlags(linkEvidence);
+  const flagFeatures = {
+    ...extractFlagFeatures(msg, { trustedAuthservIds: trustedAuthservId }),
+    ...linkFlagValues,
+  };
 
   // Layer 1: rules — always evaluated, sole scorer below 50 records.
   const rules = scoreRules(msg, {
     userContacts: new Set(),
     trustedAuthservIds: trustedAuthservId,
+    linkFlags: linkFlagValues,
   });
 
   // Layer 2: the user's model of this language partition when mature enough. Another
@@ -188,6 +201,8 @@ export async function classifyAndTagMessage(messageId, opts = {}) {
     // (backfill). Lets the "Why?" view and a future deliberate catch-up pass tell a
     // deferred decision apart from one that was never eligible.
     autoMoveDeferred: wouldAutoMove && deferAutoMove,
+    // The link evidence the link rules saw, per destination domain and source, and their flags.
+    links: { ...linkEvidence, flags: linkFlagValues },
   };
 
   await query(

@@ -34,6 +34,10 @@ export const FLAG_TOKENS = {
   attachment_is_executable: '__attachment_is_executable__',
   from_equals_reply_to_mismatch: '__from_replyto_mismatch__',
   all_caps_subject_high: '__all_caps_subject_high__',
+  // Link flags (fork, mouriya-s-lab/mailflow#16). A null flag (unknown) yields no token.
+  link_text_domain_mismatch: '__link_text_domain_mismatch__',
+  link_domain_new: '__link_domain_new__',
+  link_domain_listed: '__link_domain_listed__',
 };
 
 const ALL_CAPS_RATIO_THRESHOLD = 0.5; // matches rules rule SUBJECT_ALL_CAPS
@@ -88,6 +92,9 @@ export function flagTokensFor(flagFeatures) {
   }
   if ((flagFeatures.all_caps_subject_ratio ?? 0) > ALL_CAPS_RATIO_THRESHOLD) {
     tokens.push(FLAG_TOKENS.all_caps_subject_high);
+  }
+  for (const flag of ['link_text_domain_mismatch', 'link_domain_new', 'link_domain_listed']) {
+    if (flagFeatures[flag] === 1) tokens.push(FLAG_TOKENS[flag]);
   }
   return tokens;
 }
