@@ -66,6 +66,16 @@ export { summarizeMessage, summarizeAvailable } from '../services/summarize.js';
 export const jevDecide = async (request, options) => decideJev(await loadJevConfig(), request, options);
 export const jevStatus = async () => jevConfigStatus(await loadJevConfig());
 
+// ── Link reputation ───────────────────────────────────────────────────────────
+// Registration dates and blocklist verdicts for registrable domains, and Safe Browsing verdicts for
+// link URLs, from the lookup services the admin configured (fork-only, see fork-features/reputation).
+// A failed lookup is `unknown`, never "not listed"; a link itself is never fetched.
+export {
+  lookupDomains as lookupDomainReputation,
+  lookupUrls as lookupUrlReputation,
+  status as reputationStatus,
+} from '../../fork-features/reputation/index.js';
+
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
 // cleaned. A plugin can persist its own data without a schema migration or DB access.

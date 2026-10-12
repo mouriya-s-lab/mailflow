@@ -168,3 +168,43 @@ Some headers say things nothing else in a stored message does: who authenticated
 |---|---|
 | `backend/src/services/imapManager.js` | `syncMessages` and `backfillMessages` call `recordIngestHeaders` after each upsert; new `fetchHeaderFields(account, folder, uids, fields)` reads header fields for a UID set over one pooled session |
 | `backend/src/services/backup.js` | `fork_message_headers` is in `MAIL_CACHE_TABLES` |
+
+## Link reputation
+
+What the links in a message point to, judged by outside lookup services without ever opening a link: when a domain was registered (RDAP), whether Spamhaus DBL or URLhaus list it, and whether Google Safe Browsing lists a link's URL. Plugins reach it through the plugin API as `lookupDomainReputation`, `lookupUrlReputation` and `reputationStatus`. Whether RDAP runs and the keys of the other three sources are the link reputation block of the external service settings above, read on every call.
+
+- `lookupDomains(domains, { deadlineMs })` takes registrable domains as `registrableDomain` returns them (anything else throws) and resolves to a `Map` from each domain to `{ registration, listings: { spamhaus_dbl, urlhaus } }`. `registration` is `{ kind: 'known', registeredAt }` (ISO 8601), `{ kind: 'not_found' }`, or `{ kind: 'unknown', reason }` with `reason` `timeout`, `rate_limited`, `error`, `unsupported_tld` (IANA's bootstrap names no RDAP service for the TLD) or `disabled` (RDAP is switched off).
+- `lookupUrls(urls, { deadlineMs })` takes absolute http(s) URLs and resolves to a `Map` from each URL to `{ safe_browsing }`. It is a verdict on that URL, not on its domain.
+- A listing is `{ kind: 'listed', detail }`, `{ kind: 'not_listed' }`, `{ kind: 'unknown', reason }` (`timeout`, `rate_limited`, `error`) or `{ kind: 'unconfigured' }` (no key). There is no "clean": `not_listed` says only that this source has no listing.
+- `status()` resolves to `{ rdap, spamhaus_dbl, urlhaus, safe_browsing }`, each `enabled` or `unconfigured`, and RDAP `disabled` when switched off. It reads the settings and nothing else.
+- `deadlineMs` bounds the whole lookup from the call, and each request also stops after 5 seconds. At most 4 RDAP, 8 DBL, 4 URLhaus and 2 Safe Browsing requests run at once across all callers; one that cannot start before the deadline is not sent and is `unknown { timeout }`.
+
+| Source | Request | Kept for |
+|---|---|---|
+| RDAP | `GET <base>domain/<domain>` at the registry that IANA's bootstrap (`https://data.iana.org/rdap/dns.json`) names for the TLD; the date of the first `registration` event. 404 is `not_found`; a 200 without a registration date is `unknown { error }` | `known` 30 days, `not_found` 1 day |
+| Spamhaus DBL | DNS `A` query for `<domain>.<DQS key>.dbl.dq.spamhaus.net` through the system's resolver. `127.0.1.2`–`127.0.1.199` is a listing; `NXDOMAIN` or no `A` record is not listed; `127.255.255.255` is `rate_limited`; any other answer is an error | a listing for the answer's TTL; not listed for the negative TTL of the SOA in the answer (the lesser of its TTL and MINIMUM), and not at all without one |
+| URLhaus | `POST https://urlhaus-api.abuse.ch/v1/host/` with `host=<domain>` and the `Auth-Key` header; `query_status` `ok` is a listing, `no_results` not listed | 1 hour |
+| Safe Browsing | `GET https://safebrowsing.googleapis.com/v5/hashes:search` with the key in `X-Goog-Api-Key` and nothing but the 4-byte SHA-256 prefixes of the URL's host-suffix/path-prefix expressions, formed as Google's "URLs and Hashing" describes; the full hashes that come back are matched here. A threat detail with an unknown threat type or with any attribute (`CANARY`, `FRAME_ONLY`) is ignored | the response's `cacheDuration`, but a listing is reported from the cache only while it is under 30 minutes old and asked again after that |
+
+- **Failures.** Every failure of an outside service is `unknown`, and a `logger.warn` of at most one line per source per minute that counts the failures it held back. A line names the source and the kind of failure, never a domain, URL or key. `unconfigured` and `disabled` are states shown by `status()`, not logged.
+- **Cache.** `fork_reputation_cache` holds one row per source and subject (the domain, or for Safe Browsing the canonical URL without its scheme) with `fetched_at` and `expires_at`. It is a copy of what the services answered, global rather than per user since a verdict is about a domain, and read only through these functions. `unknown` answers, `unsupported_tld` included, are never stored, so the next lookup asks again. A source that is switched off or has no key neither reads the cache nor sends anything. An expired row stays until its subject is looked up again and the new answer replaces it. Backups leave the table out, as they do the short-lived tokens.
+- **Bootstrap.** IANA's bootstrap file is kept in memory for a day after it was fetched. A failed fetch is not kept: every RDAP answer of that lookup is `unknown`, and the next lookup fetches again.
+- **Transport.** The HTTP sources go through `safeFetch`, which checks every connection and redirect against private addresses. A response over 1 MiB is an error.
+
+| Path | What |
+|---|---|
+| `backend/migrations/9002_fork_reputation_cache.sql` | The `fork_reputation_cache` table; creates a new table only |
+| `backend/fork-features/reputation/index.js` | `lookupDomains`, `lookupUrls`, `status`: the four sources, limits and the cache |
+| `backend/fork-features/reputation/dnsQuery.js` | One DNS `A` query over UDP, returning the negative TTL Node's resolver does not report; a datagram with another id or question is ignored, a truncated or malformed one is an error |
+| `backend/fork-features/reputation/dnsQuery.test.js` | Response parsing and the UDP exchange: TTLs, negative TTL, stray and malformed datagrams, no answer |
+| `backend/fork-features/reputation/safeBrowsing.js` | URL canonicalization and expressions for Safe Browsing |
+| `backend/fork-features/reputation/index.test.js` | Each source against local stand-ins (HTTP servers and a UDP resolver): verdicts, failures, cache lifetimes, warnings, and exactly what is sent |
+| `backend/fork-features/reputation/index.postgres.test.js` | The migration and the cache statements on PostgreSQL, rolled back; runs when `MAILFLOW_TEST_DATABASE_URL` is set |
+
+### Patches to upstream files (re-check on every upstream sync)
+
+| File | Change |
+|---|---|
+| `backend/src/plugins/api.js` | `lookupDomainReputation`, `lookupUrlReputation` and `reputationStatus` from `fork-features/reputation` |
+| `backend/src/plugins/README.md` | Lists them in the capability surface |
+| `backend/src/services/backup.js` | `fork_reputation_cache` is in `TRANSIENT_TABLES`, whose comment now covers caches of outside lookups |
