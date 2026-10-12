@@ -385,24 +385,36 @@ describe('getSenderFavicon parent walk-up', () => {
     expect(urls(fetchImpl)).toEqual([url('info.notion.so')]);
   });
 
-  it('walks to a registrable domain but stops before a co.uk public suffix', async () => {
+  it('walks a deep co.uk subdomain down to its registrable domain and never to co.uk', async () => {
     const cache = cacheDouble();
-    const fetchImpl = vi.fn(async target => (target.includes('/acme.co.uk/') ? response(png(64)) : notFound()));
+    const fetchImpl = vi.fn(notFound);
 
-    const result = await getSenderFavicon('news.acme.co.uk', { cache, fetchImpl });
+    const result = await getSenderFavicon('deep.sub.example.co.uk', { cache, fetchImpl });
 
-    expect(result).toMatchObject({ kind: 'image' });
-    expect(urls(fetchImpl)).toEqual([url('news.acme.co.uk'), url('acme.co.uk')]);
+    expect(result).toEqual({ kind: 'miss', reason: 'not-found' });
+    expect(urls(fetchImpl)).toEqual([
+      url('deep.sub.example.co.uk'),
+      url('sub.example.co.uk'),
+      url('example.co.uk'),
+    ]);
   });
 
-  it('never queries a stoplisted public suffix while walking', async () => {
+  it('stops at the registrable domain under any multi-label public suffix, such as net.cn', async () => {
+    const cache = cacheDouble();
+    const fetchImpl = vi.fn(notFound);
+
+    await getSenderFavicon('news.shop.net.cn', { cache, fetchImpl });
+
+    expect(urls(fetchImpl)).toEqual([url('news.shop.net.cn'), url('shop.net.cn')]);
+  });
+
+  it('treats a site under a private suffix as its own registrable domain and never queries github.io', async () => {
     const cache = cacheDouble();
     const fetchImpl = vi.fn(notFound);
 
     const result = await getSenderFavicon('foo.github.io', { cache, fetchImpl });
 
     expect(result).toEqual({ kind: 'miss', reason: 'not-found' });
-    // github.io must never be queried.
     expect(urls(fetchImpl)).toEqual([url('foo.github.io')]);
   });
 

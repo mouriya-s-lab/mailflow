@@ -123,3 +123,25 @@ The probe runs outside MailFlow, so it builds the Jev client's configuration fro
 | `backend/fork-features/jev-probe/probe.js` | State builder and comparison table; requests go through the Jev client |
 | `backend/fork-features/jev-probe/questions.json` | Default question set: spam (noul), category (choice), urgency (score) |
 | `backend/fork-features/jev-probe/fixtures/*.json` | Sample messages |
+
+## Registrable domains
+
+Every "which registrable domain does this host belong to" decision goes through the Public Suffix List, using the [`tldts`](https://github.com/remusao/tldts) package with private suffixes included. So `shop.com.cn` and `scam.com.cn` are different domains, and each site under `github.io` or `blogspot.com` is its own domain rather than all of them sharing `github.io`.
+
+- `registrableDomain(host)` lowercases the host, drops one trailing dot, converts an IDN to punycode and returns its registrable domain: `mail.shop.com.cn` → `shop.com.cn`, `evil.github.io` → `evil.github.io`, `例子.中国` → `xn--fsqu00a.xn--fiqs8s`. An IP address, `localhost`, an invalid host, or a host that is itself a public suffix (`com.cn`, `github.io`) gives `null`.
+- `hostOfUrl(url)` returns the host of an absolute `http:` or `https:` URL, without a trailing dot, and `null` for any other scheme (`javascript:`, `mailto:`), a relative reference or a string that does not parse.
+- The anti-spam rule `FROM_REPLYTO_MISMATCH` compares the registrable domains of From and Reply-To. The sender-icon lookup walks a subdomain that has no icon up one label at a time and stops at its registrable domain, so it never asks for a public suffix such as `co.uk`.
+
+| Path | What |
+|---|---|
+| `backend/fork-features/domains/index.js` | `registrableDomain`, `hostOfUrl` |
+| `backend/fork-features/domains/index.test.js` | Expected domains and `null` cases for both functions |
+
+### Patches to upstream files (re-check on every upstream sync)
+
+| File | Change |
+|---|---|
+| `backend/package.json`, `backend/package-lock.json` | `tldts` dependency |
+| `backend/src/services/spamRules.js` | `FROM_REPLYTO_MISMATCH` uses `registrableDomain`; the hand-written multi-label suffix list and its local helper are removed |
+| `backend/src/services/senderFavicon.js` | The parent walk (`nextParent`) stops at `registrableDomain`; the hand-written public suffix list is removed |
+| `backend/src/services/spamRules.test.js`, `backend/src/services/senderFavicon.test.js` | Cases for `com.cn`, `net.cn`, a deep `co.uk` subdomain and `github.io` |

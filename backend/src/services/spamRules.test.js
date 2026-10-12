@@ -95,6 +95,16 @@ describe('scoreRules — individual rules', () => {
     expect(fired.some(r => r.name === 'FROM_REPLYTO_MISMATCH')).toBe(false);
   });
 
+  it('FROM_REPLYTO_MISMATCH fires on two different shops under com.cn', () => {
+    const { fired } = scoreRules({ ...baseEmail, from: 'a@shop.com.cn', replyTo: 'b@scam.com.cn' });
+    expect(fired.some(r => r.name === 'FROM_REPLYTO_MISMATCH')).toBe(true);
+  });
+
+  it('FROM_REPLYTO_MISMATCH treats a subdomain under com.cn as the same registrable domain', () => {
+    const { fired } = scoreRules({ ...baseEmail, from: 'a@mail.shop.com.cn', replyTo: 'b@shop.com.cn' });
+    expect(fired.some(r => r.name === 'FROM_REPLYTO_MISMATCH')).toBe(false);
+  });
+
   it('judges the files inside a forwarded .eml, which the attachment list shows as one file', () => {
     const forward = (contains) => ({ filename: 'Fwd.eml', type: 'message/rfc822', contains });
     const names = (attachments) => scoreRules({ ...baseEmail, attachments }).fired.map(r => r.name).sort();

@@ -11,6 +11,7 @@
 
 import { parseAuthResults, hasTrustedAuthResults } from './spamParser.js';
 import { BLOCK, WARN, DECOY, attachmentsWithContained } from './attachmentExtensions.js';
+import { registrableDomain } from '../../fork-features/domains/index.js';
 
 // ---------------------------------------------------------------------------
 // Rule 3 — pharmaceutical spam keywords (highest-confidence rule, ~zero FP)
@@ -157,27 +158,6 @@ function extractDomain(address) {
   const at = addr.lastIndexOf('@');
   if (at < 0) return null;
   return addr.slice(at + 1).toLowerCase() || null;
-}
-
-// Registrable-domain comparison WITHOUT a PSL dependency (same pragmatic
-// approach as senderFavicon.js): take the last two labels, except for a
-// small set of multi-label public suffixes (co.uk, com.au, ...) where we
-// take three. mail.brand.com ≡ brand.com, brand.co.uk ≡ brand.co.uk.
-const MULTI_LABEL_SUFFIXES = new Set([
-  'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'com.au', 'net.au', 'org.au',
-  'co.jp', 'co.nz', 'com.br', 'com.mx', 'com.ar', 'co.in', 'com.sg',
-  'com.hk', 'co.za', 'com.tr', 'com.pl', 'co.kr',
-]);
-
-function registrableDomain(domain) {
-  if (!domain) return null;
-  const labels = domain.split('.');
-  if (labels.length <= 2) return domain;
-  const lastTwo = labels.slice(-2).join('.');
-  if (MULTI_LABEL_SUFFIXES.has(lastTwo) && labels.length >= 3) {
-    return labels.slice(-3).join('.');
-  }
-  return lastTwo;
 }
 
 function attachmentExtension(filename) {
