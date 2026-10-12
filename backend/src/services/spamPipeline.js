@@ -14,9 +14,14 @@
 //   classifyAndTagMessage(id, { imap: { moveMessage, broadcast, _guardMoveUid,
 //                                       _unguardMoveUid }, headers })
 //
-// IMPORTANT: auto-classified verdicts NEVER write to spam_training_log. Only
-// explicit user feedback (/spam, /ham) trains the model — auto-verdicts fed
-// back would poison it (see reports.md V2-5 note).
+// IMPORTANT: auto-classified verdicts NEVER write to spam_training_log — fed back,
+// they would poison the model (see reports.md V2-5 note). Explicit user feedback
+// (/spam, /ham) trains it. The one exception is Jev's external cold-start verdict
+// (source 'jev'), written through spamTraining.recordJevSpamVerdict.
+//
+// ensureSpamVerdict(id) is how a plugin asks for a message's verdict: the stored one,
+// or a classification run on the spot (tag only, never moved) for a message that was
+// stored before anti-spam was switched on.
 //
 // Auto-move: skipped entirely when the caller defers it (`deferAutoMove`, used by
 // the backfill path). A reindex classifies a whole mailbox at once, and that many
@@ -25,6 +30,8 @@
 // deferred intent is recorded in spam_details (PR review, 2026-09-15).
 
 import { query } from './db.js';
+import { logger } from './logger.js';
+import { getMessageHeaders } from '../../fork-features/headers/index.js';
 import { tokenize, extractFlagFeatures } from './spamTokenizer.js';
 import { scoreRules } from './spamRules.js';
 import { extractAuthservIds, normalizeAuthservId } from './spamParser.js';
@@ -239,6 +246,74 @@ async function autoMove(row, spamFolder, imap, messageId) {
     return true;
   } finally {
     imap._unguardMoveUid?.(row.account_id, row.folder, row.uid);
+  }
+}
+
+const errorResult = reason => ({ kind: 'error', reason });
+
+// What the stored row already says about a message's verdict, or `unanalyzed` when it
+// still needs a classification.
+async function storedVerdict(messageId) {
+  const { rows } = await query(`
+    SELECT m.spam_analyzed_at, m.spam_verdict, m.spam_user_override, a.antispam_enabled,
+           u.preferences->>'spamEnabled' AS master_spam_enabled
+    FROM messages m
+    JOIN email_accounts a ON m.account_id = a.id
+    JOIN users u ON u.id = a.user_id
+    WHERE m.id = $1
+  `, [messageId]);
+  const row = rows[0];
+  if (!row) return errorResult('message_missing');
+  // A user mark writes spam_analyzed_at together with the override and the verdict.
+  if (row.spam_analyzed_at) {
+    return { kind: 'verdict', verdict: row.spam_verdict, override: row.spam_user_override ?? null };
+  }
+  if (row.master_spam_enabled === 'false' || !row.antispam_enabled) return { kind: 'disabled' };
+  return { kind: 'unanalyzed' };
+}
+
+/**
+ * The anti-spam verdict of one message, for plugins that act on it. A message already
+ * analyzed returns its stored verdict; with the user's master switch or the account's
+ * anti-spam switch off it is `disabled`; otherwise it is classified now (headers from the
+ * retained header store) and tagged, never moved — the caller decides what to do with it.
+ *
+ * @param {string} messageId — messages.id
+ * @returns {Promise<{ kind: 'verdict', verdict: string, override: 'spam'|'ham'|null }
+ *                   | { kind: 'disabled' } | { kind: 'error', reason: string }>}
+ */
+export async function ensureSpamVerdict(messageId) {
+  try {
+    const stored = await storedVerdict(messageId);
+    if (stored.kind !== 'unanalyzed') return stored;
+
+    // Without its headers a message would be scored with no authentication signal and the
+    // verdict stored for good, so an unreadable header block is an error, not a fallback.
+    // getMessageHeaders has already logged why.
+    const headers = (await getMessageHeaders([messageId])).get(messageId);
+    if (headers.kind === 'unavailable') {
+      return errorResult(headers.reason === 'message_missing' ? 'message_missing' : `headers_${headers.reason}`);
+    }
+
+    const result = await classifyAndTagMessage(messageId, { deferAutoMove: true, headers: headers.headers });
+    if (!result) return errorResult('message_missing');
+    switch (result.skipped) {
+      case null:
+        return { kind: 'verdict', verdict: result.verdict, override: null };
+      // The row changed between the read above and the classification (a user mark, a
+      // switch turned off): report what it says now.
+      case 'user_override':
+      case 'spam_disabled':
+      case 'antispam_disabled': {
+        const now = await storedVerdict(messageId);
+        return now.kind === 'unanalyzed' ? errorResult('state_changed') : now;
+      }
+      default:
+        throw new Error(`unknown classification skip ${result.skipped}`);
+    }
+  } catch (err) {
+    logger.warn(`[spam] could not determine the verdict of message ${messageId}: ${err.message}`);
+    return errorResult(err.message);
   }
 }
 

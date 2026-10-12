@@ -21,6 +21,7 @@ vi.mock('../services/spamTokenizer.js', () => ({
 }));
 vi.mock('../services/spamModelStore.js', () => ({
   updateIncrementalForUser: vi.fn(),
+  retrainUser: vi.fn(),
 }));
 
 import express from 'express';
@@ -68,6 +69,12 @@ function messageRow(overrides = {}) {
   };
 }
 
+// The training capture's own read of the row (spamTraining.captureManualSpamLabel), taken
+// before the move.
+function captureRow(overrides = {}) {
+  return { rows: [{ ...messageRow(overrides), owner_id: USER_ID }] };
+}
+
 beforeEach(() => {
   query.mockReset();
   tokenize.mockReset();
@@ -90,6 +97,16 @@ function getSpamInserts() {
   return query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO spam_training_log'));
 }
 
+// The identity and placement columns of the one training record written:
+// user, account, Message-ID, UID, folder, label.
+function recordIdentity() {
+  const inserts = getSpamInserts();
+  expect(inserts).toHaveLength(1);
+  const [sql, params] = inserts[0];
+  expect(sql).toContain("'manual'");
+  return params.slice(0, 6);
+}
+
 describe('POST /api/mail/messages/:id/spam — no-op path (already in spam folder)', () => {
   let server;
   let base;
@@ -108,26 +125,27 @@ describe('POST /api/mail/messages/:id/spam — no-op path (already in spam folde
     query.mockResolvedValueOnce({ rows: [{}] }); // folder exists
     // 3. moveForSpamLabel SELECT m.* — message already in 'Junk'
     query.mockResolvedValueOnce({ rows: [messageRow()] });
-    // 4. INSERT INTO spam_training_log + UPDATE messages
+    // 4. training capture reads the row
+    query.mockResolvedValueOnce(captureRow());
+    // 5. INSERT INTO spam_training_log + UPDATE messages
     query.mockResolvedValue({ rows: [] });
 
     const res = await fetch(`${base}/api/mail/messages/${MESSAGE_ID}/spam`, { method: 'POST' });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, alreadyInFolder: true, folder: 'Junk' });
 
-    const inserts = getSpamInserts();
-    expect(inserts).toHaveLength(1);
-    const [insertSql, insertParams] = inserts[0];
+    expect(recordIdentity()).toEqual([USER_ID, ACCOUNT_ID, '<abc123@example.com>', 42, 'Junk', 'spam']);
+    const [insertSql, insertParams] = getSpamInserts()[0];
     expect(insertSql).toContain('token_counts');
     expect(insertSql).toContain('flag_features');
     expect(insertSql).toContain('sender_domain');
     expect(insertSql).toContain('attachment_types');
-    expect(insertParams[0]).toBe(USER_ID);
-    expect(insertParams[1]).toBe(ACCOUNT_ID);
     // subject + serialized features
     expect(insertParams).toContain('Cheap Viagra');
     expect(insertParams.some(p => typeof p === 'string' && p.includes('"cheap"'))).toBe(true);
     expect(insertParams.some(p => typeof p === 'string' && p.includes('"viagra"'))).toBe(true);
+    expect(insertParams).toContain('spoof.net');
+    expect(insertParams).toContainEqual(['exe']);
 
     // Incremental training is fed once with the extracted features.
     expect(updateIncrementalForUser).toHaveBeenCalledTimes(1);
@@ -147,16 +165,18 @@ describe('POST /api/mail/messages/:id/ham — move path (message leaves spam)', 
     await new Promise(resolve => server.close(resolve));
   });
 
-  it('moves to the inbox and trains incrementally with label=ham', async () => {
-    // 1. Route lookup for /ham
+  // Route lookup, folder check, moveForSpamLabel SELECT, training capture, account row.
+  function mockHamLookups() {
     query.mockResolvedValueOnce({ rows: [{ account_id: ACCOUNT_ID, folder: 'Junk', folder_mappings: { spam: 'Junk', inbox: 'INBOX' } }] });
-    // 2. resolveAllSpamPaths → mapped folder check for 'Junk'
     query.mockResolvedValueOnce({ rows: [{}] });
-    // 3. moveForSpamLabel SELECT m.*
     query.mockResolvedValueOnce({ rows: [messageRow()] });
-    // 4. account row
+    query.mockResolvedValueOnce(captureRow());
     query.mockResolvedValueOnce({ rows: [{ id: ACCOUNT_ID }] });
-    // 5. DELETE stale row, UPDATE messages, INSERT training log
+  }
+
+  it('moves to the inbox and trains incrementally with label=ham', async () => {
+    mockHamLookups();
+    // DELETE stale row, UPDATE messages, INSERT training log
     query.mockResolvedValue({ rows: [] });
 
     imapManager.moveMessage.mockResolvedValue(100);
@@ -169,13 +189,34 @@ describe('POST /api/mail/messages/:id/ham — move path (message leaves spam)', 
 
     expect(imapManager.moveMessage).toHaveBeenCalled();
 
-    // Training logged exactly once on the move path, with manual source.
-    const inserts = getSpamInserts();
-    expect(inserts).toHaveLength(1);
-    expect(inserts[0][0]).toContain('token_counts');
-    expect(inserts[0][1]).toContain(USER_ID);
+    // Training logged exactly once on the move path, with the UID the UIDPLUS move returned.
+    expect(recordIdentity()).toEqual([USER_ID, ACCOUNT_ID, '<abc123@example.com>', 100, 'INBOX', 'ham']);
+    expect(getSpamInserts()[0][0]).toContain('token_counts');
 
     expect(updateIncrementalForUser).toHaveBeenCalledTimes(1);
     expect(updateIncrementalForUser).toHaveBeenCalledWith(USER_ID, expect.anything(), 'ham');
+  });
+
+  it('records the source UID at the destination when the server has no UIDPLUS', async () => {
+    mockHamLookups();
+    query.mockResolvedValue({ rows: [] });
+    imapManager.moveMessage.mockResolvedValue(null);
+
+    const res = await fetch(`${base}/api/mail/messages/${MESSAGE_ID}/ham`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(recordIdentity()).toEqual([USER_ID, ACCOUNT_ID, '<abc123@example.com>', 42, 'INBOX', 'ham']);
+    expect(updateIncrementalForUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('records the mark from the row read before the move, even if the row is gone afterwards', async () => {
+    mockHamLookups();
+    // Every later read of messages finds nothing: the row was deleted during the move.
+    query.mockImplementation(async sql => (/SELECT[\s\S]*FROM messages/.test(sql) ? { rows: [] } : { rows: [], rowCount: 1 }));
+    imapManager.moveMessage.mockResolvedValue(100);
+
+    const res = await fetch(`${base}/api/mail/messages/${MESSAGE_ID}/ham`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(recordIdentity()).toEqual([USER_ID, ACCOUNT_ID, '<abc123@example.com>', 100, 'INBOX', 'ham']);
+    expect(getSpamInserts()[0][1]).toContain('Cheap Viagra');
   });
 });
