@@ -284,9 +284,10 @@ The queue is the plugin's own namespace in `messages.plugin_annotations`. Of tha
 - `currentUidFloors({ accountId })` gives each processable folder with a known UIDVALIDITY its `{ uidValidity, nextUid }`, `nextUid` being one past the highest UID MailFlow holds there (rows flagged `\Deleted` included, since their UIDs are spent), or 1 when it holds none.
 - `listQueuedMessages({ accountId, pluginId, now, limit })` returns rows whose queue is `pending`, or `retry` with `dueAt <= now`, earliest `dueAt` first with `pending` ahead of all, then by id; at most 200. Each row is `{ id, folder, uid, message_id, date, synced_at, plugin_annotation }`, `plugin_annotation` being the plugin's namespace.
 - `countQueued({ accountId, pluginId, origin })` returns `{ pending, retry, done, terminal }` for the rows marked with that origin, and throws on a state outside those four.
+- `listMessagesInQueueState({ accountId, pluginId, state, afterId, limit })` returns the rows whose queue is in `state`, by id, after `afterId` (`null` for the first page); at most 200, in the shape `listQueuedMessages` returns. A plugin pages through its `terminal` rows this way to retry them.
 - `setMessageAnnotation` resolves to `{ kind: 'written' }`, or `{ kind: 'message_missing' }` when the row is gone: deleted, or replaced under a new id by a move. GTD's gist cache counts only written gists.
 
-The queries are correct without any index; an index for a plugin's queue belongs to that plugin.
+The queries are correct without any index; an index for a plugin's queue belongs to that plugin (the Jev classification plugin's are in `9005_fork_jev_classify_queue_indexes.sql`).
 
 ### Verified move
 
@@ -304,8 +305,8 @@ Label-store accounts (Gmail) are not moved this way; a plugin labels them with `
 
 | Path | What |
 |---|---|
-| `backend/fork-features/work-queue/index.js` | `markMessages`, `currentUidFloors`, `listQueuedMessages`, `countQueued` |
-| `backend/fork-features/work-queue/index.test.js` | PostgreSQL tests: scopes, excluded folders, kept fields, limits, concurrent writers, selection order, counts, annotation write results |
+| `backend/fork-features/work-queue/index.js` | `markMessages`, `currentUidFloors`, `listQueuedMessages`, `listMessagesInQueueState`, `countQueued` |
+| `backend/fork-features/work-queue/index.test.js` | PostgreSQL tests: scopes, excluded folders, kept fields, limits, concurrent writers, selection order, counts, paging by queue state, annotation write results |
 | `backend/fork-features/verified-move/index.js` | `moveMessagesVerified`: pre-checks, per-folder groups, local row updates, counts, broadcasts |
 | `backend/fork-features/verified-move/index.test.js` | IMAP sessions recorded down to wire commands against PostgreSQL rows: both capability branches, every outcome, no write command when identity fails |
 
@@ -316,7 +317,7 @@ Label-store accounts (Gmail) are not moved this way; a plugin labels them with `
 | `backend/src/services/imapManager.js` | New `moveVerifiedUids(account, { fromFolder, uidValidity, items, toFolder })`: identity check, move and target UID over one pooled session |
 | `backend/src/services/mailAccess.js` | `setMessageAnnotation` resolves to `{ kind: 'written' }` or `{ kind: 'message_missing' }` instead of a row count |
 | `backend/src/plugins/gtd/gtdGist.js` | Counts a gist as written only on `{ kind: 'written' }` |
-| `backend/src/plugins/api.js` | `markMessages`, `currentUidFloors`, `listQueuedMessages`, `countQueued`, `moveMessagesVerified` |
+| `backend/src/plugins/api.js` | `markMessages`, `currentUidFloors`, `listQueuedMessages`, `listMessagesInQueueState`, `countQueued`, `moveMessagesVerified` |
 | `backend/src/plugins/README.md` | Lists those capabilities and the new `setMessageAnnotation` result |
 
 ## Message signals
@@ -339,18 +340,19 @@ One structured view of a stored message, built from its `messages` row and its r
 - Stored bodies are the sanitized HTML, and the sanitizer drops the `<html>` and `<body>` elements with their `lang`. For mail read from the database `htmlLang` is therefore the first `lang` on an element inside the body, or `null`; an `<html lang>` is seen only when raw HTML is passed in.
 - `messageLinks({ bodyHtml })` is pure and returns the `links` of a stored HTML body exactly as `extractSignals` reports them, for a consumer that needs the links alone.
 - `getMessageSignals(messageIds, { deadlineMs })` loads the rows with one query, reads all their headers with one `getMessageHeaders` call (which fetches missing ones from the server, one session per folder, within `deadlineMs`), and returns a `Map` from id to signals; an id without a row is not in it. `getAccountMessageSignals(accountId, messageIds, { deadlineMs })` does the same for the messages of one account only. Plugins get the account form as `getMessageSignals(accountId, ids, { deadlineMs })`.
+- `getAccountMessageBodyTexts(accountId, messageIds)` returns a `Map` from id to the message body as `messageBodyText` gives it (`body_text`, or the visible text of `body_html`, `''` when neither is stored), with one query and the same account scoping; plugins get it as `getMessageBodyTexts(accountId, ids)`. A body MailFlow has not fetched yet (lazy body fetch) is not stored and so reads as `''`, and such a message has no links either.
 
 | Path | What |
 |---|---|
-| `backend/fork-features/signals/index.js` | `extractSignals`, `resolveLanguage`, `messageBodyText`, `messageLinks`, `getMessageSignals`, `getAccountMessageSignals` |
-| `backend/fork-features/signals/index.test.js` | Signal set of a phishing message; authentication variants; link limits and domains; language rules; one header read per batch |
+| `backend/fork-features/signals/index.js` | `extractSignals`, `resolveLanguage`, `messageBodyText`, `messageLinks`, `getMessageSignals`, `getAccountMessageSignals`, `getAccountMessageBodyTexts` |
+| `backend/fork-features/signals/index.test.js` | Signal set of a phishing message; authentication variants; link limits and domains; language rules; one header read per batch; body texts of one account |
 
 ### Patches to upstream files (re-check on every upstream sync)
 
 | File | Change |
 |---|---|
-| `backend/src/plugins/api.js` | `getMessageSignals(accountId, ids, { deadlineMs })`: `fork-features/signals` scoped to one account |
-| `backend/src/plugins/README.md` | Lists `getMessageSignals` in the capability surface |
+| `backend/src/plugins/api.js` | `getMessageSignals(accountId, ids, { deadlineMs })` and `getMessageBodyTexts(accountId, ids)`: `fork-features/signals` scoped to one account |
+| `backend/src/plugins/README.md` | Lists `getMessageSignals` and `getMessageBodyTexts` in the capability surface |
 
 ## Link rules in anti-spam
 
@@ -377,3 +379,35 @@ The anti-spam rules see where a message's links go: a link that shows one domain
 | `backend/src/services/spamModel.js` | Three link flag tokens in `FLAG_TOKENS` and `flagTokensFor` |
 | `backend/src/services/spamTraining.js` | The row read includes both anti-spam switches; the link flags join `flag_features` when a record is made |
 | `backend/src/services/spamRules.test.js`, `backend/src/services/spamModel.test.js`, `backend/src/services/spamTraining.test.js`, `backend/src/routes/mail.spam.test.js` | Rule count and weights, link rules and tokens, the training snapshot, no lookup with anti-spam off or in a retrain |
+
+## Jev classification plugin
+
+The plugin `jev-classify` (`backend/src/plugins/jev-classify/`) asks Jev to classify each message of an account, moves INBOX mail to the folder the user mapped its category to (on Gmail it adds the label instead and leaves the message in the inbox), and can hand Jev's confident spam and ham verdicts to anti-spam training. It uses only the plugin API. A user switches it on through plugin activation (Settings → Plugins, or `PATCH /api/plugins/jev-classify`); each account then has its own configuration.
+
+- **Categories** (per user, plugin data `user:<userId>:categories`): `{ revision, categories: [{ id, label, description }] }`, 2–24 entries. Until the user saves a list, the eight defaults (`action-required`, `important-update`, `personal`, `money-and-orders`, `newsletters`, `routine-notifications`, `cold-outreach`, `review`) apply at revision 0. Saving makes the next revision; nothing is re-classified until the user starts a backfill.
+- **Account configuration** (`plugin_account_config`): `{ enabled, classifyNewMail, newMailFloors, routing, createFolders, trainSpam, routingMinConfidence }`. `routing` maps category ids to folder paths, never INBOX. `newMailFloors` is kept by the server: switching `classifyNewMail` on records each processable folder's UIDVALIDITY and next UID, and mail at or above that UID is new; a folder seen for the first time, or whose UIDVALIDITY changed, gets a fresh floor on the next tick, so history re-ingested after a rebuild is not new mail.
+- **Per message** (`plugin_annotations['jev-classify']`): the work queue's `revision` and `queue`, plus a category line `{ decision, action }` and, while `trainSpam` is on, a spam line `{ decision, training }`, each segment a `kind`-tagged state as K9 in [mouriya-s-lab/mailflow#5](https://github.com/mouriya-s-lab/mailflow/issues/5) defines them. A finished action is `{ kind: 'done', target, effect: 'moved' | 'labeled' }`. The queue state is derived from the segments on every write.
+- **One attempt** asks Jev once, only the questions still open (category as `choice` over the user's `id → description`, spam as `noul`). The state sent is the message signals, a summary per link domain (its RDAP registration and the kind of each blocklist verdict) and the first 8000 characters of the body text; attachments go only as names and types. Then training: probability ≥ 0.9 is recorded as spam, ≤ 0.1 as ham, anything between is `below_threshold`. Then the action, for INBOX mail only: a message outside INBOX is `skipped not_in_inbox`; anti-spam's verdict is asked with `ensureSpamVerdict`, and spam (or a user's spam mark) is skipped; then a confidence under `routingMinConfidence` and a category without a folder are skipped; otherwise the message is moved with `moveMessagesVerified` or labelled with `applyLabel`. With `createFolders` the target folder is created and synced once first. Everything the attempt changed is written back with one annotation write. A row deleted or replaced during the attempt drops its result; the replacement carries the marked annotation and is worked again.
+- **Failures.** An unconfigured Jev changes nothing and stops the tick's Jev questions. A timeout, network failure, rate limit or 5xx retries the asked decisions; an invalid request or response or a 4xx fails them for good, with a warning. A segment gets 5 attempts, waiting 2, 4, 8 and 16 minutes between them. A move the server made but MailFlow could not locate (`moved_unlocated`) fails the action for good and is added to the account's incident list (`account:<accountId>:incidents`), which stays until the user clears it.
+- **The tick** runs every 60 seconds for every connected account, one at a time per account; new INBOX mail also schedules one at once. It reads activation and configuration each time, marks new mail, and while a backfill runs (`account:<accountId>:backfill`) marks the next 50 messages not at the current revision once the previous batch is worked off. A backfill completes when nothing is left to mark and none of its messages waits for a retry. Then it works through at most 50 queued messages, new mail first, starting none once less than 5 seconds of its 60-second budget is left; the time left is the deadline for the signal read, the reputation lookup and Jev. Training records, moves and labels have no deadline. A tick that recorded training asks for one retrain of the user. A disabled account is not marked or worked, keeps its queue, and its backfill stays running.
+- **HTTP** (`/api/jev-classify`, signed-in user only, own data only; an invalid body is a 400 with `fields` and writes nothing): `GET`/`PUT /categories`; `GET /accounts` (configuration, new-mail floors, processable folders, whether the account is label-store); `PUT /accounts/:id` (switching `trainSpam` on also puts back in the queue every message whose spam line was switched off, as soon as the account's running tick is over; the response does not wait for it, and the next tick decides them); `POST`/`DELETE /accounts/:id/backfill` (start, 409 when running; stop, 409 when not running; messages already marked are still worked); `GET /status`; `POST /accounts/:id/retry-failed` (every `terminal_failed` segment back to its start, a segment skipped because its decision failed back to waiting on it); `DELETE /accounts/:id/incidents`. An account of another user is a 404.
+- **Status** returns `{ activated, jev, reputation, accounts }`, with `jev` and `reputation` the services' status, and per account: `state` (`enabled`, or `paused` when the plugin is not activated or the account is disabled), queue counts per origin, `nextDue` (`none`, `due_now` or `scheduled` with the earliest retry time), `terminalFailed`, the backfill run, `lastDecidedAt` (`account:<accountId>:stats`), the Jev requests this process sent for the account, and the incidents.
+- The tick, its single flight and the locks that keep the routes and the tick from overwriting each other's configuration and backfill writes are in-process, which holds while one backend process serves the installation. Plugin data is deleted with the user.
+
+| Path | What |
+|---|---|
+| `backend/src/plugins/jev-classify/index.js` | Manifest: router, `inboxIngest` hook, sync tick |
+| `backend/src/plugins/jev-classify/model.js` | Parsers of everything stored or received, the per-message state machine, the Jev request |
+| `backend/src/plugins/jev-classify/records.js` | Plugin data and account configuration reads and serialized writes |
+| `backend/src/plugins/jev-classify/processor.js` | The tick: marking, the attempt per message, backfill progress; re-queuing switched-off spam lines |
+| `backend/src/plugins/jev-classify/routes.js` | The `/api/jev-classify` endpoints |
+| `backend/src/plugins/jev-classify/*.test.js` | The tick against a mocked plugin API; the endpoints over HTTP |
+| `backend/migrations/9005_fork_jev_classify_queue_indexes.sql` | Two partial indexes on the plugin's queue in `messages.plugin_annotations`; adds indexes only |
+
+### Patches to upstream files (re-check on every upstream sync)
+
+| File | Change |
+|---|---|
+| `backend/src/plugins/loadPlugins.js` | Registers `jevClassifyPlugin` after GTD |
+
+An account whose plugin is active for `inboxIngest` also counts as keeping label siblings in `routes/mail.js` (`accountMaintainsLabelSiblings`), so marking such an account's message read or starred also updates its other copies with the same Message-ID in that account.
