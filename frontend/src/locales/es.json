@@ -1941,5 +1941,103 @@
     "trash": "Papelera",
     "spam": "Spam",
     "archive": "Archivo"
+  },
+  "jevClassify": {
+    "title": "Clasificación de Jev",
+    "description": "Jev lee cada mensaje y lo asigna a una de tus categorías. Para cada cuenta, elige si se deben clasificar los mensajes, el destino de cada categoría y si se debe entrenar el antispam.",
+    "loadFailed": "No se pudieron cargar los ajustes de clasificación de Jev: {{error}}",
+    "actionFailed": "La acción no ha funcionado: {{error}}",
+    "service": {
+      "title": "Servicios",
+      "refreshFailed": "No se pudo actualizar el estado: {{error}}",
+      "jevUnconfigured": "Jev no está configurado, por lo que no se clasifica ningún mensaje. Un administrador puede introducir la clave API de Jev en Ajustes → Servicios externos.",
+      "jevConfigured": "Jev está configurado: modelo {{model}} en {{baseUrl}}",
+      "reputation": "Fuentes de reputación de enlaces",
+      "sourceEnabled": "activada",
+      "sourceUnconfigured": "sin clave",
+      "sourceDisabled": "desactivada"
+    },
+    "categories": {
+      "title": "Categorías",
+      "description": "Jev elige una de estas categorías para cada mensaje según su descripción, así que describe qué distingue a cada una. Los cambios no vuelven a clasificar los mensajes ya clasificados; para eso, inicia una clasificación del correo existente. Revisión actual: {{revision}}.",
+      "name": "Nombre de la categoría",
+      "namePh": "Nombre",
+      "descriptionLabel": "Descripción de la categoría",
+      "descriptionPh": "Qué pertenece a esta categoría",
+      "remove": "Quitar",
+      "sizeError": "Mantén entre {{min}} y {{max}} categorías; ahora hay {{current}}.",
+      "required": "Este campo no puede estar vacío.",
+      "tooLong": "Usa como máximo {{max}} caracteres.",
+      "saved": "Categorías guardadas.",
+      "saveFailed": "No se pudieron guardar las categorías: {{error}}",
+      "save": "Guardar categorías",
+      "add": "Añadir categoría"
+    },
+    "accounts": {
+      "title": "Cuentas",
+      "none": "Añade una cuenta de correo para clasificar sus mensajes.",
+      "labelStore": "Gmail: las categorías se convierten en etiquetas",
+      "enabled": "Clasificar los mensajes de esta cuenta",
+      "classifyNewMail": "Clasificar los mensajes nuevos cuando llegan",
+      "createFolders": "Crear una carpeta de destino que aún no exista",
+      "createLabels": "Crear una etiqueta de destino que aún no exista",
+      "trainSpam": "Entrenar el antispam con los veredictos de spam y no spam de Jev con alta confianza",
+      "minConfidence": "Mover solo cuando Jev alcance al menos este nivel de confianza (0–1)",
+      "minConfidenceLabels": "Etiquetar solo cuando Jev alcance al menos este nivel de confianza (0–1)",
+      "minConfidenceError": "Introduce un número de 0 a 1.",
+      "routingFolders": "Carpeta de destino por categoría",
+      "routingLabels": "Etiqueta de destino por categoría",
+      "routingHint": "Solo se mueven o etiquetan los mensajes de la bandeja de entrada; los de otras carpetas se clasifican y se dejan donde están.",
+      "notRouted": "Dejar en su ubicación",
+      "unavailableTarget": "{{path}} (ya no está disponible)",
+      "unavailableTargetError": "{{path}} ya no está disponible en esta cuenta. Elige otro destino o deja los mensajes en su ubicación.",
+      "saved": "Ajustes de la cuenta guardados.",
+      "saveFailed": "No se pudieron guardar los ajustes de la cuenta: {{error}}",
+      "save": "Guardar ajustes de la cuenta"
+    },
+    "run": {
+      "enabled": "Activo",
+      "paused": "En pausa"
+    },
+    "backfill": {
+      "title": "Clasificación del correo existente",
+      "description": "Clasificar los mensajes que ya están en esta cuenta: todas las carpetas excepto Enviados, Borradores y Papelera.",
+      "idle": "Aún no se ha ejecutado ninguna clasificación del correo existente.",
+      "running": "En curso desde {{startedAt}}: {{processed}} de {{marked}} mensajes procesados, {{failed}} fallidos.",
+      "completed": "Completada el {{finishedAt}}: {{processed}} mensajes procesados, {{failed}} fallidos.",
+      "stopped": "Detenida el {{stoppedAt}}: {{processed}} de {{marked}} mensajes procesados, {{failed}} fallidos.",
+      "start": "Iniciar la clasificación del correo existente",
+      "stop": "Detener la clasificación del correo existente"
+    },
+    "queue": {
+      "title": "Cola",
+      "backfill": "Del correo existente",
+      "newMail": "Correo nuevo",
+      "pending": "En espera",
+      "retry": "Reintentando",
+      "done": "Hechos",
+      "terminal": "Fallidos",
+      "dueNow": "Hay mensajes esperando la próxima ejecución.",
+      "scheduled": "Próximo reintento a las {{time}}."
+    },
+    "stats": {
+      "lastDecided": "Última clasificación: {{time}}",
+      "neverDecided": "Todavía no se ha clasificado ningún mensaje.",
+      "jevCalls": "Solicitudes a Jev desde el inicio del servidor: {{calls}}"
+    },
+    "failures": {
+      "count": "Fallos definitivos: {{failed}}",
+      "retry": "Reintentar los fallidos",
+      "retried": "Añadidos de nuevo a la cola: {{reset}}"
+    },
+    "incidents": {
+      "title": "Movimientos que MailFlow no pudo seguir",
+      "description": "El servidor movió estos mensajes, pero MailFlow no pudo encontrarlos en el destino. Comprueba el destino y luego vacía la lista.",
+      "messageId": "Message-ID",
+      "target": "Destino",
+      "at": "Fecha",
+      "noMessageId": "(sin Message-ID)",
+      "clear": "Vaciar lista"
+    }
   }
 }

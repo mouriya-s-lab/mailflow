@@ -1941,5 +1941,103 @@
     "trash": "Trash",
     "spam": "Spam",
     "archive": "Archive"
+  },
+  "jevClassify": {
+    "title": "Jev classification",
+    "description": "Jev reads each message and puts it in one of your categories. For each account, choose whether to classify, where each category goes and whether to train anti-spam.",
+    "loadFailed": "Could not load the Jev classification settings: {{error}}",
+    "actionFailed": "That did not work: {{error}}",
+    "service": {
+      "title": "Services",
+      "refreshFailed": "Could not refresh the status: {{error}}",
+      "jevUnconfigured": "Jev is not configured, so no mail is classified. An administrator can set the Jev API key under Settings → External services.",
+      "jevConfigured": "Jev is configured: model {{model}} at {{baseUrl}}",
+      "reputation": "Link reputation sources",
+      "sourceEnabled": "on",
+      "sourceUnconfigured": "no key",
+      "sourceDisabled": "off"
+    },
+    "categories": {
+      "title": "Categories",
+      "description": "Jev picks one of these for each message by its description, so describe what sets each one apart. Changing them does not re-classify mail already classified; start a backfill for that. Current revision: {{revision}}.",
+      "name": "Category name",
+      "namePh": "Name",
+      "descriptionLabel": "Category description",
+      "descriptionPh": "What belongs in this category",
+      "remove": "Remove",
+      "sizeError": "Keep between {{min}} and {{max}} categories; there are {{current}}.",
+      "required": "This cannot be empty.",
+      "tooLong": "Use at most {{max}} characters.",
+      "saved": "Categories saved.",
+      "saveFailed": "Could not save the categories: {{error}}",
+      "save": "Save categories",
+      "add": "Add category"
+    },
+    "accounts": {
+      "title": "Accounts",
+      "none": "Add a mail account to classify its mail.",
+      "labelStore": "Gmail: categories become labels",
+      "enabled": "Classify this account",
+      "classifyNewMail": "Classify new mail as it arrives",
+      "createFolders": "Create a target folder that does not exist yet",
+      "createLabels": "Create a target label that does not exist yet",
+      "trainSpam": "Train anti-spam with Jev's confident spam and ham verdicts",
+      "minConfidence": "Move only when Jev is at least this confident (0–1)",
+      "minConfidenceLabels": "Label only when Jev is at least this confident (0–1)",
+      "minConfidenceError": "Enter a number from 0 to 1.",
+      "routingFolders": "Target folder per category",
+      "routingLabels": "Target label per category",
+      "routingHint": "Only inbox mail is moved or labeled; mail in other folders is classified and left where it is.",
+      "notRouted": "Leave in place",
+      "unavailableTarget": "{{path}} (no longer available)",
+      "unavailableTargetError": "{{path}} is no longer available in this account. Choose another target or leave the mail in place.",
+      "saved": "Account settings saved.",
+      "saveFailed": "Could not save the account settings: {{error}}",
+      "save": "Save account settings"
+    },
+    "run": {
+      "enabled": "Active",
+      "paused": "Paused"
+    },
+    "backfill": {
+      "title": "Backfill",
+      "description": "Classify the mail already in this account: every folder except Sent, Drafts and Trash.",
+      "idle": "No backfill has run yet.",
+      "running": "Running since {{startedAt}}: {{processed}} of {{marked}} messages done, {{failed}} failed.",
+      "completed": "Completed {{finishedAt}}: {{processed}} messages done, {{failed}} failed.",
+      "stopped": "Stopped {{stoppedAt}}: {{processed}} of {{marked}} messages done, {{failed}} failed.",
+      "start": "Start backfill",
+      "stop": "Stop backfill"
+    },
+    "queue": {
+      "title": "Queue",
+      "backfill": "From backfill",
+      "newMail": "New mail",
+      "pending": "Waiting",
+      "retry": "Retrying",
+      "done": "Done",
+      "terminal": "Failed",
+      "dueNow": "Messages are waiting for the next run.",
+      "scheduled": "Next retry at {{time}}."
+    },
+    "stats": {
+      "lastDecided": "Last classification: {{time}}",
+      "neverDecided": "Nothing classified yet.",
+      "jevCalls": "Jev requests since the server started: {{calls}}"
+    },
+    "failures": {
+      "count": "Failed for good: {{failed}}",
+      "retry": "Retry failed",
+      "retried": "Queued again: {{reset}}"
+    },
+    "incidents": {
+      "title": "Moves MailFlow could not follow",
+      "description": "The server moved these messages, but MailFlow could not find them in the target. Check the target, then clear the list.",
+      "messageId": "Message-ID",
+      "target": "Target",
+      "at": "When",
+      "noMessageId": "(no Message-ID)",
+      "clear": "Clear list"
+    }
   }
 }

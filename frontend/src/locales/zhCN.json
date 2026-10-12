@@ -1941,5 +1941,103 @@
     "trash": "已删除",
     "spam": "垃圾邮件",
     "archive": "归档"
+  },
+  "jevClassify": {
+    "title": "Jev 分类",
+    "description": "Jev 会阅读每封邮件，把它归入你的某个分类。可以为每个账户分别选择是否分类、各分类放到哪里，以及是否用于训练反垃圾邮件。",
+    "loadFailed": "无法加载 Jev 分类设置：{{error}}",
+    "actionFailed": "操作失败：{{error}}",
+    "service": {
+      "title": "服务",
+      "refreshFailed": "无法刷新状态：{{error}}",
+      "jevUnconfigured": "Jev 尚未配置，因此不会分类任何邮件。管理员可在「设置 → 外部服务」中设置 Jev API 密钥。",
+      "jevConfigured": "Jev 已配置：模型 {{model}}，地址 {{baseUrl}}",
+      "reputation": "链接信誉来源",
+      "sourceEnabled": "已开启",
+      "sourceUnconfigured": "未设置密钥",
+      "sourceDisabled": "已关闭"
+    },
+    "categories": {
+      "title": "分类定义",
+      "description": "Jev 会根据描述为每封邮件选出其中一个分类，所以请写清楚每个分类与其他分类的区别。修改后不会重新分类已经分好的邮件，如需重判请启动一次回填。当前修订号：{{revision}}。",
+      "name": "分类名称",
+      "namePh": "名称",
+      "descriptionLabel": "分类描述",
+      "descriptionPh": "哪些邮件属于这个分类",
+      "remove": "移除",
+      "sizeError": "分类数量须在 {{min}} 到 {{max}} 个之间，当前为 {{current}} 个。",
+      "required": "不能为空。",
+      "tooLong": "最多 {{max}} 个字符。",
+      "saved": "分类已保存。",
+      "saveFailed": "无法保存分类：{{error}}",
+      "save": "保存分类",
+      "add": "添加分类"
+    },
+    "accounts": {
+      "title": "账户",
+      "none": "添加邮件账户后即可为其分类邮件。",
+      "labelStore": "Gmail：分类以标签呈现",
+      "enabled": "为此账户分类",
+      "classifyNewMail": "新邮件到达时分类",
+      "createFolders": "目标文件夹不存在时自动创建",
+      "createLabels": "目标标签不存在时自动创建",
+      "trainSpam": "用 Jev 高置信度的垃圾/正常判定训练反垃圾邮件",
+      "minConfidence": "Jev 置信度不低于此值时才移动（0–1）",
+      "minConfidenceLabels": "Jev 置信度不低于此值时才打标签（0–1）",
+      "minConfidenceError": "请输入 0 到 1 之间的数字。",
+      "routingFolders": "各分类的目标文件夹",
+      "routingLabels": "各分类的目标标签",
+      "routingHint": "只移动收件箱中的邮件或为其打标签；其他文件夹中的邮件只分类，不改变位置。",
+      "notRouted": "保持原位",
+      "unavailableTarget": "{{path}}（已不可用）",
+      "unavailableTargetError": "此账户中已没有 {{path}}。请选择其他目标，或让邮件保持原位。",
+      "saved": "账户设置已保存。",
+      "saveFailed": "无法保存账户设置：{{error}}",
+      "save": "保存账户设置"
+    },
+    "run": {
+      "enabled": "运行中",
+      "paused": "已暂停"
+    },
+    "backfill": {
+      "title": "回填",
+      "description": "为此账户中已有的邮件分类：除已发送、草稿箱和已删除外的所有文件夹。",
+      "idle": "尚未运行过回填。",
+      "running": "自 {{startedAt}} 起运行中：{{marked}} 封中已完成 {{processed}} 封，失败 {{failed}} 封。",
+      "completed": "已于 {{finishedAt}} 完成：已完成 {{processed}} 封，失败 {{failed}} 封。",
+      "stopped": "已于 {{stoppedAt}} 停止：{{marked}} 封中已完成 {{processed}} 封，失败 {{failed}} 封。",
+      "start": "开始回填",
+      "stop": "停止回填"
+    },
+    "queue": {
+      "title": "队列",
+      "backfill": "来自回填",
+      "newMail": "新邮件",
+      "pending": "等待中",
+      "retry": "重试中",
+      "done": "已完成",
+      "terminal": "已失败",
+      "dueNow": "有邮件等待下一轮处理。",
+      "scheduled": "下次重试时间：{{time}}。"
+    },
+    "stats": {
+      "lastDecided": "最近一次分类：{{time}}",
+      "neverDecided": "尚未分类任何邮件。",
+      "jevCalls": "服务器启动以来的 Jev 请求数：{{calls}}"
+    },
+    "failures": {
+      "count": "最终失败：{{failed}}",
+      "retry": "重试失败项",
+      "retried": "已重新排队：{{reset}}"
+    },
+    "incidents": {
+      "title": "MailFlow 无法跟踪的移动",
+      "description": "服务器已移动这些邮件，但 MailFlow 在目标位置找不到它们。请检查目标位置，然后清除列表。",
+      "messageId": "Message-ID",
+      "target": "目标",
+      "at": "时间",
+      "noMessageId": "（无 Message-ID）",
+      "clear": "清除列表"
+    }
   }
 }

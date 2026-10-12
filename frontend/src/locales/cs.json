@@ -1960,5 +1960,103 @@
     "trash": "Koš",
     "spam": "Spam",
     "archive": "Archiv"
+  },
+  "jevClassify": {
+    "title": "Klasifikace pomocí Jev",
+    "description": "Jev přečte každou zprávu a zařadí ji do jedné z vašich kategorií. U každého účtu zvolte, zda poštu klasifikovat, kam jednotlivé kategorie patří a zda trénovat antispam.",
+    "loadFailed": "Nastavení klasifikace Jev se nepodařilo načíst: {{error}}",
+    "actionFailed": "Operace se nezdařila: {{error}}",
+    "service": {
+      "title": "Služby",
+      "refreshFailed": "Stav se nepodařilo obnovit: {{error}}",
+      "jevUnconfigured": "Jev není nastaven, proto se žádná pošta neklasifikuje. Správce může nastavit klíč API Jev v Nastavení → Externí služby.",
+      "jevConfigured": "Jev je nastaven: model {{model}} na adrese {{baseUrl}}",
+      "reputation": "Zdroje reputace odkazů",
+      "sourceEnabled": "zapnuto",
+      "sourceUnconfigured": "bez klíče",
+      "sourceDisabled": "vypnuto"
+    },
+    "categories": {
+      "title": "Kategorie zpráv",
+      "description": "Jev vybírá kategorii pro každou zprávu podle popisů kategorií, proto popište, čím se jednotlivé kategorie liší. Změna kategorií znovu neklasifikuje již klasifikovanou poštu; k tomu spusťte klasifikaci stávající pošty. Aktuální revize: {{revision}}.",
+      "name": "Název kategorie",
+      "namePh": "Název",
+      "descriptionLabel": "Popis kategorie",
+      "descriptionPh": "Co do této kategorie patří",
+      "remove": "Odebrat",
+      "sizeError": "Počet kategorií musí být od {{min}} do {{max}}; nyní: {{current}}.",
+      "required": "Toto pole nesmí být prázdné.",
+      "tooLong": "Maximální počet znaků: {{max}}.",
+      "saved": "Kategorie byly uloženy.",
+      "saveFailed": "Kategorie se nepodařilo uložit: {{error}}",
+      "save": "Uložit kategorie",
+      "add": "Přidat kategorii"
+    },
+    "accounts": {
+      "title": "Účty",
+      "none": "Přidejte poštovní účet, abyste mohli klasifikovat jeho poštu.",
+      "labelStore": "Gmail: z kategorií se stávají štítky",
+      "enabled": "Klasifikovat poštu tohoto účtu",
+      "classifyNewMail": "Klasifikovat novou poštu při doručení",
+      "createFolders": "Vytvořit cílovou složku, pokud ještě neexistuje",
+      "createLabels": "Vytvořit cílový štítek, pokud ještě neexistuje",
+      "trainSpam": "Trénovat antispam podle hodnocení Jev, která s vysokou jistotou rozlišují spam a běžnou poštu",
+      "minConfidence": "Přesouvat pouze při alespoň této míře jistoty Jev (0–1)",
+      "minConfidenceLabels": "Přidělovat štítky pouze při alespoň této míře jistoty Jev (0–1)",
+      "minConfidenceError": "Zadejte číslo od 0 do 1.",
+      "routingFolders": "Cílová složka pro každou kategorii",
+      "routingLabels": "Cílový štítek pro každou kategorii",
+      "routingHint": "Přesouvá se nebo označuje štítky pouze pošta ze složky Doručená pošta; pošta v ostatních složkách se klasifikuje a zůstává na místě.",
+      "notRouted": "Ponechat na místě",
+      "unavailableTarget": "{{path}} (již není k dispozici)",
+      "unavailableTargetError": "{{path}} již není v tomto účtu k dispozici. Zvolte jiný cíl nebo ponechte poštu na místě.",
+      "saved": "Nastavení účtu bylo uloženo.",
+      "saveFailed": "Nastavení účtu se nepodařilo uložit: {{error}}",
+      "save": "Uložit nastavení účtu"
+    },
+    "run": {
+      "enabled": "Aktivní",
+      "paused": "Pozastaveno"
+    },
+    "backfill": {
+      "title": "Klasifikace stávající pošty",
+      "description": "Klasifikujte poštu, která už je v tomto účtu: všechny složky kromě Odeslané, Koncepty a Koš.",
+      "idle": "Klasifikace stávající pošty zatím nebyla spuštěna.",
+      "running": "Probíhá od {{startedAt}}. Zpracované zprávy: {{processed}} z {{marked}}; neúspěšné: {{failed}}.",
+      "completed": "Dokončeno {{finishedAt}}. Zpracované zprávy: {{processed}}; neúspěšné: {{failed}}.",
+      "stopped": "Zastaveno {{stoppedAt}}. Zpracované zprávy: {{processed}} z {{marked}}; neúspěšné: {{failed}}.",
+      "start": "Spustit klasifikaci stávající pošty",
+      "stop": "Zastavit klasifikaci stávající pošty"
+    },
+    "queue": {
+      "title": "Fronta",
+      "backfill": "Ze stávající pošty",
+      "newMail": "Nová pošta",
+      "pending": "Čekající",
+      "retry": "Opakování pokusu",
+      "done": "Hotovo",
+      "terminal": "Neúspěšné",
+      "dueNow": "Zprávy čekají na další spuštění.",
+      "scheduled": "Další pokus v {{time}}."
+    },
+    "stats": {
+      "lastDecided": "Poslední klasifikace: {{time}}",
+      "neverDecided": "Zatím nebylo nic klasifikováno.",
+      "jevCalls": "Požadavky na Jev od spuštění serveru: {{calls}}"
+    },
+    "failures": {
+      "count": "Trvale neúspěšné: {{failed}}",
+      "retry": "Znovu zkusit neúspěšné",
+      "retried": "Znovu zařazeno do fronty: {{reset}}"
+    },
+    "incidents": {
+      "title": "Přesuny, které MailFlow nedokázal sledovat",
+      "description": "Server tyto zprávy přesunul, ale MailFlow je v cíli nenašel. Zkontrolujte cíl a poté seznam vymažte.",
+      "messageId": "Message-ID",
+      "target": "Cíl",
+      "at": "Kdy",
+      "noMessageId": "(bez Message-ID)",
+      "clear": "Vymazat seznam"
+    }
   }
 }

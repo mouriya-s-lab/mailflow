@@ -1941,5 +1941,103 @@
     "trash": "Cestino",
     "spam": "Spam",
     "archive": "Archivio"
+  },
+  "jevClassify": {
+    "title": "Classificazione Jev",
+    "description": "Jev legge ogni messaggio e lo inserisce in una delle tue categorie. Per ogni account, scegli se classificare la posta, dove destinare ogni categoria e se addestrare l'antispam.",
+    "loadFailed": "Impossibile caricare le impostazioni di classificazione Jev: {{error}}",
+    "actionFailed": "Operazione non riuscita: {{error}}",
+    "service": {
+      "title": "Servizi",
+      "refreshFailed": "Impossibile aggiornare lo stato: {{error}}",
+      "jevUnconfigured": "Jev non è configurato, quindi la posta non viene classificata. Un amministratore può impostare la chiave API di Jev in Impostazioni → Servizi esterni.",
+      "jevConfigured": "Jev è configurato: modello {{model}} su {{baseUrl}}",
+      "reputation": "Fonti di reputazione dei link",
+      "sourceEnabled": "attiva",
+      "sourceUnconfigured": "nessuna chiave",
+      "sourceDisabled": "disattivata"
+    },
+    "categories": {
+      "title": "Categorie",
+      "description": "Jev sceglie una di queste categorie per ogni messaggio in base alla descrizione, quindi descrivi ciò che distingue ciascuna dalle altre. Le modifiche non riclassificano la posta già classificata; per farlo, avvia la classificazione della posta esistente. Revisione attuale: {{revision}}.",
+      "name": "Nome della categoria",
+      "namePh": "Nome",
+      "descriptionLabel": "Descrizione della categoria",
+      "descriptionPh": "Cosa rientra in questa categoria",
+      "remove": "Rimuovi",
+      "sizeError": "Mantieni tra {{min}} e {{max}} categorie; al momento sono {{current}}.",
+      "required": "Questo campo non può essere vuoto.",
+      "tooLong": "Usa al massimo {{max}} caratteri.",
+      "saved": "Categorie salvate.",
+      "saveFailed": "Impossibile salvare le categorie: {{error}}",
+      "save": "Salva categorie",
+      "add": "Aggiungi categoria"
+    },
+    "accounts": {
+      "title": "Account di posta",
+      "none": "Aggiungi un account email per classificarne la posta.",
+      "labelStore": "Gmail: le categorie diventano etichette",
+      "enabled": "Classifica la posta di questo account",
+      "classifyNewMail": "Classifica la nuova posta appena arriva",
+      "createFolders": "Crea la cartella di destinazione se non esiste ancora",
+      "createLabels": "Crea l'etichetta di destinazione se non esiste ancora",
+      "trainSpam": "Addestra l'antispam con i verdetti spam e non spam di cui Jev è sicuro",
+      "minConfidence": "Sposta solo quando la confidenza di Jev raggiunge almeno questo valore (0–1)",
+      "minConfidenceLabels": "Applica etichette solo quando la confidenza di Jev raggiunge almeno questo valore (0–1)",
+      "minConfidenceError": "Inserisci un numero da 0 a 1.",
+      "routingFolders": "Cartella di destinazione per categoria",
+      "routingLabels": "Etichetta di destinazione per categoria",
+      "routingHint": "Solo la posta in arrivo viene spostata o etichettata; la posta nelle altre cartelle viene classificata e lasciata dov'è.",
+      "notRouted": "Lascia dov'è",
+      "unavailableTarget": "{{path}} (non più disponibile)",
+      "unavailableTargetError": "{{path}} non è più disponibile in questo account. Scegli un'altra destinazione o lascia la posta dov'è.",
+      "saved": "Impostazioni dell'account salvate.",
+      "saveFailed": "Impossibile salvare le impostazioni dell'account: {{error}}",
+      "save": "Salva impostazioni dell'account"
+    },
+    "run": {
+      "enabled": "Attivo",
+      "paused": "In pausa"
+    },
+    "backfill": {
+      "title": "Classificazione della posta esistente",
+      "description": "Classifica la posta già presente in questo account: tutte le cartelle tranne Inviati, Bozze e Cestino.",
+      "idle": "La classificazione della posta esistente non è ancora stata eseguita.",
+      "running": "In corso da {{startedAt}}: {{processed}} messaggi elaborati su {{marked}}, {{failed}} non riusciti.",
+      "completed": "Completata il {{finishedAt}}: {{processed}} messaggi elaborati, {{failed}} non riusciti.",
+      "stopped": "Interrotta il {{stoppedAt}}: {{processed}} messaggi elaborati su {{marked}}, {{failed}} non riusciti.",
+      "start": "Avvia classificazione della posta esistente",
+      "stop": "Interrompi classificazione della posta esistente"
+    },
+    "queue": {
+      "title": "Coda",
+      "backfill": "Dalla posta esistente",
+      "newMail": "Nuova posta",
+      "pending": "In attesa",
+      "retry": "Nuovo tentativo in corso",
+      "done": "Completati",
+      "terminal": "Non riusciti",
+      "dueNow": "Ci sono messaggi in attesa della prossima esecuzione.",
+      "scheduled": "Prossimo tentativo alle {{time}}."
+    },
+    "stats": {
+      "lastDecided": "Ultima classificazione: {{time}}",
+      "neverDecided": "Nessun messaggio ancora classificato.",
+      "jevCalls": "Richieste a Jev dall'avvio del server: {{calls}}"
+    },
+    "failures": {
+      "count": "Errori definitivi: {{failed}}",
+      "retry": "Riprova i messaggi non riusciti",
+      "retried": "Rimessi in coda: {{reset}}"
+    },
+    "incidents": {
+      "title": "Spostamenti che MailFlow non è riuscito a seguire",
+      "description": "Il server ha spostato questi messaggi, ma MailFlow non li ha trovati nella destinazione. Controlla la destinazione, poi svuota l'elenco.",
+      "messageId": "Message-ID",
+      "target": "Destinazione",
+      "at": "Quando",
+      "noMessageId": "(nessun Message-ID)",
+      "clear": "Svuota elenco"
+    }
   }
 }
