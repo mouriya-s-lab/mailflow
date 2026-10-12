@@ -236,3 +236,53 @@ Jev's confident spam and ham verdicts can train a user's anti-spam model, so a n
 | `backend/src/services/spamPipeline.js` | Header comment names the Jev exception; new `ensureSpamVerdict` |
 | `backend/src/plugins/api.js` | Exports `recordJevSpamVerdict`, `requestSpamRetrain`, `ensureSpamVerdict` |
 | `backend/src/plugins/README.md` | Lists them in the capability surface |
+
+## Plugin work queue and verified move
+
+A plugin can work through an account's mail in batches and move messages on the server without ever moving the wrong one. Both are plugin API capabilities.
+
+### Work queue
+
+The queue is the plugin's own namespace in `messages.plugin_annotations`. Of that namespace this feature owns two fields, `revision` (a non-negative integer the plugin defines) and `queue = { state, dueAt, origin }` with `state` one of `pending`, `retry`, `done`, `terminal`, `dueAt` an ISO 8601 time or `null`, and `origin` `backfill` or `new_mail`. Every other field, and the business meaning of each state, belongs to the plugin. A user move that replaces a row carries its annotations to the new row, so queued work follows the message.
+
+- **Processable rows** are rows not flagged `\Deleted` outside the account's Sent, Drafts and Trash folders, resolved from `folder_mappings` and special-use flags the way the rest of MailFlow resolves those roles.
+- `markMessages({ accountId, pluginId, scope, revision, origin, limit })` writes `revision` and `queue = { state: 'pending', dueAt: null, origin }` on up to `limit` processable rows in one `UPDATE` and returns how many it wrote, keeping the namespace's other fields. A row a concurrent writer changed after it was picked is checked again before it is written. The scope is one of:
+  - `{ kind: 'not_at_revision' }`: rows without the annotation or with another `revision`.
+  - `{ kind: 'above_uid_floor', floors }`, with `floors` a `Record<folder, { uidValidity, nextUid }>`: rows without the annotation, in a listed folder whose stored UIDVALIDITY still equals the floor's, with `uid >= nextUid`. UIDs are assigned by the server and only grow within one UIDVALIDITY, so this is mail that entered the folder after the floor was taken; the sender's Date plays no part, and a folder the server renumbered marks nothing.
+- `currentUidFloors({ accountId })` gives each processable folder with a known UIDVALIDITY its `{ uidValidity, nextUid }`, `nextUid` being one past the highest UID MailFlow holds there (rows flagged `\Deleted` included, since their UIDs are spent), or 1 when it holds none.
+- `listQueuedMessages({ accountId, pluginId, now, limit })` returns rows whose queue is `pending`, or `retry` with `dueAt <= now`, earliest `dueAt` first with `pending` ahead of all, then by id; at most 200. Each row is `{ id, folder, uid, message_id, date, synced_at, plugin_annotation }`, `plugin_annotation` being the plugin's namespace.
+- `countQueued({ accountId, pluginId, origin })` returns `{ pending, retry, done, terminal }` for the rows marked with that origin, and throws on a state outside those four.
+- `setMessageAnnotation` resolves to `{ kind: 'written' }`, or `{ kind: 'message_missing' }` when the row is gone: deleted, or replaced under a new id by a move. GTD's gist cache counts only written gists.
+
+The queries are correct without any index; an index for a plugin's queue belongs to that plugin.
+
+### Verified move
+
+`moveMessagesVerified({ accountId, messageIds, toFolder })` resolves to a `Map` from each requested row id to its outcome. Rows are grouped by source folder and each group is one pooled IMAP session:
+
+1. Before any IMAP: a row that is gone or flagged `\Deleted` is `failed { reason: 'message_missing' }`; one already in `toFolder` is `already_there`; one without a Message-ID is `no_message_id` and is never moved; a `toFolder` that is not one of the account's folders is `folder_missing`; a source folder whose UIDVALIDITY was never recorded is `uidvalidity_unknown`.
+2. Under the source folder's mailbox lock: a UIDVALIDITY on the server other than the stored one makes the whole group `uidvalidity_changed`. Otherwise one `UID FETCH` of the envelopes, and a UID the server does not hold or that carries another Message-ID is `source_changed`. Only the UIDs whose Message-ID matches are moved, in the same session and under the same lock: `UID MOVE` when the server declared MOVE after login, otherwise `UID COPY` and an `EXPUNGE` of only those UIDs (`moveUids`). Dates are never compared.
+3. The target UID: when the server declared UIDPLUS after login, from its `COPYUID`. Without UIDPLUS a `COPYUID` the server sends anyway is ignored, because RFC 4315 does not bind it; the target's `UIDNEXT` is read with `STATUS` before the move, and after the move the same session selects the target and runs `UID SEARCH UID <UIDNEXT>:* HEADER Message-ID <id>`; a single hit at or above `UIDNEXT` is the target UID.
+4. The local row follows only what the server confirmed. `moved { uid }`: a row a sync already created at the target UID gives way, and the moved row takes the target folder and UID in place, keeping its id, its plugin annotations and its retained headers. `moved_unlocated`: the server confirmed the move but no single target UID is known (UIDPLUS without that UID in `COPYUID`, no or several search hits, or the search failed); the row's folder becomes the target with its source UID, guarded for 10 seconds from delete reconciliation, a sync of the target is started and a `logger.warn` is written. The next syncs replace that row, so the message may lose its row id and annotations, but not its place on the server. If another row already holds that UID in the target, the moved row stays in the source until the source sync drops it.
+5. Folder counts are adjusted for the rows that moved, and `folder_updated` is broadcast for the source and the target.
+
+Other outcomes: `failed { reason: 'imap_error' }` (the session failed before the move was confirmed) and `failed { reason: 'move_not_confirmed' }` (the server refused the move). Only `moved`, `moved_unlocated` and `already_there` leave the message in the target; `source_changed`, `uidvalidity_*` and `failed` can be retried once sync has rebuilt the local rows. When the server confirmed a move but the row could not be updated, the outcome is still `moved` and the failure is logged, since calling a move that happened failed would invite moving it again. On a server without MOVE, a copy whose source could not be expunged is reported as moved and leaves the message in both folders, as everywhere else `moveUids` is used.
+
+Label-store accounts (Gmail) are not moved this way; a plugin labels them with `applyLabel` and creates label folders with `ensureLabelFolders`.
+
+| Path | What |
+|---|---|
+| `backend/fork-features/work-queue/index.js` | `markMessages`, `currentUidFloors`, `listQueuedMessages`, `countQueued` |
+| `backend/fork-features/work-queue/index.test.js` | PostgreSQL tests: scopes, excluded folders, kept fields, limits, concurrent writers, selection order, counts, annotation write results |
+| `backend/fork-features/verified-move/index.js` | `moveMessagesVerified`: pre-checks, per-folder groups, local row updates, counts, broadcasts |
+| `backend/fork-features/verified-move/index.test.js` | IMAP sessions recorded down to wire commands against PostgreSQL rows: both capability branches, every outcome, no write command when identity fails |
+
+### Patches to upstream files (re-check on every upstream sync)
+
+| File | Change |
+|---|---|
+| `backend/src/services/imapManager.js` | New `moveVerifiedUids(account, { fromFolder, uidValidity, items, toFolder })`: identity check, move and target UID over one pooled session |
+| `backend/src/services/mailAccess.js` | `setMessageAnnotation` resolves to `{ kind: 'written' }` or `{ kind: 'message_missing' }` instead of a row count |
+| `backend/src/plugins/gtd/gtdGist.js` | Counts a gist as written only on `{ kind: 'written' }` |
+| `backend/src/plugins/api.js` | `markMessages`, `currentUidFloors`, `listQueuedMessages`, `countQueued`, `moveMessagesVerified` |
+| `backend/src/plugins/README.md` | Lists those capabilities and the new `setMessageAnnotation` result |
