@@ -7,13 +7,14 @@
 // message is started once less than MIN_MESSAGE_BUDGET_MS is left of TICK_BUDGET_MS. The time
 // left goes to the signal read, the reputation lookup and Jev as their deadline. Training
 // records, moves and labels take no deadline, so a tick can end after its budget by the tail of
-// the one message it already started.
+// the one message it already started. Re-queuing after trainSpam is switched back on takes the
+// same per-account turn as a tick.
 
 import {
   logger, isPluginActivated, markMessages, currentUidFloors, listQueuedMessages, countQueued,
-  setMessageAnnotation, getMessageSignals, getMessageBodyTexts, lookupDomainReputation, jevDecide,
-  recordJevSpamVerdict, requestSpamRetrain, ensureSpamVerdict, moveMessagesVerified,
-  isLabelStoreAccount, applyLabel, ensureLabelFolders,
+  listMessagesInQueueState, setMessageAnnotation, getMessageSignals, getMessageBodyTexts,
+  lookupDomainReputation, jevDecide, recordJevSpamVerdict, requestSpamRetrain, ensureSpamVerdict,
+  moveMessagesVerified, isLabelStoreAccount, applyLabel, ensureLabelFolders,
 } from '../api.js';
 import {
   PLUGIN_ID, refreshFloors, parseAnnotation, normalize, promote, questionsDue, executable,
@@ -31,8 +32,9 @@ export const MIN_MESSAGE_BUDGET_MS = 5_000;
 const NEW_MAIL_MARK_LIMIT = 200;
 const BACKFILL_BATCH = 50;
 const QUEUE_READ_LIMIT = 200;
+const REQUEUE_PAGE = 200;
 
-const running = new Map(); // accountId -> the running tick
+const running = new Map(); // accountId -> the tick or re-queue running for the account
 const jevCalls = new Map(); // accountId -> Jev requests sent by this process
 
 // Accounts whose new INBOX mail should start a tick at once: activated, enabled and classifying
@@ -63,6 +65,43 @@ export function runTick({ mgr, account }) {
   })();
   running.set(account.id, tick);
   return tick;
+}
+
+// Runs `fn` for the account once nothing else runs for it, and holds the account's turn until it
+// settles; a tick asked for meanwhile joins it.
+async function exclusive(accountId, fn) {
+  while (running.has(accountId)) await running.get(accountId);
+  const job = (async () => {
+    try { return await fn(); } finally { running.delete(accountId); }
+  })();
+  running.set(accountId, job.then(() => {}, () => {}));
+  return job;
+}
+
+// trainSpam switched back on: a message whose spam line was switched off and whose queue is
+// therefore done is never listed again, so it is put back in the queue with its spam line
+// reinitialized (the marking rules in normalize); the next tick decides it. Resolves to the
+// number of messages re-queued.
+export function requeueDisabledSpam(accountId) {
+  return exclusive(accountId, async () => {
+    let requeued = 0;
+    let afterId = null;
+    for (;;) {
+      const rows = await listMessagesInQueueState({ accountId, pluginId: PLUGIN_ID, state: 'done', afterId, limit: REQUEUE_PAGE });
+      for (const row of rows) {
+        const annotation = parseAnnotation(row.plugin_annotation);
+        const { spam } = annotation;
+        if (!annotation.category || spam?.decision.kind !== 'skipped' || spam.decision.reason !== 'disabled') continue;
+        const lines = promote(normalize(annotation, { trainSpam: true }));
+        const written = await setMessageAnnotation(accountId, row.id, PLUGIN_ID, {
+          queue: { ...deriveQueue(lines), origin: annotation.queue.origin }, category: lines.category, spam: lines.spam,
+        });
+        if (written.kind === 'written') requeued += 1;
+      }
+      if (rows.length < REQUEUE_PAGE) return requeued;
+      afterId = rows.at(-1).id;
+    }
+  });
 }
 
 // inboxIngest: schedule a tick on the next turn of the event loop and return. The sync loop's

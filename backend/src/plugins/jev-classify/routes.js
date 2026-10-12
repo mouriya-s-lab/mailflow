@@ -8,7 +8,7 @@ import { Router } from 'express';
 import {
   requireAuth, getOwnedAccount, listUserAccounts, isLabelStoreAccount, isPluginActivated,
   currentUidFloors, countQueued, listQueuedMessages, listMessagesInQueueState, setMessageAnnotation,
-  jevStatus, reputationStatus,
+  jevStatus, reputationStatus, logger,
 } from '../api.js';
 import {
   PLUGIN_ID, parseCategoriesBody, parseAccountSettingsBody, parseAnnotation, resetTerminal,
@@ -18,7 +18,7 @@ import {
   loadCategories, saveCategories, loadAccountConfig, updateAccountConfig, loadBackfill,
   updateBackfill, loadIncidents, clearIncidents, loadStats,
 } from './records.js';
-import { jevCallCount, noteNewMailDrain } from './processor.js';
+import { jevCallCount, noteNewMailDrain, requeueDisabledSpam } from './processor.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -92,17 +92,23 @@ router.put('/accounts/:id', async (req, res) => {
   const parsed = parseAccountSettingsBody(req.body, categories.map(c => c.id));
   if (!parsed.ok) return invalid(res, parsed.fields);
   const settings = parsed.value;
-  const config = await updateAccountConfig(account.id, async previous => {
+  const { config, trainSpamSwitchedOn } = await updateAccountConfig(account.id, async previous => {
     // New mail is what arrives after classifyNewMail is switched on: its floors are taken then.
     let newMailFloors = {};
     if (settings.classifyNewMail) {
       newMailFloors = previous.classifyNewMail ? previous.newMailFloors : await currentUidFloors({ accountId: account.id });
     }
     const next = { ...settings, newMailFloors };
-    return { next, result: next };
+    return { next, result: { config: next, trainSpamSwitchedOn: settings.trainSpam && !previous.trainSpam } };
   });
   const activated = await isPluginActivated(userId, PLUGIN_ID);
   noteNewMailDrain(account.id, activated && config.enabled && config.classifyNewMail);
+  // Messages whose spam line was switched off are queued again once the account's running tick
+  // is over; the response does not wait for that.
+  if (trainSpamSwitchedOn) {
+    requeueDisabledSpam(account.id)
+      .catch(err => logger.warn(`jev-classify: re-queuing messages for spam training failed for account ${account.id}: ${err.message}`));
+  }
   res.json(await accountView(account));
 });
 

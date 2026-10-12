@@ -296,6 +296,34 @@ describe('Jev classification HTTP routes', () => {
     });
   });
 
+  it('re-queues switched-off spam lines only when trainSpam goes from off to on', async () => {
+    const doneQueue = { state: 'done', dueAt: null, origin: 'backfill' };
+    const off = { kind: 'skipped', reason: 'disabled' };
+    mocks.listMessagesInQueueState.mockResolvedValue([{
+      id: '22222222-2222-4222-8222-222222222222', folder: 'INBOX', uid: '1', message_id: '<m@mailflow-test.invalid>',
+      plugin_annotation: { revision: CATEGORY_DONE.revision, queue: doneQueue, category: { decision: CATEGORY_DONE, action: ACTION_DONE }, spam: { decision: off, training: off } },
+    }]);
+    configs.set(configKey(ACCOUNT_ID), { ...SETTINGS, newMailFloors: {} });
+
+    expect((await request(ACCOUNT_PATH, { method: 'PUT', body: SETTINGS })).status).toBe(200);
+    await new Promise(resolve => setImmediate(resolve));
+    expect(mocks.listMessagesInQueueState).not.toHaveBeenCalled();
+
+    expect((await request(ACCOUNT_PATH, { method: 'PUT', body: { ...SETTINGS, trainSpam: true } })).status).toBe(200);
+    await vi.waitFor(() => expect(mocks.setMessageAnnotation).toHaveBeenCalledTimes(1));
+    expect(mocks.listMessagesInQueueState).toHaveBeenCalledWith({ accountId: ACCOUNT_ID, pluginId: PLUGIN, state: 'done', afterId: null, limit: 200 });
+    expect(mocks.setMessageAnnotation).toHaveBeenCalledWith(ACCOUNT_ID, '22222222-2222-4222-8222-222222222222', PLUGIN, {
+      queue: { state: 'pending', dueAt: null, origin: 'backfill' },
+      category: { decision: CATEGORY_DONE, action: ACTION_DONE },
+      spam: { decision: { kind: 'pending' }, training: { kind: 'blocked' } },
+    });
+
+    mocks.listMessagesInQueueState.mockClear();
+    expect((await request(ACCOUNT_PATH, { method: 'PUT', body: { ...SETTINGS, trainSpam: true } })).status).toBe(200);
+    await new Promise(resolve => setImmediate(resolve));
+    expect(mocks.listMessagesInQueueState).not.toHaveBeenCalled();
+  });
+
   it('starts and stops a revision-bound backfill without rewriting duplicate requests', async () => {
     values.set(storageKey(`user:${USER}:categories`), {
       ownerId: USER, value: { revision: 7, categories: CATEGORIES },

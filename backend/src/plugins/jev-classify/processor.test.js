@@ -10,6 +10,7 @@ vi.mock('../api.js', () => ({
   markMessages: vi.fn(),
   currentUidFloors: vi.fn(),
   listQueuedMessages: vi.fn(),
+  listMessagesInQueueState: vi.fn(),
   countQueued: vi.fn(),
   setMessageAnnotation: vi.fn(),
   getMessageSignals: vi.fn(),
@@ -32,7 +33,7 @@ vi.mock('../api.js', () => ({
 }));
 
 import * as api from '../api.js';
-import { runTick, requestDrain, newMailDrainActive, jevCallCount, TICK_BUDGET_MS } from './processor.js';
+import { runTick, requestDrain, requeueDisabledSpam, newMailDrainActive, jevCallCount, TICK_BUDGET_MS } from './processor.js';
 import { DEFAULT_CATEGORIES, resetTerminal } from './model.js';
 import { clearIncidents } from './records.js';
 
@@ -96,7 +97,7 @@ const patchFor = id => patches().find(p => p.id === id)?.patch;
 beforeEach(() => {
   vi.clearAllMocks();
   // clearAllMocks keeps queued once-implementations; drop them so no test inherits another's.
-  for (const fn of [api.listQueuedMessages, api.jevDecide, api.countQueued, api.markMessages, api.setMessageAnnotation]) fn.mockReset();
+  for (const fn of [api.listQueuedMessages, api.listMessagesInQueueState, api.jevDecide, api.countQueued, api.markMessages, api.setMessageAnnotation]) fn.mockReset();
   store.data.clear();
   store.configs.clear();
   api.isPluginActivated.mockResolvedValue(true);
@@ -104,6 +105,7 @@ beforeEach(() => {
   api.markMessages.mockResolvedValue(0);
   api.currentUidFloors.mockResolvedValue({});
   api.listQueuedMessages.mockResolvedValue([]);
+  api.listMessagesInQueueState.mockResolvedValue([]);
   api.countQueued.mockResolvedValue({ pending: 0, retry: 0, done: 0, terminal: 0 });
   api.setMessageAnnotation.mockResolvedValue({ kind: 'written' });
   api.getMessageSignals.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, signalsFor([])])));
@@ -307,19 +309,47 @@ describe('switching trainSpam mid-way (row 9b)', () => {
     expect(api.jevDecide).not.toHaveBeenCalled();
     expect(api.recordJevSpamVerdict).not.toHaveBeenCalled();
 
+    // Switched back on: done rows are never listed by the queue again, so re-queuing has to find
+    // the two whose spam line was switched off. What is stored now is the annotation plus the patch.
+    const stored = off.map(p => ({ revision: 0, ...p }));
     api.setMessageAnnotation.mockClear();
     store.configs.set(account.id, config({ trainSpam: true }));
-    api.listQueuedMessages.mockResolvedValueOnce(off.map((p, i) => row(20 + i, { ...p, revision: 0, queue: pendingQueue() })));
+    api.listMessagesInQueueState.mockResolvedValueOnce(stored.map((a, i) => row(20 + i, a)));
+    expect(await requeueDisabledSpam(account.id)).toBe(2);
+    expect(api.listMessagesInQueueState).toHaveBeenCalledWith({ accountId: account.id, pluginId: 'jev-classify', state: 'done', afterId: null, limit: 200 });
+    const fresh = { decision: { kind: 'pending' }, training: { kind: 'blocked' } };
+    expect(patchFor(row(20).id)).toEqual({ queue: pendingQueue(), category: categoryDone, spam: fresh });
+    expect(patchFor(row(21).id)).toEqual({ queue: pendingQueue(), category: categoryDone, spam: fresh });
+    expect(patchFor(row(22).id)).toBeUndefined();
+
+    const requeued = [20, 21].map((n, i) => row(n, { ...stored[i], ...patchFor(row(n).id) }));
+    api.setMessageAnnotation.mockClear();
+    api.listQueuedMessages.mockResolvedValueOnce(requeued);
     api.jevDecide.mockImplementation(async () => ({ kind: 'ok', model: 'typesafe/jev', inputTokens: 1, answers: { spam: { kind: 'noul', probability: 0.5 } } }));
     await runTick({ mgr: mgr(), account });
 
     expect(api.jevDecide).toHaveBeenCalledTimes(2);
     for (const [request] of api.jevDecide.mock.calls) expect(Object.keys(request.questions)).toEqual(['spam']);
-    const on = [20, 21, 22].map(n => patchFor(row(n).id));
-    expect(on[0].spam).toMatchObject({ decision: { kind: 'done', probability: 0.5 }, training: { kind: 'below_threshold' } });
-    expect(on[1].spam).toMatchObject({ decision: { kind: 'done', probability: 0.5 }, training: { kind: 'below_threshold' } });
-    expect(on[2].spam).toEqual({ decision: annotations()[2].spam.decision, training: disabled });
+    expect(patchFor(row(20).id).spam).toMatchObject({ decision: { kind: 'done', probability: 0.5 }, training: { kind: 'below_threshold' } });
+    expect(patchFor(row(21).id).spam).toMatchObject({ decision: { kind: 'done', probability: 0.5 }, training: { kind: 'below_threshold' } });
+    expect(patchFor(row(22).id)).toBeUndefined();
     expect(api.recordJevSpamVerdict).not.toHaveBeenCalled();
+  });
+
+  it('re-queues only after the account\'s running tick is over', async () => {
+    const account = newAccount();
+    store.configs.set(account.id, config());
+    let release;
+    api.listQueuedMessages.mockImplementationOnce(() => new Promise(resolve => { release = () => resolve([]); }));
+    const tick = runTick({ mgr: mgr(), account });
+    await vi.waitFor(() => expect(api.listQueuedMessages).toHaveBeenCalled());
+    const requeue = requeueDisabledSpam(account.id);
+    await new Promise(resolve => setImmediate(resolve));
+    expect(api.listMessagesInQueueState).not.toHaveBeenCalled();
+    release();
+    await tick;
+    expect(await requeue).toBe(0);
+    expect(api.listMessagesInQueueState).toHaveBeenCalledTimes(1);
   });
 });
 
