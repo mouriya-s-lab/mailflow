@@ -1,9 +1,14 @@
-// Tokenizer and feature extractor for the antispam classifier (v0.2).
+// Tokenizer and feature extractor for the antispam classifier.
 //
 // Pure functions: no I/O, no DB. Converts an email into the bag-of-words
 // token list plus the binary/continuous flag features consumed by the
 // Multinomial Naive Bayes model (spamModel.js) and persisted at mark time
 // (spam_training_log.token_counts / flag_features, migration 0048).
+//
+// Tokens depend on the message's language (the per-language model partitions of
+// mouriya-s-lab/mailflow#15): Chinese and Japanese text is cut into words with
+// Intl.Segmenter, every other language into runs of letters and digits, and each
+// language drops only its own stop words.
 //
 // Design reference: .hermes/design/spam-classifier-v0.2.md §6.1
 
@@ -17,22 +22,36 @@ import { BLOCK, attachmentsWithContained } from './attachmentExtensions.js';
 // The flag feature attachment_is_executable means the BLOCK tier: files that run code when opened.
 // Macro Office and HTML files (WARN) score through their own, lighter rule in spamRules.js (#457).
 
-// Union of every language's stop-words. v0.2 does not run language
-// detection: a token that is a stop-word in ANY supported language is
-// dropped, which is safe (stop-words never discriminate spam from ham)
-// and keeps the tokenizer dependency-free.
-const ALL_STOP_WORDS = new Set([
-  ...STOP_WORDS_DEFAULT,
-  ...Object.values(STOP_WORDS).flatMap(set => [...set]),
+// The version of the token stream below. A training record stores the version its
+// token_counts were made with; a retrain re-tokenizes every record of another version.
+// Bump it whenever a change here changes the tokens of some message.
+export const TOKENIZER_VERSION = 2;
+
+// Each language's own stop words. A message whose language could not be
+// determined ('und', 'und-Latn', …) uses the default list stopWords.js keeps for
+// that case; a determined language without a list drops none.
+const STOP_WORDS_BY_LANGUAGE = new Map([
+  ['en', STOP_WORDS.en],
+  ['it', STOP_WORDS.it],
+  ['de', STOP_WORDS.de],
+  ['es', STOP_WORDS.es],
+  ['fr', STOP_WORDS.fr],
+  ['ru', STOP_WORDS.ru],
+  ['zh', STOP_WORDS.zhCN],
 ]);
+
+// Chinese and Japanese are written without spaces between words, so their text is
+// segmented with the ICU word breaker; Korean separates words with spaces like the
+// languages WORD_RE handles.
+const SEGMENTED_LANGUAGES = new Set(['zh', 'ja']);
+const segmenters = new Map();
 
 // Word-ish run: Unicode letters + digits + underscore. Unlike \w, \p{L}
 // covers Cyrillic and other non-ASCII scripts (i18n requirement).
 const WORD_RE = /[\p{L}\p{N}_]+/gu;
 
-// CJK ideographs are segmented per character (no word boundaries in
-// Chinese); every other token is kept whole.
-const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/u;
+// One Han ideograph is a word in Chinese and Japanese; a lone kana is a particle.
+const SINGLE_HAN_RE = /^\p{sc=Han}$/u;
 
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi;
 
@@ -113,11 +132,14 @@ function decodeEntities(text) {
  *   Subject tokens are weighted ~x1.5 by duplication (subject is the most
  *   discriminative field; the design doc's "x1.5 via duplicazione" is
  *   implemented as subject appearing twice in the token stream).
+ * @param {string} language — BCP 47 tag of the message's model partition; its
+ *   primary subtag picks the word segmentation and the stop words.
  * @returns {string[]} tokens (lowercase, stop-word-free, length-capped).
  *   Input is capped at MAX_BODY_CHARS per field (before HTML parsing) and the
  *   output at MAX_TOKENS tokens — see the constants above.
  */
-export function tokenize(message) {
+export function tokenize(message, language) {
+  const primary = primaryLanguage(language);
   const subject = cleanText(capChars(message?.subject));
   const rawBody = message?.body || message?.bodyHtml || '';
   const body = rawBody ? cleanText(capChars(rawBody)) : '';
@@ -125,43 +147,75 @@ export function tokenize(message) {
   const tokens = [];
   // Subject weighted x2 (equivalent to the x1.5 duplication in the design;
   // discrete tokens cannot encode 1.5x, so subject appears twice).
-  pushTokenRuns(tokens, `${subject} ${subject}`);
-  pushTokenRuns(tokens, body);
+  pushWords(tokens, `${subject} ${subject}`, primary);
+  pushWords(tokens, body, primary);
 
   // URL-host tokens: the host of any URL in the body is a token itself
   // (e.g. bit.ly, tinyurl.com), independent of the words around it.
   for (const url of body.match(URL_RE) || []) {
     const host = extractUrlHost(url);
-    if (host) tokens.push(normalizeToken(host));
+    if (host) tokens.push(normalizeToken(host, primary));
   }
 
   return tokens.filter(Boolean).slice(0, MAX_TOKENS);
 }
 
-function pushTokenRuns(out, text) {
-  for (const raw of text.match(WORD_RE) || []) {
-    const token = normalizeToken(raw);
+/** A token list as {token: count}, the shape spam_training_log.token_counts stores. */
+export function countTokens(tokens) {
+  const counts = {};
+  for (const token of tokens) counts[token] = (counts[token] || 0) + 1;
+  return counts;
+}
+
+function primaryLanguage(language) {
+  if (typeof language !== 'string' || language === '') {
+    throw new TypeError(`tokenize needs a language tag, got ${language}`);
+  }
+  return language.split('-')[0].toLowerCase();
+}
+
+const NO_STOP_WORDS = new Set();
+
+function stopWordsFor(primary) {
+  if (primary === 'und') return STOP_WORDS_DEFAULT;
+  return STOP_WORDS_BY_LANGUAGE.get(primary) ?? NO_STOP_WORDS;
+}
+
+function segmenterFor(primary) {
+  let segmenter = segmenters.get(primary);
+  if (!segmenter) {
+    segmenter = new Intl.Segmenter(primary, { granularity: 'word' });
+    segmenters.set(primary, segmenter);
+  }
+  return segmenter;
+}
+
+function words(text, primary) {
+  if (!SEGMENTED_LANGUAGES.has(primary)) return text.match(WORD_RE) || [];
+  const out = [];
+  for (const { segment, isWordLike } of segmenterFor(primary).segment(text)) {
+    if (isWordLike) out.push(segment);
+  }
+  return out;
+}
+
+function pushWords(out, text, primary) {
+  for (const raw of words(text, primary)) {
+    const token = normalizeToken(raw, primary);
     if (token) out.push(token);
   }
 }
 
-// Lowercase; segment CJK runs per character; enforce length bounds;
-// drop stop-words, pure-numeric tokens, and single chars.
-export function normalizeToken(raw) {
-  let token = raw.toLowerCase();
-  if (CJK_RE.test(token)) {
-    // Split a CJK run into individual ideographs ("你好" -> ["你", "好"]).
-    const chars = [...token].filter(ch => !/[a-z0-9_]/i.test(ch));
-    if (chars.length === 0) return null;
-    token = chars[0];
-  }
+// Lowercase; enforce length bounds (a single Han ideograph is a word);
+// drop the language's stop-words and pure-numeric tokens.
+export function normalizeToken(raw, language) {
+  const token = raw.toLowerCase();
   if (token.length < MIN_TOKEN_LENGTH || token.length > MAX_TOKEN_LENGTH) {
-    // A single CJK ideograph is a valid token: one character = one word in
-    // Chinese, unlike space-delimited scripts.
-    if (!(token.length === 1 && CJK_RE.test(token))) return null;
+    if (!SINGLE_HAN_RE.test(token)) return null;
   }
   if (/^[\p{N}]+$/u.test(token)) return null; // pure numeric
-  if (ALL_STOP_WORDS.has(token)) return null;
+  const primary = primaryLanguage(language);
+  if (stopWordsFor(primary).has(token)) return null;
   return token;
 }
 
@@ -263,10 +317,11 @@ function attachmentExtension(attachment) {
  * re-classification calls (design §11.5).
  *
  * @param {Object} message — same shape as tokenize() + extractFlagFeatures()
+ * @param {string} language — as for tokenize()
  * @returns {string} hex sha-256
  */
-export function tokenFingerprint(message) {
-  const tokens = tokenize(message);
+export function tokenFingerprint(message, language) {
+  const tokens = tokenize(message, language);
   const flags = extractFlagFeatures(message);
   const canonical = JSON.stringify({ t: [...tokens].sort(), f: flags });
   return createHash('sha256').update(canonical).digest('hex');

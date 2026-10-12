@@ -6,7 +6,8 @@
 //
 // Layers (design §2 / §9):
 //   3. messages.spam_user_override — ALWAYS wins, skip if set (user intent)
-//   2. per-user MNB model — active when training_records >= 50
+//   2. the user's model of the message's language partition — active when that
+//      partition has training_records >= 50 (mouriya-s-lab/mailflow#15)
 //   1. 15-rule engine — always on, sole classifier below 50 records
 //
 // The move is delegated to the caller via an injected `imap` facade so this
@@ -35,7 +36,7 @@ import { getMessageHeaders } from '../../fork-features/headers/index.js';
 import { tokenize, extractFlagFeatures } from './spamTokenizer.js';
 import { scoreRules } from './spamRules.js';
 import { extractAuthservIds, normalizeAuthservId } from './spamParser.js';
-import { getModelForUser } from './spamModelStore.js';
+import { getModelForUser, partitionLanguage } from './spamModelStore.js';
 import {
   classifyMessage,
   blendScores,
@@ -105,7 +106,13 @@ export async function classifyAndTagMessage(messageId, opts = {}) {
   const trustedAuthservId = normalizeAuthservId(row.trusted_authserv_id);
   const observedAuthservIds = extractAuthservIds(msg.headers);
 
-  const tokens = tokenize(msg);
+  // The model partition comes from the subject and Content-Language only: the body is
+  // usually not fetched yet at ingest, and training uses the same two inputs.
+  const language = partitionLanguage({
+    subject: row.subject,
+    contentLanguage: Array.isArray(msg.headers) ? null : msg.headers['content-language'] ?? null,
+  });
+  const tokens = tokenize(msg, language);
   const flagFeatures = extractFlagFeatures(msg, { trustedAuthservIds: trustedAuthservId });
 
   // Layer 1: rules — always evaluated, sole scorer below 50 records.
@@ -114,8 +121,9 @@ export async function classifyAndTagMessage(messageId, opts = {}) {
     trustedAuthservIds: trustedAuthservId,
   });
 
-  // Layer 2: per-user MNB model when mature enough.
-  const model = await getModelForUser(row.owner_id);
+  // Layer 2: the user's model of this language partition when mature enough. Another
+  // partition is never borrowed.
+  const model = await getModelForUser(row.owner_id, language);
   const trainingRecords = model?.trainingRecords ?? 0;
   const mlActive = trainingRecords >= MIN_TRAINING_RECORDS;
 
@@ -158,6 +166,8 @@ export async function classifyAndTagMessage(messageId, opts = {}) {
 
   const details = {
     method,
+    // The model partition the verdict used, for the "Why?" modal.
+    partition: { language, trainingRecords },
     blendedScore: round(blended),
     rulesScore: round(rules.score),
     rulesFired: rules.fired.map(r => ({ name: r.name, weight: r.weight })),

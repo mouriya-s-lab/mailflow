@@ -1,48 +1,30 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./db.js', () => ({ query: vi.fn() }));
-vi.mock('./spamTokenizer.js', () => ({
-  tokenize: vi.fn(),
-  extractFlagFeatures: vi.fn(),
+vi.mock('./db.js', () => ({
+  query: vi.fn(),
+  withTransaction: vi.fn(fn => fn({ query })),
 }));
-// Partial mock: keep the real store logic, spy the write/invalidate primitives.
-// saveModel/invalidateModelCache pass through to the real implementation so
-// the existing query-assertion tests still see the INSERT upsert.
-// NOTE: retrainUser internally calls saveModel/invalidateModelCache (module
-// bindings, not exports) — the partial mock above spies only the exported
-// references, so these retrainUser tests assert on the observable query layer.
-vi.mock('./spamModelStore.js', async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    saveModel: vi.fn((userId, model) => actual.saveModel(userId, model)),
-    invalidateModelCache: vi.fn((userId) => actual.invalidateModelCache(userId)),
-  };
-});
 
-import { query } from './db.js';
-import { tokenize, extractFlagFeatures } from './spamTokenizer.js';
+import { query, withTransaction } from './db.js';
+import { countTokens, tokenize, TOKENIZER_VERSION } from './spamTokenizer.js';
+import { createEmptyModel } from './spamModel.js';
 import {
+  getModelsForUser,
   getModelForUser,
   saveModel,
   updateIncrementalForUser,
   invalidateModelCache,
+  getDecayThresholdDays,
+  setDecayThresholdDays,
   getAllUsersWithTraining,
   getAllUsersWithTrainingLog,
   retrainUser,
 } from './spamModelStore.js';
 
-beforeEach(() => {
-  query.mockReset();
-  tokenize.mockReset();
-  extractFlagFeatures.mockReset();
-  saveModel.mockClear();
-  invalidateModelCache.mockClear();
-  invalidateModelCache('test-user');
-  query.mockResolvedValue({ rows: [] });
-});
-
+const USER_ID = 'test-user';
+const NOW = new Date('2026-08-18T00:00:00Z');
 const row = (overrides = {}) => ({
+  language: 'en',
   vocabulary: { viagra: { spam: 5, ham: 0 }, meeting: { spam: 0, ham: 3 } },
   total_spam: 5,
   total_ham: 3,
@@ -50,135 +32,148 @@ const row = (overrides = {}) => ({
   prior_ham: 3 / 8,
   training_records: 8,
   model_version: 1,
-  last_trained_at: '2026-08-18T00:00:00.000Z',
-  decay_threshold_days: 90,
+  last_trained_at: NOW.toISOString(),
   ...overrides,
 });
 
-describe('getModelForUser', () => {
-  it('returns null when no model row exists (cold start)', async () => {
-    query.mockResolvedValueOnce({ rows: [] });
-    await expect(getModelForUser('user-cold')).resolves.toBeNull();
-    expect(query).toHaveBeenCalledWith('SELECT * FROM spam_models WHERE user_id = $1', ['user-cold']);
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
+  query.mockReset();
+  withTransaction.mockClear();
+  invalidateModelCache(USER_ID);
+  invalidateModelCache('other-user');
+  query.mockResolvedValue({ rows: [] });
+});
+
+afterEach(() => vi.useRealTimers());
+
+describe('partition lookup and per-user cache', () => {
+  it('returns an empty map and null partition for a cold-start user', async () => {
+    await expect(getModelsForUser(USER_ID)).resolves.toEqual(new Map());
+    await expect(getModelForUser(USER_ID, 'en')).resolves.toBeNull();
+    expect(query).toHaveBeenCalledTimes(1);
   });
 
-  it('maps a DB row to the model shape', async () => {
+  it('maps all language partitions and looks up only the requested one', async () => {
+    query.mockResolvedValueOnce({ rows: [row(), row({ language: 'fr', training_records: 30 })] });
+    const partitions = await getModelsForUser(USER_ID);
+    expect([...partitions.keys()]).toEqual(['en', 'fr']);
+    expect(partitions.get('en')).toMatchObject({
+      vocabulary: row().vocabulary, totalSpam: 5, totalHam: 3,
+      trainingRecords: 8, lastTrainedAt: NOW.toISOString(),
+    });
+    await expect(getModelForUser(USER_ID, 'fr')).resolves.toBe(partitions.get('fr'));
+    await expect(getModelForUser(USER_ID, 'ja')).resolves.toBeNull();
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares a cache across one user\'s partitions but never across users', async () => {
+    query.mockResolvedValueOnce({ rows: [row(), row({ language: 'fr' })] });
+    query.mockResolvedValueOnce({ rows: [row({ total_spam: 0, total_ham: 50 })] });
+    expect((await getModelForUser(USER_ID, 'en')).totalSpam).toBe(5);
+    await getModelForUser(USER_ID, 'fr');
+    expect((await getModelForUser('other-user', 'en')).totalSpam).toBe(0);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls.map(([, params]) => params)).toEqual([[USER_ID], ['other-user']]);
+  });
+
+  it('refreshes all partitions after the five-minute cache lifetime', async () => {
     query.mockResolvedValueOnce({ rows: [row()] });
-    const model = await getModelForUser('user-map');
-    expect(model.vocabulary.viagra).toEqual({ spam: 5, ham: 0 });
-    expect(model.vocabulary.meeting).toEqual({ spam: 0, ham: 3 });
-    expect(model.totalSpam).toBe(5);
-    expect(model.trainingRecords).toBe(8);
-    expect(model.decayThresholdDays).toBe(90);
-  });
-
-  it('caches: second call for the same user does not hit the DB', async () => {
-    query.mockResolvedValue({ rows: [row()] });
-    await getModelForUser('user-cached');
-    await getModelForUser('user-cached');
-    expect(query).toHaveBeenCalledTimes(1); // DB once, cache hit on 2nd
+    await getModelsForUser(USER_ID);
+    vi.advanceTimersByTime(5 * 60 * 1000);
+    query.mockResolvedValueOnce({ rows: [row({ language: 'ja' })] });
+    expect([...(await getModelsForUser(USER_ID)).keys()]).toEqual(['ja']);
+    expect(query).toHaveBeenCalledTimes(2);
   });
 });
 
-describe('saveModel', () => {
-  it('UPSERTs the model and invalidates the cache', async () => {
-    query.mockResolvedValue({ rows: [] });
-    // Warm the cache first.
+describe('saveModel and incremental training', () => {
+  it('persists the requested partition and invalidates the whole user cache', async () => {
     query.mockResolvedValueOnce({ rows: [row()] });
-    await getModelForUser('user-1');
+    await getModelsForUser(USER_ID);
+    const model = createEmptyModel();
+    await saveModel(USER_ID, 'fr', model);
+    expect(query.mock.calls[1][1]).toEqual([
+      USER_ID, 'fr', JSON.stringify(model.vocabulary), model.totalSpam, model.totalHam,
+      model.priorSpam, model.priorHam, model.trainingRecords, model.modelVersion,
+      expect.any(String),
+    ]);
+    query.mockResolvedValueOnce({ rows: [row({ language: 'fr' })] });
+    expect([...(await getModelsForUser(USER_ID)).keys()]).toEqual(['fr']);
+    expect(query).toHaveBeenCalledTimes(3);
+  });
 
-    const model = row();
-    await saveModel('user-1', model);
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('ON CONFLICT (user_id) DO UPDATE'),
-      expect.arrayContaining(['user-1', expect.any(String)]),
-    );
-    // Cache was invalidated → next read hits the DB again.
-    query.mockResolvedValue({ rows: [row()] });
-    await getModelForUser('user-1');
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('SELECT * FROM spam_models'), ['user-1']);
+  it('trains and saves one cold-start language partition from supplied tokens', async () => {
+    const model = await updateIncrementalForUser(USER_ID, 'en', ['viagra', 'click'], { has_attachment: 1 }, 'spam');
+    expect(model.trainingRecords).toBe(1);
+    expect(model.vocabulary.viagra).toEqual({ spam: 1, ham: 0 });
+    expect(model.vocabulary.__has_attachment__).toEqual({ spam: 1, ham: 0 });
+    expect(query.mock.calls[1][1].slice(0, 3)).toEqual([USER_ID, 'en', JSON.stringify(model.vocabulary)]);
+  });
+
+  it('does no reads or writes for invalid labels', async () => {
+    await expect(updateIncrementalForUser(USER_ID, 'en', ['viagra'], {}, 'neither')).resolves.toBeNull();
+    expect(query).not.toHaveBeenCalled();
   });
 });
 
-describe('updateIncrementalForUser', () => {
-  it('trains a cold-start user and persists the model', async () => {
-    tokenize.mockReturnValue(['viagra', 'click']);
-    extractFlagFeatures.mockReturnValue({ dkim_pass: 0, has_attachment: 1 });
-    query.mockResolvedValue({ rows: [] }); // no existing model
-
-    await updateIncrementalForUser('user-1', { subject: 'x' }, 'spam');
-    expect(tokenize).toHaveBeenCalledWith({ subject: 'x' });
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO spam_models'),
-      expect.arrayContaining(['user-1', expect.stringContaining('viagra')]),
-    );
+describe('decay preferences', () => {
+  it('uses 90 days when the preference is absent and reads the stored integer', async () => {
+    await expect(getDecayThresholdDays(USER_ID)).resolves.toBe(90);
+    query.mockResolvedValueOnce({ rows: [{ days: 30 }] });
+    await expect(getDecayThresholdDays(USER_ID)).resolves.toBe(30);
   });
 
-  it('is a no-op for invalid labels', async () => {
-    tokenize.mockReturnValue(['x']);
-    extractFlagFeatures.mockReturnValue({});
-    query.mockResolvedValue({ rows: [] });
-    await updateIncrementalForUser('user-1', { subject: 'x' }, 'neither');
-    // No INSERT should have been issued.
-    const inserts = query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO spam_models'));
-    expect(inserts).toHaveLength(0);
+  it('writes the per-user preference', async () => {
+    await setDecayThresholdDays(USER_ID, 30);
+    expect(query.mock.calls[0][1]).toEqual([USER_ID, 30]);
   });
 });
 
 describe('retrainUser', () => {
-  it('returns no_training_data when the log has no rows', async () => {
-    query.mockResolvedValueOnce({ rows: [] }); // training log empty
-    const result = await retrainUser('user-retrain-empty');
-    expect(result).toMatchObject({ ok: false, recordsUsed: 0, reason: 'no_training_data' });
-    // No model SELECT, no UPSERT attempted.
-    const upserts = query.mock.calls.filter(([sql]) => sql.includes('ON CONFLICT (user_id) DO UPDATE'));
-    expect(upserts).toHaveLength(0);
+  it('returns no_training_data without replacing any partitions when no records exist', async () => {
+    await expect(retrainUser(USER_ID)).resolves.toMatchObject({ ok: false, recordsUsed: 0, reason: 'no_training_data' });
+    expect(withTransaction).not.toHaveBeenCalled();
   });
 
-  it('rebuilds the model from training rows and upserts it', async () => {
-    const now = new Date().toISOString();
-    // 1. training-log SELECT. created_at is the test-run "now"; the retrain
-    // applies a tiny decay factor (2^-age/90d), so count assertions must be
-    // tolerant of sub-1e-9 weight drift.
-    query.mockResolvedValueOnce({
-      rows: [
-        { label: 'spam', created_at: now, token_counts: { viagra: 2, click: 1 }, flag_features: { has_attachment: 1 }, subject: null, body_text: null },
-        { label: 'ham', created_at: now, token_counts: { meeting: 1 }, flag_features: {}, subject: null, body_text: null },
-      ],
-    });
-    // 2. getModelForUser → no existing model (cold start)
-    query.mockResolvedValueOnce({ rows: [] });
-
-    const result = await retrainUser('user-retrain');
-    expect(result.ok).toBe(true);
-    expect(result.recordsUsed).toBe(2);
-
-    // The upsert carries the rebuilt vocabulary + derived priors + decay default.
-    const upsert = query.mock.calls.find(([sql]) => sql.includes('ON CONFLICT (user_id) DO UPDATE'));
-    expect(upsert).toBeDefined();
-    const params = upsert[1];
-    expect(params[0]).toBe('user-retrain');
-    const vocab = JSON.parse(params[1]);
-    expect(vocab.viagra.spam).toBeCloseTo(2, 5);
-    expect(vocab.viagra.ham).toBe(0);
-    expect(vocab.meeting.ham).toBeCloseTo(1, 5);
-    expect(vocab.meeting.spam).toBe(0);
-    expect(vocab.__has_attachment__.spam).toBeCloseTo(1, 5);
-    // decayThresholdDays = default 90 (no existing model)
-    expect(params[7]).toBe(90);
+  it('groups records by language and applies the user preference decay to each partition', async () => {
+    const old = new Date(NOW.getTime() - 30 * 24 * 60 * 60 * 1000);
+    query.mockResolvedValueOnce({ rows: [] }); // no stale records
+    query.mockResolvedValueOnce({ rows: [
+      { language: 'en', label: 'spam', created_at: old, token_counts: { viagra: 2 }, flag_features: { has_attachment: 1 } },
+      { language: 'fr', label: 'ham', created_at: old, token_counts: { reunion: 2 }, flag_features: {} },
+      { language: 'en', label: 'ham', created_at: NOW, token_counts: { meeting: 1 }, flag_features: {} },
+    ] });
+    query.mockResolvedValueOnce({ rows: [{ days: 30 }] });
+    await expect(retrainUser(USER_ID)).resolves.toMatchObject({ ok: true, recordsUsed: 3 });
+    expect(withTransaction).toHaveBeenCalledTimes(1);
+    const replacement = query.mock.calls[3][1];
+    expect(replacement).toEqual([USER_ID, ['en', 'fr']]);
+    const [, en] = query.mock.calls[4];
+    const [, fr] = query.mock.calls[5];
+    expect(en.slice(0, 2)).toEqual([USER_ID, 'en']);
+    expect(fr.slice(0, 2)).toEqual([USER_ID, 'fr']);
+    expect(JSON.parse(en[2])).toEqual({ viagra: { spam: 1, ham: 0 }, meeting: { spam: 0, ham: 1 }, __has_attachment__: { spam: 0.5, ham: 0 } });
+    expect(JSON.parse(fr[2])).toEqual({ reunion: { spam: 0, ham: 1 } });
+    expect(en[7]).toBe(2);
+    expect(fr[7]).toBe(1);
   });
 
-  it('honours the decay threshold stored on an existing model', async () => {
-    const now = new Date().toISOString();
-    query.mockResolvedValueOnce({
-      rows: [{ label: 'spam', created_at: now, token_counts: { viagra: 1 }, flag_features: {}, subject: null, body_text: null }],
-    });
-    // existing model row with decay_threshold_days = 30
-    query.mockResolvedValueOnce({ rows: [row({ decay_threshold_days: 30 })] });
-
-    await retrainUser('user-retrain-decay');
-    const upsert = query.mock.calls.find(([sql]) => sql.includes('ON CONFLICT (user_id) DO UPDATE'));
-    expect(upsert[1][7]).toBe(30); // decay carried through
+  it('re-tokenizes a stale record in its language before rebuilding the partition', async () => {
+    const stale = { id: 'record-1', language: 'zh', subject: '网上药店特价销售', body_text: '', body_html: '' };
+    const counts = countTokens(tokenize({ subject: stale.subject, body: '', bodyHtml: '' }, 'zh'));
+    query.mockResolvedValueOnce({ rows: [stale] });
+    query.mockResolvedValueOnce({ rows: [] }); // re-tokenized update
+    query.mockResolvedValueOnce({ rows: [] }); // next stale batch empty
+    query.mockResolvedValueOnce({ rows: [{ language: 'zh', label: 'spam', created_at: NOW, token_counts: counts, flag_features: {} }] });
+    query.mockResolvedValueOnce({ rows: [] }); // default decay
+    await expect(retrainUser(USER_ID)).resolves.toMatchObject({ ok: true, recordsUsed: 1 });
+    expect(query.mock.calls[1][1]).toEqual([TOKENIZER_VERSION, [stale.id], ['zh'], [JSON.stringify(counts)]]);
+    expect(counts).toHaveProperty('药店');
+    const params = query.mock.calls[6][1];
+    expect(params.slice(0, 2)).toEqual([USER_ID, 'zh']);
+    expect(JSON.parse(params[2]).药店.spam).toBe(counts.药店);
   });
 });
 

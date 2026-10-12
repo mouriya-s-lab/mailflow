@@ -11,10 +11,15 @@
 
 import { query } from './db.js';
 import { logger } from './logger.js';
-import { tokenize, extractFlagFeatures } from './spamTokenizer.js';
-import { updateIncrementalForUser, retrainUser } from './spamModelStore.js';
+import { getMessageHeaders } from '../../fork-features/headers/index.js';
+import { tokenize, countTokens, extractFlagFeatures, TOKENIZER_VERSION } from './spamTokenizer.js';
+import { updateIncrementalForUser, retrainUser, partitionLanguage } from './spamModelStore.js';
 
 const LABELS = new Set(['spam', 'ham']);
+
+// How long a mark waits for the retained headers of a message (fetched from IMAP when the
+// message predates header retention). Only Content-Language is read from them.
+const HEADER_DEADLINE_MS = 10_000;
 
 function assertLabel(label) {
   if (!LABELS.has(label)) throw new TypeError(`spam training label must be 'spam' or 'ham', got ${label}`);
@@ -31,16 +36,18 @@ async function loadMessage(messageId) {
   return rows[0] ?? null;
 }
 
-// count token occurrences into {word: n}
-function countTokens(tokens) {
-  const counts = {};
-  for (const t of tokens) counts[t] = (counts[t] || 0) + 1;
-  return counts;
+// The message's model partition, from its subject and retained Content-Language header —
+// the inputs classification has at ingest. Headers that cannot be read (the header store
+// has logged why) leave the language undeclared.
+async function messageLanguage(message) {
+  const headers = (await getMessageHeaders([message.id], { deadlineMs: HEADER_DEADLINE_MS })).get(message.id);
+  const contentLanguage = headers?.kind === 'stored' ? headers.headers['content-language'] ?? null : null;
+  return partitionLanguage({ subject: message.subject, contentLanguage });
 }
 
-// The v0.2 feature payload for a messages row. Shape matches spam_training_log (migration
-// 0052) + spamModelStore inputs.
-function extractSpamFeatures(message) {
+// The feature payload for a messages row. Shape matches spam_training_log (migrations 0052,
+// 9004) + spamModelStore inputs.
+function extractSpamFeatures(message, language) {
   const attachments = Array.isArray(message.attachments) ? message.attachments : [];
   const attachmentNames = attachments
     .map(a => a?.filename || a?.name)
@@ -57,12 +64,15 @@ function extractSpamFeatures(message) {
     headers: [],
     attachments,
   };
+  const tokens = tokenize(msg, language);
 
   return {
     subject: msg.subject,
     body_text: message.body_text || null,
     body_html: message.body_html || null,
-    token_counts: countTokens(tokenize(msg)),
+    language,
+    tokens,
+    token_counts: countTokens(tokens),
     flag_features: extractFlagFeatures(msg),
     sender_domain: message.from_email ? message.from_email.split('@').pop()?.toLowerCase() || null : null,
     attachment_types: attachmentNames.length ? attachmentNames : null,
@@ -75,6 +85,7 @@ function recordParams(userId, message, placement, label, features) {
     features.subject, features.body_text, features.body_html,
     JSON.stringify(features.token_counts), JSON.stringify(features.flag_features),
     features.sender_domain, features.attachment_types ?? null,
+    features.language, TOKENIZER_VERSION,
   ];
 }
 
@@ -82,7 +93,8 @@ function recordParams(userId, message, placement, label, features) {
  * Capture a user's spam/ham mark of a message, before the message is moved. The features
  * are taken from the row as it is now; `record({ uid, folder })`, called once the message
  * sits in its destination folder, writes the training record with that placement and feeds
- * the per-user model incrementally. A row deleted during the move still gets its record.
+ * the model of the message's language partition incrementally. A row deleted during the move
+ * still gets its record.
  *
  * @returns {Promise<{ kind: 'captured', record: (placement: { uid: number, folder: string }) => Promise<void> }
  *                   | { kind: 'message_missing' }>}
@@ -91,27 +103,22 @@ export async function captureManualSpamLabel({ userId, messageId, label }) {
   assertLabel(label);
   const message = await loadMessage(messageId);
   if (!message || message.owner_id !== userId) return { kind: 'message_missing' };
-  const features = extractSpamFeatures(message);
+  const features = extractSpamFeatures(message, await messageLanguage(message));
 
   const record = async placement => {
     await query(
       `INSERT INTO spam_training_log
          (user_id, account_id, message_id_header, message_uid, folder, label, source,
-          subject, body_text, body_html, token_counts, flag_features, sender_domain, attachment_types)
-       VALUES ($1, $2, $3, $4, $5, $6, 'manual', $7, $8, $9, $10, $11, $12, $13)
+          subject, body_text, body_html, token_counts, flag_features, sender_domain, attachment_types,
+          language, tokenizer_version)
+       VALUES ($1, $2, $3, $4, $5, $6, 'manual', $7, $8, $9, $10, $11, $12, $13, $14, $15)
        ON CONFLICT DO NOTHING`,
       recordParams(userId, message, placement, label, features),
     );
-    // Incremental training: update the user's Naive Bayes model in <1s.
+    // Incremental training: update the partition's Naive Bayes model in <1s.
     // Non-blocking on failure — user feedback must never break the HTTP path.
     try {
-      await updateIncrementalForUser(userId, {
-        subject: features.subject,
-        body: features.body_text || '',
-        bodyHtml: features.body_html || '',
-        from: message.from_email ? `<${message.from_email}>` : null,
-        attachments: Array.isArray(message.attachments) ? message.attachments : [],
-      }, label);
+      await updateIncrementalForUser(userId, features.language, features.tokens, features.flag_features, label);
     } catch (err) {
       console.warn(`spam incremental training failed for user ${userId}:`, err.message);
     }
@@ -133,13 +140,14 @@ export async function recordJevSpamVerdict({ messageId, label }) {
   const message = await loadMessage(messageId);
   if (!message) return { kind: 'message_missing' };
   if (!message.message_id) return { kind: 'no_message_id' };
-  const features = extractSpamFeatures(message);
+  const features = extractSpamFeatures(message, await messageLanguage(message));
 
   const { rows } = await query(
     `INSERT INTO spam_training_log
        (user_id, account_id, message_id_header, message_uid, folder, label, source,
-        subject, body_text, body_html, token_counts, flag_features, sender_domain, attachment_types)
-     VALUES ($1, $2, $3, $4, $5, $6, 'jev', $7, $8, $9, $10, $11, $12, $13)
+        subject, body_text, body_html, token_counts, flag_features, sender_domain, attachment_types,
+        language, tokenizer_version)
+     VALUES ($1, $2, $3, $4, $5, $6, 'jev', $7, $8, $9, $10, $11, $12, $13, $14, $15)
      ON CONFLICT (user_id, account_id, message_id_header)
        WHERE source = 'jev' AND message_id_header IS NOT NULL
        DO NOTHING

@@ -1,17 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./db.js', () => ({ query: vi.fn() }));
+vi.mock('./db.js', () => ({ query: vi.fn(), withTransaction: vi.fn(fn => fn({ query })) }));
 vi.mock('./logger.js', () => ({ logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } }));
 // The real retrain over the mocked query layer; only incremental training is a spy.
 vi.mock('./spamModelStore.js', async (importOriginal) => ({
   ...(await importOriginal()),
   updateIncrementalForUser: vi.fn(),
 }));
+vi.mock('../../fork-features/headers/index.js', () => ({ getMessageHeaders: vi.fn() }));
 
 import { query } from './db.js';
 import { logger } from './logger.js';
 import { updateIncrementalForUser } from './spamModelStore.js';
 import { captureManualSpamLabel, recordJevSpamVerdict, requestSpamRetrain } from './spamTraining.js';
+import { getMessageHeaders } from '../../fork-features/headers/index.js';
+import { TOKENIZER_VERSION } from './spamTokenizer.js';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const ACCOUNT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -38,6 +41,9 @@ const inserts = () => query.mock.calls.filter(([sql]) => sql.includes('INSERT IN
 
 beforeEach(() => {
   query.mockReset();
+  query.mockResolvedValue({ rows: [] });
+  getMessageHeaders.mockReset();
+  getMessageHeaders.mockResolvedValue(new Map([[MESSAGE_ID, { kind: 'stored', headers: { 'content-language': 'en' } }]]));
   logger.warn.mockReset();
   updateIncrementalForUser.mockReset();
 });
@@ -65,6 +71,9 @@ describe('recordJevSpamVerdict', () => {
     expect(JSON.parse(flagFeatures)).toMatchObject({ has_attachment: 1, attachment_is_executable: 1 });
     expect(senderDomain).toBe('example.com');
     expect(attachmentTypes).toEqual(['exe']);
+    expect(params).toHaveLength(15);
+    expect(params.slice(13)).toEqual(['en', TOKENIZER_VERSION]);
+    expect(getMessageHeaders).toHaveBeenCalledWith([MESSAGE_ID], { deadlineMs: 10_000 });
     expect(updateIncrementalForUser).not.toHaveBeenCalled();
   });
 
@@ -107,7 +116,9 @@ describe('captureManualSpamLabel', () => {
     expect(params.slice(0, 6)).toEqual([USER_ID, ACCOUNT_ID, '<abc123@mailflow-test.invalid>', 300, 'INBOX', 'ham']);
     expect(updateIncrementalForUser).toHaveBeenCalledWith(
       USER_ID,
-      expect.objectContaining({ subject: 'Cheap pills', from: '<seller@Example.COM>' }),
+      'en',
+      expect.arrayContaining(['cheap', 'pills']),
+      expect.objectContaining({ has_attachment: 1, attachment_is_executable: 1 }),
       'ham',
     );
   });
@@ -123,8 +134,8 @@ describe('requestSpamRetrain', () => {
   const now = () => new Date().toISOString();
   const trainingRows = () => ({
     rows: [
-      { label: 'spam', created_at: now(), token_counts: { pills: 2 }, flag_features: {}, subject: null, body_text: null },
-      { label: 'ham', created_at: now(), token_counts: { meeting: 1 }, flag_features: {}, subject: null, body_text: null },
+      { language: 'en', label: 'spam', created_at: now(), token_counts: { pills: 2 }, flag_features: {} },
+      { language: 'en', label: 'ham', created_at: now(), token_counts: { meeting: 1 }, flag_features: {} },
     ],
   });
 
@@ -137,7 +148,7 @@ describe('requestSpamRetrain', () => {
     let release;
     const trainingLog = new Promise(resolve => { release = resolve; });
     query.mockImplementation(sql => {
-      if (sql.includes('FROM spam_training_log')) return trainingLog;
+      if (sql.includes('SELECT t.language')) return trainingLog;
       return Promise.resolve({ rows: [] });
     });
 
@@ -150,10 +161,10 @@ describe('requestSpamRetrain', () => {
     release(trainingRows());
     await expect(first).resolves.toEqual({ kind: 'retrained', records: 2 });
     await expect(other).resolves.toEqual({ kind: 'retrained', records: 2 });
-    expect(query.mock.calls.filter(([sql]) => sql.includes('FROM spam_training_log'))).toHaveLength(2);
+    expect(query.mock.calls.filter(([sql]) => sql.includes('SELECT t.language'))).toHaveLength(2);
 
     // Once settled, the user can retrain again.
-    query.mockImplementation(sql => Promise.resolve(sql.includes('FROM spam_training_log') ? trainingRows() : { rows: [] }));
+    query.mockImplementation(sql => Promise.resolve(sql.includes('SELECT t.language') ? trainingRows() : { rows: [] }));
     await expect(requestSpamRetrain('user-a')).resolves.toEqual({ kind: 'retrained', records: 2 });
   });
 

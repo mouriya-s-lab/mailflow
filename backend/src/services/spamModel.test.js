@@ -10,6 +10,8 @@ import {
   retrainFromRecords,
   AUTH_WEIGHTS,
 } from './spamModel.js';
+import { countTokens, tokenize } from './spamTokenizer.js';
+import { DEFAULT_DECAY_DAYS } from './spamModelStore.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -296,12 +298,39 @@ describe('retrainFromRecords', () => {
     expect(model.vocabulary.viagra.spam).toBeCloseTo(0.5);
   });
 
-  it('falls back to raw text when token_counts is absent (v0.1 rows)', () => {
+  it('uses token_counts without falling back to raw text', () => {
     const model = retrainFromRecords([
-      { label: 'spam', created_at: NOW, subject: '', body_text: 'click buy now' },
+      { label: 'spam', created_at: NOW, token_counts: {}, flag_features: {}, subject: 'click', body_text: 'buy now' },
     ], 90, NOW);
-    expect(model.vocabulary.click).toEqual({ spam: 1, ham: 0 });
-    expect(model.vocabulary.buy).toEqual({ spam: 1, ham: 0 });
+    expect(model.vocabulary).toEqual({});
+  });
+
+  it('keeps opposite feedback from two users independent for the same English message', () => {
+    const message = { subject: 'Special offer', body: 'Exclusive discount coupon available today' };
+    const tokens = tokenize(message, 'en');
+    const recordsFor = label => Array.from({ length: 50 }, () => ({
+      label, created_at: NOW, token_counts: countTokens(tokens), flag_features: {},
+    }));
+    const modelA = retrainFromRecords(recordsFor('spam'), 90, NOW);
+    const modelB = retrainFromRecords(recordsFor('ham'), 90, NOW);
+    expect(modelA.trainingRecords).toBe(50);
+    expect(modelB.trainingRecords).toBe(50);
+    const verdictA = classifyMessage(modelA, tokens, {});
+    const verdictB = classifyMessage(modelB, tokens, {});
+    expect(verdictA.verdict).toBe('spam');
+    expect(verdictA.probability).toBeGreaterThan(0.5);
+    expect(verdictB.verdict).toBe('ham');
+    expect(verdictB.probability).toBeLessThan(0.5);
+  });
+
+  it('retains the default 90-day half-life', () => {
+    expect(DEFAULT_DECAY_DAYS).toBe(90);
+    const old = new Date(NOW.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const model = retrainFromRecords([
+      { label: 'spam', created_at: old, token_counts: { older: 1 }, flag_features: {} },
+      { label: 'spam', created_at: NOW, token_counts: { fresh: 1 }, flag_features: {} },
+    ], undefined, NOW);
+    expect(model.vocabulary.older.spam / model.vocabulary.fresh.spam).toBeCloseTo(0.5);
   });
 
   it('includes flag features as special tokens', () => {

@@ -1,9 +1,10 @@
 // Multinomial Naive Bayes spam classifier — pure logic, no I/O (v0.2).
 //
-// The model is a per-user JSONB vocabulary {word: {spam, ham}} with running
-// counts (incremental training) plus cached totals and priors, persisted in
-// the spam_models table (migration 0053). This module implements the math;
-// DB access lives in spamModelStore.js (V2-4).
+// A model is one language partition of a user (mouriya-s-lab/mailflow#15): a JSONB
+// vocabulary {word: {spam, ham}} with running counts (incremental training) plus
+// cached totals and priors, persisted as one spam_models row per user and language
+// (migrations 0053, 9004). This module implements the math; DB access lives in
+// spamModelStore.js (V2-4).
 //
 // Scoring is done in LOG-PROBABILITY SPACE. The auth flags (DKIM/SPF/DMARC)
 // carry FIXED asymmetric weights from ADR-001 v2 — they are NOT learned
@@ -14,8 +15,6 @@
 // References:
 //   - .hermes/design/ADR-001-v0.2-ml-classifier-architecture.md (auth weights)
 //   - .hermes/design/spam-classifier-v0.2.md §6.2 (MNB formula, priors)
-
-import { tokenize } from './spamTokenizer.js';
 
 export const MODEL_VERSION = 1;
 
@@ -280,6 +279,19 @@ export function blendScores(mlScore, rulesScore, trainingRecords) {
   return 0.2 * rulesScore + 0.8 * mlScore;
 }
 
+/**
+ * How far a model's training has come, for status displays. Below 50 records the
+ * model is not used at all (blendScores is rules-only), so it is 'insufficient'.
+ *
+ * @param {number} trainingRecords
+ * @returns {'insufficient'|'fresh'|'mature'}
+ */
+export function maturityOf(trainingRecords) {
+  if (trainingRecords >= 500) return 'mature';
+  if (trainingRecords >= 50) return 'fresh';
+  return 'insufficient';
+}
+
 // ---------------------------------------------------------------------------
 // Full retrain (scheduled nightly job / admin "retrain now")
 // ---------------------------------------------------------------------------
@@ -288,15 +300,16 @@ export function blendScores(mlScore, rulesScore, trainingRecords) {
  * Rebuild a model from training-log records with exponential time decay.
  *
  * Records come straight from spam_training_log (NO JOIN with messages —
- * design §7.3 / migration 0048 stores all features at mark time). Each
- * record is weighted by 2^(-age_days / decay_threshold_days); counts
- * aggregate as weighted sums. Priors derive from the weighted totals.
+ * design §7.3 / migration 0048 stores all features at mark time), all of one
+ * language partition and tokenized with the current tokenizer (spamModelStore
+ * re-tokenizes older records before calling this). Each record is weighted by
+ * 2^(-age_days / decay_threshold_days); counts aggregate as weighted sums.
+ * Priors derive from the weighted totals.
  *
  * Pure: no I/O. Decay is DOWNWEIGHTING, never deletion (ADR v2).
  *
  * @param {Array<Object>} records
- *   [{ label: 'spam'|'ham', created_at: Date|string,
- *      token_counts?: Object|null, subject?: string|null, body_text?: string|null,
+ *   [{ label: 'spam'|'ham', created_at: Date|string, token_counts: Object,
  *      flag_features?: Object|null }]
  * @param {number} [decayThresholdDays=90]
  * @param {Date|number} [now=new Date()] — injectable for tests
@@ -312,15 +325,9 @@ export function retrainFromRecords(records, decayThresholdDays = 90, now = new D
     const ageMs = Math.max(0, nowMs - new Date(record.created_at).getTime());
     const weight = decayMs > 0 ? 2 ** (-ageMs / decayMs) : 1;
 
-    // Pre-tokenized counts win (migration 0048); fall back to raw text for
-    // v0.1-era rows that predate the token_counts column.
-    let tokens = [];
-    if (record.token_counts && typeof record.token_counts === 'object') {
-      for (const [word, count] of Object.entries(record.token_counts)) {
-        tokens.push(...Array(Math.max(1, Math.round(count))).fill(word));
-      }
-    } else {
-      tokens = tokenize({ subject: record.subject || '', body: record.body_text || '' });
+    const tokens = [];
+    for (const [word, count] of Object.entries(record.token_counts)) {
+      tokens.push(...Array(Math.max(1, Math.round(count))).fill(word));
     }
     tokens.push(...flagTokensFor(record.flag_features));
 

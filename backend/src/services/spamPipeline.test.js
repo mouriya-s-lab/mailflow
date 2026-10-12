@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('./db.js', () => ({ query: vi.fn() }));
-vi.mock('./spamModelStore.js', () => ({ getModelForUser: vi.fn() }));
+vi.mock('./spamModelStore.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  getModelForUser: vi.fn(),
+}));
 
 import { query } from './db.js';
 import { getModelForUser } from './spamModelStore.js';
@@ -12,6 +15,7 @@ import {
   MIN_TRAINING_RECORDS,
 } from './spamPipeline.js';
 import { createEmptyModel, updateIncremental } from './spamModel.js';
+import { tokenize } from './spamTokenizer.js';
 
 const ACCOUNT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const USER_ID = 'uuuuuuuu-uuuu-4uuu-8uuu-uuuuuuuuuuuu';
@@ -466,4 +470,47 @@ describe('classifyAndTagMessage — auto-move failure does not throw', () => {
       expect(warn).toHaveBeenCalled();
       warn.mockRestore();
     });
+});
+
+describe('classifyAndTagMessage — language partitions', () => {
+  it('uses different models for identical content with English vs French Content-Language', async () => {
+    const row = messageRow({
+      subject: 'CHEAP VIAGRA!!!',
+      body_text: 'Special coupon offer today',
+      attachments: [{ filename: 'invoice.exe' }],
+    });
+    const models = new Map();
+    for (const [language, label] of [['en', 'spam'], ['fr', 'ham']]) {
+      let model = createEmptyModel();
+      const tokens = tokenize({ subject: row.subject, body: row.body_text }, language);
+      for (let i = 0; i < 600; i += 1) model = updateIncremental(model, tokens, {}, label);
+      models.set(language, model);
+    }
+    getModelForUser.mockImplementation(async (_userId, language) => models.get(language) ?? null);
+    for (const [language, verdict] of [['en', 'spam'], ['fr', 'ham']]) {
+      query.mockResolvedValueOnce({ rows: [row] });
+      const result = await classifyAndTagMessage(MESSAGE_ID, { headers: { 'content-language': language } });
+      expect(getModelForUser).toHaveBeenLastCalledWith(USER_ID, language);
+      expect(result.method).toBe('blended');
+      expect(result.verdict).toBe(verdict);
+      if (verdict === 'spam') expect(result.mlProbability).toBeGreaterThan(0.5);
+      else expect(result.mlProbability).toBeLessThan(0.5);
+      const update = query.mock.calls.filter(([sql]) => sql.includes('UPDATE messages SET')).at(-1);
+      expect(JSON.parse(update[1][2]).partition).toEqual({ language, trainingRecords: 600 });
+    }
+  });
+
+  it('keeps an immature Japanese partition rules-only without borrowing a mature Chinese model', async () => {
+    getModelForUser.mockImplementation(async (_userId, language) => (
+      language === 'ja' ? trainedModel(30) : language === 'zh' ? trainedModel(500) : null
+    ));
+    query.mockResolvedValueOnce({ rows: [messageRow({ subject: '無料クーポンを今すぐ受け取る' })] });
+    const result = await classifyAndTagMessage(MESSAGE_ID, {});
+    expect(getModelForUser).toHaveBeenCalledWith(USER_ID, 'ja');
+    expect(getModelForUser.mock.calls.map(([, language]) => language)).toEqual(['ja']);
+    expect(result.method).toBe('rules');
+    expect(result.mlProbability).toBeNull();
+    const update = query.mock.calls.find(([sql]) => sql.includes('UPDATE messages SET'));
+    expect(JSON.parse(update[1][2]).partition).toEqual({ language: 'ja', trainingRecords: 30 });
+  });
 });

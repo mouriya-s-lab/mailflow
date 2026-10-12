@@ -74,6 +74,28 @@ export default function SpamExplainModal({ messageId, onClose }) {
             </div>
 
             <div>
+              <div style={sectionTitle}>{t('spam.explainPartitionTitle')}</div>
+              {data.partition ? (
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13 }}>
+                  <div>
+                    <span style={{ color: 'var(--text-secondary)' }}>{t('spam.statLanguage')}: </span>
+                    <strong>{data.partition.language}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-secondary)' }}>{t('spam.statRecords')}: </span>
+                    <strong>{data.partition.trainingRecords}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-secondary)' }}>{t('spam.statMaturity')}: </span>
+                    <strong>{t(`spam.maturity.${data.partition.maturity}`)}</strong>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>{t('spam.explainLegacyPartition')}</div>
+              )}
+            </div>
+
+            <div>
               <div style={sectionTitle}>{t('spam.rulesFiredTitle')}</div>
               {data.rulesFired?.length ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
