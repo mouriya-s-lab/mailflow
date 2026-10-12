@@ -76,8 +76,14 @@ async function generateForAccount(accountId, ids) {
     });
     if (!gist) return;
     // Store under GTD's annotation namespace on the message (cleaned with the message on delete).
-    const n = await setMessageAnnotation(accountId, row.id, 'gtd', { gist });
-    if (n > 0) wrote++;
+    // A message deleted or relocated while its gist was generated keeps none; its next sections
+    // fetch asks again.
+    const result = await setMessageAnnotation(accountId, row.id, 'gtd', { gist });
+    switch (result.kind) {
+      case 'written': wrote++; break;
+      case 'message_missing': break;
+      default: throw new Error(`unhandled annotation write result ${result.kind}`);
+    }
   });
   return wrote;
 }

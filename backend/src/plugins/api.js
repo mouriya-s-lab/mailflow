@@ -20,6 +20,7 @@ import * as labelsWrite from '../services/labels.js';
 import { archiveInboxCopy as _archiveInboxCopy } from '../services/archiveInbox.js';
 import { decide as decideJev, status as jevConfigStatus } from '../../fork-features/jev/index.js';
 import { loadJevConfig } from '../../fork-features/service-config/index.js';
+import { moveMessagesVerified as _moveMessagesVerified } from '../../fork-features/verified-move/index.js';
 
 // ── Labels (read) ─────────────────────────────────────────────────────────────
 // Thread-aware read over a set of label folders: heads grouped by label with thread-level
@@ -82,6 +83,14 @@ export {
 // moved). Fork-only; see backend/fork-features/README.md. Typed `kind` results.
 export { recordJevSpamVerdict, requestSpamRetrain } from '../services/spamTraining.js';
 export { ensureSpamVerdict } from '../services/spamPipeline.js';
+
+// ── Work queue and verified move ──────────────────────────────────────────────
+// A plugin's per-message annotations as a durable work queue (`revision` and `queue` in its
+// namespace), and a move that first proves on the server, in the same session, that each row is
+// still the message it names (fork-only, see fork-features/work-queue and verified-move). Label-
+// store accounts (Gmail) are not moved; plugins label them with applyLabel.
+export { markMessages, currentUidFloors, listQueuedMessages, countQueued } from '../../fork-features/work-queue/index.js';
+export const moveMessagesVerified = (args) => _moveMessagesVerified(getMailEngine(), args);
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-

@@ -63,7 +63,8 @@ Everything a plugin may do, grouped:
 - **Anti-spam (fork-only):** `recordJevSpamVerdict`, `requestSpamRetrain`, `ensureSpamVerdict` (Jev verdicts as training records, a per-user retrain, a message's verdict classified on demand; typed `kind` results; see `backend/fork-features/README.md`)
 - **Per-plugin storage:** `storage.*` (the `plugin_data` table — KV + blobs, owner-scoped, cascade-cleaned)
 - **Per-account plugin config:** `getAccountConfig`, `setAccountConfig` (the `plugin_account_config` table)
-- **Per-message annotations:** `getMessageAnnotations`, `setMessageAnnotation` (namespaced `messages.plugin_annotations`)
+- **Per-message annotations:** `getMessageAnnotations`, `setMessageAnnotation` (namespaced `messages.plugin_annotations`; the write resolves to `{ kind: 'written' }` or `{ kind: 'message_missing' }`)
+- **Work queue and verified move (fork-only):** `markMessages`, `currentUidFloors`, `listQueuedMessages`, `countQueued` (a plugin's annotations as a durable work queue), `moveMessagesVerified` (moves only what the server confirms is the same message; not for label-store accounts); see `backend/fork-features/README.md`
 - **Activation:** `isPluginActivated`, `isPluginActivatedForAccount`
 - **Logging:** `logger` · **Auth middleware:** `requireAuth` · **Folder resolution:** `resolveAllDraftsPaths`, `resolveAllTrashPaths`, `resolveAllSpamPaths`
 - **Ownership-scoped mail/account reads:** `loadOwnedMessage`, `getOwnedAccount`, `listUserAccounts`, `getAccountAddresses`, `getMessagesByThreadKeys`, `getMessageCopyFolders`, `getMessageFields`, the thread-key resolvers, …

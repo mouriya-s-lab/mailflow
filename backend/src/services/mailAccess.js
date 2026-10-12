@@ -148,8 +148,10 @@ export async function getMessageAnnotations(accountId, ids, pluginId) {
 }
 
 // Merge `patch` into a plugin's namespace of a message's annotations (creating the namespace if
-// absent). Only ever touches plugin_annotations -> pluginId. Returns rows updated (0 if the
-// message isn't in the account). The annotation cache is cleaned with the message row on delete.
+// absent). Only ever touches plugin_annotations -> pluginId. Resolves to { kind: 'written' }, or
+// { kind: 'message_missing' } when no such row is in the account: it was deleted, or a move
+// replaced it with a row under a new id. The annotation cache is cleaned with the message row on
+// delete.
 export async function setMessageAnnotation(accountId, messageId, pluginId, patch) {
   const { rowCount } = await query(
     `UPDATE messages
@@ -161,5 +163,5 @@ export async function setMessageAnnotation(accountId, messageId, pluginId, patch
       WHERE id = $2 AND account_id = $1`,
     [accountId, messageId, pluginId, JSON.stringify(patch)]
   );
-  return rowCount;
+  return rowCount > 0 ? { kind: 'written' } : { kind: 'message_missing' };
 }
