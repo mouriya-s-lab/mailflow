@@ -15,6 +15,7 @@ vi.mock('../api.js', () => ({
   setMessageAnnotation: vi.fn(),
   getMessageSignals: vi.fn(),
   getMessageBodyTexts: vi.fn(),
+  ensureMessageBodies: vi.fn(),
   lookupDomainReputation: vi.fn(),
   jevDecide: vi.fn(),
   recordJevSpamVerdict: vi.fn(),
@@ -110,6 +111,7 @@ beforeEach(() => {
   api.setMessageAnnotation.mockResolvedValue({ kind: 'written' });
   api.getMessageSignals.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, signalsFor([])])));
   api.getMessageBodyTexts.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, 'Statement body'])));
+  api.ensureMessageBodies.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, { kind: 'stored' }])));
   api.lookupDomainReputation.mockImplementation(async domains => reputationOf(domains));
   api.jevDecide.mockImplementation(answering());
   api.recordJevSpamVerdict.mockResolvedValue({ kind: 'recorded' });
@@ -283,6 +285,98 @@ describe('Jev failures (row 8)', () => {
     api.jevDecide.mockResolvedValue({ kind: 'error', error: { kind: 'timeout' } });
     await runTick({ mgr: mgr(), account });
     expect(patchFor(row(13).id).category.decision).toEqual({ kind: 'terminal_failed', errorKind: 'timeout' });
+  });
+});
+
+describe('bodies before Jev (#38 row 4)', () => {
+  const outcomes = byId => async (accountId, ids) => new Map(ids.map(id => [id, byId.get(id)]));
+  const states = () => api.jevDecide.mock.calls.map(([request]) => JSON.parse(request.state));
+
+  it('asks Jev only with the body stored; a refused, failed or missing body retries body_unavailable without asking', async () => {
+    const account = newAccount();
+    store.configs.set(account.id, config({ trainSpam: true }));
+    const [stored, fetched, refused, afterRefusal, failed, missing] = [700, 701, 702, 703, 704, 705].map(n => row(n, fresh()));
+    api.listQueuedMessages.mockResolvedValue([stored, fetched, refused, afterRefusal, failed, missing]);
+    api.ensureMessageBodies.mockImplementation(outcomes(new Map([
+      [stored.id, { kind: 'stored' }],
+      [fetched.id, { kind: 'fetched' }],
+      [refused.id, { kind: 'unavailable', reason: 'provider_refusing' }],
+      [afterRefusal.id, { kind: 'unavailable', reason: 'provider_refusing' }],
+      [failed.id, { kind: 'unavailable', reason: 'imap_error' }],
+      [missing.id, { kind: 'unavailable', reason: 'message_missing' }],
+    ])));
+    api.jevDecide.mockImplementation(answering({ probability: 0.02 }));
+    const now = Date.now();
+
+    await runTick({ mgr: mgr(), account });
+
+    const asked = [stored.id, fetched.id, refused.id, afterRefusal.id, failed.id, missing.id];
+    expect(api.ensureMessageBodies).toHaveBeenCalledWith(account.id, asked, { deadlineMs: expect.any(Number) });
+    expect(api.getMessageSignals).toHaveBeenCalledWith(account.id, [stored.id, fetched.id], expect.anything());
+    expect(api.getMessageBodyTexts).toHaveBeenCalledWith(account.id, [stored.id, fetched.id]);
+    expect(api.jevDecide).toHaveBeenCalledTimes(2);
+    expect(states().map(s => s.bodyText)).toEqual(['Statement body', 'Statement body']);
+    expect(jevCallCount(account.id)).toBe(2);
+    for (const r of [stored, fetched]) expect(patchFor(r.id).category.decision.kind).toBe('done');
+    for (const r of [refused, afterRefusal, failed, missing]) {
+      const patch = patchFor(r.id);
+      expect(patch.category).toEqual({ decision: { kind: 'retry', attempts: 1, errorKind: 'body_unavailable', dueAt: expect.any(String) }, action: { kind: 'blocked' } });
+      expect(patch.spam).toEqual({ decision: { kind: 'retry', attempts: 1, errorKind: 'body_unavailable', dueAt: expect.any(String) }, training: { kind: 'blocked' } });
+      expect(patch.queue).toEqual({ state: 'retry', dueAt: patch.category.decision.dueAt, origin: 'new_mail' });
+      expect(Date.parse(patch.category.decision.dueAt) - now).toBeGreaterThanOrEqual(2 * 60_000);
+    }
+    expect(api.recordJevSpamVerdict).toHaveBeenCalledTimes(2);
+    expect(api.moveMessagesVerified).not.toHaveBeenCalled(); // nothing routed: no routing configured
+  });
+
+  it('asks a message whose retried body turns out empty with its headers alone', async () => {
+    const account = newAccount();
+    store.configs.set(account.id, config());
+    const ann = { revision: 0, queue: { state: 'retry', dueAt: '2026-01-01T00:00:00.000Z', origin: 'new_mail' },
+      category: { decision: { kind: 'retry', attempts: 1, errorKind: 'body_unavailable', dueAt: '2026-01-01T00:00:00.000Z' }, action: { kind: 'blocked' } } };
+    const r = row(706, ann);
+    api.listQueuedMessages.mockResolvedValue([r]);
+    api.ensureMessageBodies.mockImplementation(outcomes(new Map([[r.id, { kind: 'empty' }]])));
+    api.getMessageBodyTexts.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, ''])));
+
+    await runTick({ mgr: mgr(), account });
+
+    expect(api.jevDecide).toHaveBeenCalledTimes(1);
+    expect(states()[0]).toMatchObject({ subject: 'Your statement', bodyText: '' });
+    expect(patchFor(r.id).category.decision).toMatchObject({ kind: 'done', choice: 'money-and-orders' });
+  });
+
+  it('leaves a message the deadline reached before its fetch queued as it is, without spending an attempt', async () => {
+    const account = newAccount();
+    store.configs.set(account.id, config());
+    const [first, late] = [707, 708].map(n => row(n, fresh()));
+    api.listQueuedMessages.mockResolvedValue([first, late]);
+    api.ensureMessageBodies.mockImplementation(outcomes(new Map([
+      [first.id, { kind: 'fetched' }],
+      [late.id, { kind: 'unavailable', reason: 'deadline' }],
+    ])));
+
+    await runTick({ mgr: mgr(), account });
+
+    expect(api.jevDecide).toHaveBeenCalledTimes(1);
+    expect(patchFor(first.id).category.decision.kind).toBe('done');
+    expect(patchFor(late.id)).toBeUndefined();
+  });
+
+  it('turns the fifth body_unavailable attempt into terminal_failed', async () => {
+    const account = newAccount();
+    store.configs.set(account.id, config());
+    const ann = { revision: 0, queue: { state: 'retry', dueAt: '2026-01-01T00:00:00.000Z', origin: 'backfill' },
+      category: { decision: { kind: 'retry', attempts: 4, errorKind: 'body_unavailable', dueAt: '2026-01-01T00:00:00.000Z' }, action: { kind: 'blocked' } } };
+    const r = row(709, ann);
+    api.listQueuedMessages.mockResolvedValue([r]);
+    api.ensureMessageBodies.mockImplementation(outcomes(new Map([[r.id, { kind: 'unavailable', reason: 'imap_error' }]])));
+
+    await runTick({ mgr: mgr(), account });
+
+    expect(api.jevDecide).not.toHaveBeenCalled();
+    expect(patchFor(r.id).category).toEqual({ decision: { kind: 'terminal_failed', errorKind: 'body_unavailable' }, action: { kind: 'skipped', reason: 'decision_failed' } });
+    expect(patchFor(r.id).queue).toEqual({ state: 'terminal', dueAt: null, origin: 'backfill' });
   });
 });
 
