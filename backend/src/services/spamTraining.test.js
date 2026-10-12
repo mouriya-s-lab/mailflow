@@ -184,8 +184,11 @@ describe('link flags in the training record (mouriya-s-lab/mailflow#16)', () => 
     expect(lookupDomains).not.toHaveBeenCalled();
     const saved = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO spam_models'));
     const vocabulary = JSON.parse(saved[1].find(p => typeof p === 'string' && p.includes('__link_domain_new__')));
-    expect(vocabulary.__link_domain_new__).toEqual({ spam: 1, ham: 0 });
-    expect(vocabulary.__link_text_domain_mismatch__).toEqual({ spam: 1, ham: 0 });
+    // The records were created a moment before the retrain, so decay leaves just under 1.
+    expect(vocabulary.__link_domain_new__.spam).toBeCloseTo(1, 6);
+    expect(vocabulary.__link_domain_new__.ham).toBe(0);
+    expect(vocabulary.__link_text_domain_mismatch__.spam).toBeCloseTo(1, 6);
+    expect(vocabulary.__link_text_domain_mismatch__.ham).toBe(0);
     expect(vocabulary.__link_domain_listed__).toBeUndefined();
   });
 });
