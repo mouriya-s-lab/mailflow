@@ -296,6 +296,47 @@ describe('Jev classification settings', () => {
     assert.equal($(`[data-testid="jev-account-${MS}"] [data-testid="jev-route-news"]`), null);
   });
 
+  test('a category saved as new-1 stays its own row when the editor is opened again and a row is added, edited and removed', async () => {
+    await mount();
+    let editor = $('[data-testid="jev-categories"]');
+    await click(buttonByText('jevClassify.categories.add', editor));
+    let rows = editor.querySelectorAll('[data-testid="jev-category-row"]');
+    await setValue(rows[2].querySelector('input'), 'New 1');
+    await setValue(rows[2].querySelector('textarea'), 'Original saved category description');
+    await click(buttonByText('jevClassify.categories.save', editor));
+    await until(() => /jevClassify\.categories\.saved/.test(editor.textContent), 'the first save');
+    assert.equal(server.categories.categories[2].id, 'new-1');
+
+    // Leave the editor and come back: everything is mounted afresh from the stored list.
+    await unmount();
+    await mount();
+    editor = $('[data-testid="jev-categories"]');
+    const rowValues = () => [...editor.querySelectorAll('[data-testid="jev-category-row"]')]
+      .map(row => [row.querySelector('input').value, row.querySelector('textarea').value]);
+
+    await click(buttonByText('jevClassify.categories.add', editor));
+    rows = editor.querySelectorAll('[data-testid="jev-category-row"]');
+    await setValue(rows[3].querySelector('input'), 'Discard me');
+    await click(buttonByText('jevClassify.categories.remove', rows[3]));
+    assert.deepEqual(rowValues().map(([label]) => label), ['Work', 'News', 'New 1'], 'removing the added row removes only it');
+
+    await click(buttonByText('jevClassify.categories.add', editor));
+    rows = editor.querySelectorAll('[data-testid="jev-category-row"]');
+    await setValue(rows[3].querySelector('input'), 'Invoices');
+    await setValue(rows[3].querySelector('textarea'), 'New invoices description');
+    assert.deepEqual(rowValues(), [
+      ['Work', 'Mail about work'], ['News', 'Newsletters'],
+      ['New 1', 'Original saved category description'], ['Invoices', 'New invoices description'],
+    ]);
+
+    await click(buttonByText('jevClassify.categories.save', editor));
+    await until(() => /jevClassify\.categories\.saved/.test(editor.textContent), 'the second save');
+    assert.deepEqual(callsTo('PUT', '/api/jev-classify/categories').at(-1).body.categories.slice(2), [
+      { id: 'new-1', label: 'New 1', description: 'Original saved category description' },
+      { id: 'invoices', label: 'Invoices', description: 'New invoices description' },
+    ]);
+  });
+
   test('targets are the account\'s own folders without INBOX; an unavailable stored target blocks the save; the body has the six settings', async () => {
     server.accounts[0].config = config({ routing: { work: 'Gone/Folder', news: 'Archive', removed: 'Junk' } });
     await mount();

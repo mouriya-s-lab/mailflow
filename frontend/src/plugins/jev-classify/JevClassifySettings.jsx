@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { jevClassifyApi } from './api.js';
 import {
-  MAX_CATEGORIES, accountDraft, categoryDrafts, parseAccountDraft, parseCategoryDrafts, routingTargets,
+  MAX_CATEGORIES, accountDraft, addedDraft, categoryDrafts, parseAccountDraft, parseCategoryDrafts, routingTargets,
 } from './model.js';
 
 export const STATUS_REFRESH_MS = 15_000;
@@ -185,7 +185,8 @@ function CategoriesEditor({ saved, onSaved }) {
   };
   const add = () => {
     nextKey.current += 1;
-    setDrafts(rows => [...rows, { key: `new-${nextKey.current}`, id: null, label: '', description: '' }]);
+    const row = addedDraft(nextKey.current);
+    setDrafts(rows => [...rows, row]);
     setMsg(null);
   };
   const remove = key => { setDrafts(rows => rows.filter(row => row.key !== key)); setMsg(null); };

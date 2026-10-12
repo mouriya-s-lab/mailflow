@@ -13,11 +13,14 @@ export const isInbox = path => path.toUpperCase() === 'INBOX';
 
 // ── Categories ────────────────────────────────────────────────────────────────
 // A draft row is { key, id, label, description }: `id` is the stored id (null for a row added in
-// this form, which gets one from its name when saved) and `key` is the row's React key, stable
-// while the name is edited.
+// this form, which gets one from its name when saved) and `key` is the row's identity in the
+// editor, stable while the name is edited. Keys of stored rows are `saved:<id>` and keys of added
+// rows `added:<n>`; ':' never occurs in a category id, so the two can never coincide.
 
 export const categoryDrafts = categories =>
-  categories.map(({ id, label, description }) => ({ key: id, id, label, description }));
+  categories.map(({ id, label, description }) => ({ key: `saved:${id}`, id, label, description }));
+
+export const addedDraft = n => ({ key: `added:${n}`, id: null, label: '', description: '' });
 
 // The id of a new category: the ASCII letters and digits of its name (accents dropped) in
 // lowercase, words joined by '-', or 'category' when the name has none; '-2', '-3', … when that id
