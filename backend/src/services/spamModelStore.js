@@ -130,14 +130,22 @@ export async function getAllUsersWithTrainingLog() {
  * stored at mark time — migration 0048). Applies exponential decay, purges
  * via spamModel.pruneVocabulary, saves, invalidates cache.
  *
+ * A Jev record of a message the user also marked by hand in the same account
+ * is left out: the user's own mark wins over the external verdict.
+ *
  * @param {string} userId
  * @returns {{ ok: boolean, recordsUsed: number, duration_ms: number, reason?: string }}
  */
 export async function retrainUser(userId) {
   const started = Date.now();
   const data = await query(
-    `SELECT label, created_at, token_counts, flag_features, subject, body_text
-     FROM spam_training_log WHERE user_id = $1`,
+    `SELECT t.label, t.created_at, t.token_counts, t.flag_features, t.subject, t.body_text
+     FROM spam_training_log t
+     WHERE t.user_id = $1
+       AND NOT (t.source = 'jev' AND EXISTS (
+         SELECT 1 FROM spam_training_log m
+         WHERE m.user_id = t.user_id AND m.account_id = t.account_id
+           AND m.message_id_header = t.message_id_header AND m.source = 'manual'))`,
     [userId],
   );
   const records = data.rows;

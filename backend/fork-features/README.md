@@ -208,3 +208,31 @@ What the links in a message point to, judged by outside lookup services without 
 | `backend/src/plugins/api.js` | `lookupDomainReputation`, `lookupUrlReputation` and `reputationStatus` from `fork-features/reputation` |
 | `backend/src/plugins/README.md` | Lists them in the capability surface |
 | `backend/src/services/backup.js` | `fork_reputation_cache` is in `TRANSIENT_TABLES`, whose comment now covers caches of outside lookups |
+
+## Anti-spam training records and verdict requests
+
+Jev's confident spam and ham verdicts can train a user's anti-spam model, so a new user's model is ready without hundreds of manual marks, and a plugin can ask anti-spam for a message's verdict instead of guessing from `spam_analyzed_at`, which stays empty for mail stored before anti-spam was switched on.
+
+- **One writer.** `backend/src/services/spamTraining.js` is the only code that writes `spam_training_log`. Each write starts from a `messages` row id and loads the row itself; the caller passes no features. `POST /messages/:id/spam` and `/ham` call `captureManualSpamLabel` before the move, which takes the features from the row as it is then, and call the returned `record({ uid, folder })` once the message is in its destination folder. That writes the same `manual` record as before (the destination folder and the UID there, the same feature columns) and feeds the model incrementally, also when the row was deleted during the move.
+- **Jev records.** `recordJevSpamVerdict({ messageId, label })` writes a record with `source = 'jev'` and returns `{ kind: 'recorded' }`, `{ kind: 'duplicate' }` (that account already has a Jev record for this Message-ID), `{ kind: 'no_message_id' }` or `{ kind: 'message_missing' }`. A unique index on `(user_id, account_id, message_id_header)` over Jev records makes the write idempotent per account; another account that received the same message keeps its own record. Jev records get no incremental training; they reach the model at the next retrain. No other automatic source may write training records.
+- **Retrain.** `requestSpamRetrain(userId)` runs the existing full retrain of that user and returns `{ kind: 'retrained', records }`, `{ kind: 'no_training_data' }`, `{ kind: 'failed', reason }`, or `{ kind: 'already_running' }` while a retrain it started for the same user is still running. Every retrain, scheduled or requested, leaves out a Jev record when the same account has a manual record for the same Message-ID: the user's own mark wins. Decay and the per-user model are unchanged.
+- **Verdict requests.** `ensureSpamVerdict(messageId)` returns `{ kind: 'verdict', verdict, override }` from the row when it has been analyzed (a user mark counts), `{ kind: 'disabled' }` when the user's anti-spam master switch or the account's anti-spam switch is off, and otherwise classifies the message on the spot with its retained headers, storing the verdict as ingest would but never moving the message. A message whose headers cannot be read, a missing row and a failed classification are `{ kind: 'error', reason }`; no verdict is stored for them. Header failures are logged by the header store, the others with `logger.warn`.
+- All three are in the plugin API.
+
+| Path | What |
+|---|---|
+| `backend/src/services/spamTraining.js` | `captureManualSpamLabel`, `recordJevSpamVerdict`, `requestSpamRetrain`; feature extraction moved from `routes/mail.js` |
+| `backend/src/services/spamTraining.test.js` | Stored columns of both sources, the four Jev outcomes, retrain outcomes and per-user single flight |
+| `backend/src/services/spamPipeline.ensureSpamVerdict.test.js` | Stored verdict without reclassifying, on-demand classification without a move, both switches, header and classification failures |
+| `backend/migrations/9003_fork_spam_training_jev.sql` | Adds `jev` to `spam_training_log_source_check`; partial unique index `spam_training_log_jev_message_uniq` |
+
+### Patches to upstream files (re-check on every upstream sync)
+
+| File | Change |
+|---|---|
+| `backend/src/routes/mail.js` | `extractSpamFeatures` and `logSpamTraining` removed; `/spam` and `/ham` capture the mark with `captureManualSpamLabel` before the move and record it after |
+| `backend/src/routes/mail.spam.test.js` | Mocks follow the training record's own row read |
+| `backend/src/services/spamModelStore.js` | `retrainUser` leaves out Jev records superseded by a manual record |
+| `backend/src/services/spamPipeline.js` | Header comment names the Jev exception; new `ensureSpamVerdict` |
+| `backend/src/plugins/api.js` | Exports `recordJevSpamVerdict`, `requestSpamRetrain`, `ensureSpamVerdict` |
+| `backend/src/plugins/README.md` | Lists them in the capability surface |

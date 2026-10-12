@@ -76,6 +76,13 @@ export {
   status as reputationStatus,
 } from '../../fork-features/reputation/index.js';
 
+// ── Anti-spam ─────────────────────────────────────────────────────────────────
+// Feed Jev's spam/ham verdicts into a user's training records, ask for a retrain, and ask
+// for a message's anti-spam verdict (classified on the spot when it has none yet, never
+// moved). Fork-only; see backend/fork-features/README.md. Typed `kind` results.
+export { recordJevSpamVerdict, requestSpamRetrain } from '../services/spamTraining.js';
+export { ensureSpamVerdict } from '../services/spamPipeline.js';
+
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
 // cleaned. A plugin can persist its own data without a schema migration or DB access.
