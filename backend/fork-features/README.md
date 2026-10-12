@@ -145,3 +145,26 @@ Every "which registrable domain does this host belong to" decision goes through 
 | `backend/src/services/spamRules.js` | `FROM_REPLYTO_MISMATCH` uses `registrableDomain`; the hand-written multi-label suffix list and its local helper are removed |
 | `backend/src/services/senderFavicon.js` | The parent walk (`nextParent`) stops at `registrableDomain`; the hand-written public suffix list is removed |
 | `backend/src/services/spamRules.test.js`, `backend/src/services/senderFavicon.test.js` | Cases for `com.cn`, `net.cn`, a deep `co.uk` subdomain and `github.io` |
+
+## Message header retention
+
+Some headers say things nothing else in a stored message does: who authenticated the sender (`Authentication-Results`, `ARC-Authentication-Results`, `Received-SPF`), which language the sender declared (`Content-Language`), and the original `From`, `Sender`, `Reply-To`, `Return-Path`, `List-Id` and `Subject`. They exist only while a message is being ingested, so MailFlow keeps that whitelist of headers for every message in `fork_message_headers`, one row per `messages` row.
+
+- **At ingest.** `syncMessages` and `backfillMessages` already fetch each message's header block. After every successful upsert of a row, new or existing, its whitelisted headers are inserted with `source = 'ingest'`; a row that already has a record keeps it. Values are the parser's strings: folded lines unfolded, a repeated header joined with `\n`, NUL removed; no header outside the whitelist is stored. A failed insert is a `logger.warn` and nothing else: the message keeps its row and the batch goes on. A message fetched without a header block (the backfill's fallback FETCH for messages a server omitted asks for none) gets no record rather than an empty one.
+- **On demand.** `getMessageHeaders(messageIds, { deadlineMs })` resolves to a `Map` from row id to `{ kind: 'stored', headers, source }` or `{ kind: 'unavailable', reason }` with `reason` `message_missing`, `imap_error` or `not_on_server`. Rows without a record (mail ingested before this table existed, or a row a move recreated under a new id) are grouped by account and folder, and each group is one IMAP session and one `UID FETCH <uids> (BODY.PEEK[HEADER.FIELDS (...)])` of the whitelist; what was fetched is stored with `source = 'imap_fetch'` and read back, so a later call does not touch IMAP. Groups run one after another; the deadline (30 s by default, `deadlineMs` can only shorten it) is checked before each group, and a group not started in time is `imap_error`. Concurrent reads of the same message share one fetch.
+- **Nothing is written for a message that could not be read**, and each failure is a `logger.warn`: a server that cannot be reached or fails the FETCH is `imap_error`, as is an empty header block in the answer; a UID the server does not return is `not_on_server`, and so is every row of a folder whose UIDVALIDITY on the server differs from the stored one, since those rows are stale and their UIDs may name other messages. Database errors are thrown to the caller.
+- **Lifecycle.** A record is deleted with its row (`ON DELETE CASCADE`). A move that keeps the row id keeps the record; one that replaces the row leaves the new row without a record until its next read. Backups treat the table as part of the mail cache, next to `messages`.
+
+| Path | What |
+|---|---|
+| `backend/migrations/9001_fork_message_headers.sql` | The `fork_message_headers` table; creates a new table only |
+| `backend/fork-features/headers/index.js` | Whitelist, `storedHeaders`, `recordIngestHeaders`, `getMessageHeaders` |
+| `backend/fork-features/headers/index.test.js` | Stored values; one session and one FETCH per group, compiled through imapflow to the wire command; single-flight; failure results |
+| `backend/fork-features/headers/ingest.test.js` | Capture from live sync and backfill, a failed write, a message fetched without headers |
+
+### Patches to upstream files (re-check on every upstream sync)
+
+| File | Change |
+|---|---|
+| `backend/src/services/imapManager.js` | `syncMessages` and `backfillMessages` call `recordIngestHeaders` after each upsert; new `fetchHeaderFields(account, folder, uids, fields)` reads header fields for a UID set over one pooled session |
+| `backend/src/services/backup.js` | `fork_message_headers` is in `MAIL_CACHE_TABLES` |
