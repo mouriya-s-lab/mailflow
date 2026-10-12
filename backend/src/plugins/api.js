@@ -21,6 +21,7 @@ import { archiveInboxCopy as _archiveInboxCopy } from '../services/archiveInbox.
 import { decide as decideJev, status as jevConfigStatus } from '../../fork-features/jev/index.js';
 import { loadJevConfig } from '../../fork-features/service-config/index.js';
 import { moveMessagesVerified as _moveMessagesVerified } from '../../fork-features/verified-move/index.js';
+import { ensureMessageBodies as _ensureMessageBodies } from '../../fork-features/message-bodies/index.js';
 
 // ── Labels (read) ─────────────────────────────────────────────────────────────
 // Thread-aware read over a set of label folders: heads grouped by label with thread-level
@@ -102,6 +103,14 @@ export {
   getAccountMessageSignals as getMessageSignals,
   getAccountMessageBodyTexts as getMessageBodyTexts,
 } from '../../fork-features/signals/index.js';
+
+// ensureMessageBodies(accountId, ids, { deadlineMs }) → Map<id, BodyOutcome>: makes sure each of
+// the account's messages has its body stored before it is judged, fetching a missing one from the
+// server by its folder and UID and storing it only on a row that still has none. `stored`,
+// `fetched`, `empty` (the server has no renderable body) or `unavailable { reason }` with
+// 'provider_refusing' (stops the batch), 'imap_error', 'message_missing' or 'deadline'
+// (fork-only, see fork-features/message-bodies).
+export const ensureMessageBodies = (accountId, ids, options) => _ensureMessageBodies(getMailEngine(), accountId, ids, options);
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-

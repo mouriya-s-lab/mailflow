@@ -4,22 +4,24 @@
 // (inboxIngest → requestDrain). A tick runs at most once at a time per account; a tick asked
 // for while one runs joins it. Within a tick: read the configuration, mark new mail and the next
 // backfill batch, then work through the queue — at most TICK_MAX_MESSAGES messages, and no
-// message is started once less than MIN_MESSAGE_BUDGET_MS is left of TICK_BUDGET_MS. The time
-// left goes to the signal read, the reputation lookup and Jev as their deadline. Training
-// records, moves and labels take no deadline, so a tick can end after its budget by the tail of
-// the one message it already started. Re-queuing after trainSpam is switched back on takes the
-// same per-account turn as a tick.
+// message is started once less than MIN_MESSAGE_BUDGET_MS is left of TICK_BUDGET_MS. Messages
+// whose decisions are due first get their bodies (ensureMessageBodies): one whose body cannot be
+// had is not asked and its decisions retry; one the deadline reached first waits as it is. The
+// time left goes to the body fetch, the signal read, the reputation lookup and Jev as their
+// deadline. Training records, moves and labels take no deadline, so a tick can end after its
+// budget by the tail of the one message it already started. Re-queuing after trainSpam is
+// switched back on takes the same per-account turn as a tick.
 
 import {
   logger, isPluginActivated, markMessages, currentUidFloors, listQueuedMessages, countQueued,
   listMessagesInQueueState, setMessageAnnotation, getMessageSignals, getMessageBodyTexts,
-  lookupDomainReputation, jevDecide, recordJevSpamVerdict, requestSpamRetrain, ensureSpamVerdict,
-  moveMessagesVerified, isLabelStoreAccount, applyLabel, ensureLabelFolders,
+  ensureMessageBodies, lookupDomainReputation, jevDecide, recordJevSpamVerdict, requestSpamRetrain,
+  ensureSpamVerdict, moveMessagesVerified, isLabelStoreAccount, applyLabel, ensureLabelFolders,
 } from '../api.js';
 import {
   PLUGIN_ID, refreshFloors, parseAnnotation, normalize, promote, questionsDue, executable,
   classifyJevError, failDecisions, applyAnswers, trainingOutcome, failTraining, failAction,
-  actionForMove, deriveQueue, buildJevRequest, linkDomains,
+  actionForMove, deriveQueue, buildJevRequest, linkDomains, bodyGate,
 } from './model.js';
 import {
   loadAccountConfig, updateAccountConfig, loadCategories, updateBackfill, appendIncident,
@@ -190,11 +192,17 @@ async function processQueue(ctx) {
     }
   }
 
+  // Bodies first: a message is asked only with its body stored (or known to have none), so the
+  // signals and the body text are read for those alone.
   const askIds = work.filter(w => { const due = questionsDue(w.lines, now); return due.category || due.spam; }).map(w => w.row.id);
-  const [signals, bodies] = askIds.length && remaining(ctx) >= MIN_MESSAGE_BUDGET_MS
+  const bodyOutcomes = askIds.length && remaining(ctx) >= MIN_MESSAGE_BUDGET_MS
+    ? await ensureMessageBodies(account.id, askIds, { deadlineMs: remaining(ctx) })
+    : new Map();
+  const readIds = askIds.filter(id => bodyGate(bodyOutcomes.get(id)).kind === 'ask');
+  const [signals, bodies] = readIds.length && remaining(ctx) >= MIN_MESSAGE_BUDGET_MS
     ? await Promise.all([
-      getMessageSignals(account.id, askIds, { deadlineMs: remaining(ctx) }),
-      getMessageBodyTexts(account.id, askIds),
+      getMessageSignals(account.id, readIds, { deadlineMs: remaining(ctx) }),
+      getMessageBodyTexts(account.id, readIds),
     ])
     : [new Map(), new Map()];
 
@@ -202,7 +210,7 @@ async function processQueue(ctx) {
   for (const item of work) {
     if (remaining(ctx) < MIN_MESSAGE_BUDGET_MS) break;
     try {
-      results.push(await processMessage(ctx, item, { signals, bodies }));
+      results.push(await processMessage(ctx, item, { bodyOutcomes, signals, bodies }));
     } catch (err) {
       logger.warn(`jev-classify: message ${item.row.id} failed: ${err.message}`);
     }
@@ -213,7 +221,7 @@ async function processQueue(ctx) {
 // One message: the Jev decisions it needs, then training, then the action; then one write of
 // every segment and the queue they project to. Resolves to
 //   { kind: 'written', origin, queue, decided, trained } | { kind: 'discarded' } | { kind: 'not_run' }.
-async function processMessage(ctx, { row, annotation, lines: start }, { signals, bodies }) {
+async function processMessage(ctx, { row, annotation, lines: start }, { bodyOutcomes, signals, bodies }) {
   const now = new Date();
   let lines = start;
   let decidedAt = null;
@@ -222,18 +230,33 @@ async function processMessage(ctx, { row, annotation, lines: start }, { signals,
   const asked = questionsDue(lines, now);
   if (asked.category || asked.spam) {
     if (ctx.jevUnconfigured) return { kind: 'not_run' };
-    const messageSignals = signals.get(row.id);
-    if (!messageSignals) {
-      // Not read this tick (no time was left), or the row is gone; it stays queued as it is.
-      return { kind: 'not_run' };
+    const gate = bodyGate(bodyOutcomes.get(row.id));
+    switch (gate.kind) {
+      case 'wait':
+        // No body outcome this tick (no time was left), or the deadline came before its fetch.
+        return { kind: 'not_run' };
+      case 'fail':
+        // The body could not be had: Jev is not asked, and the asked decisions retry.
+        lines = promote(failDecisions(lines, asked, gate.failure, now));
+        break;
+      case 'ask': {
+        const messageSignals = signals.get(row.id);
+        if (!messageSignals) {
+          // Not read this tick (no time was left), or the row is gone; it stays queued as it is.
+          return { kind: 'not_run' };
+        }
+        const decision = await decide(ctx, row, messageSignals, bodies.get(row.id) ?? '', asked, annotation.revision, lines);
+        if (decision.kind === 'unconfigured') {
+          ctx.jevUnconfigured = true;
+          return { kind: 'not_run' };
+        }
+        lines = promote(decision.lines);
+        decidedAt = decision.decidedAt;
+        break;
+      }
+      default:
+        throw new Error(`unhandled body gate ${JSON.stringify(gate.kind)}`);
     }
-    const decision = await decide(ctx, row, messageSignals, bodies.get(row.id) ?? '', asked, annotation.revision, lines);
-    if (decision.kind === 'unconfigured') {
-      ctx.jevUnconfigured = true;
-      return { kind: 'not_run' };
-    }
-    lines = promote(decision.lines);
-    decidedAt = decision.decidedAt;
   }
 
   if (lines.spam && executable(lines.spam.training, now)) {
