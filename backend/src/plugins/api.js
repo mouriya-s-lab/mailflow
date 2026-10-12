@@ -92,6 +92,13 @@ export { ensureSpamVerdict } from '../services/spamPipeline.js';
 export { markMessages, currentUidFloors, listQueuedMessages, countQueued } from '../../fork-features/work-queue/index.js';
 export const moveMessagesVerified = (args) => _moveMessagesVerified(getMailEngine(), args);
 
+// ── Message signals ───────────────────────────────────────────────────────────
+// getMessageSignals(accountId, ids, { deadlineMs }) → Map<id, MessageSignals>: sender, recipients,
+// trusted authentication, links shown versus where they go, attachments, mailing-list marks and
+// language of the account's messages (fork-only, see fork-features/signals). An id that is not a
+// message of the account is absent from the Map.
+export { getAccountMessageSignals as getMessageSignals } from '../../fork-features/signals/index.js';
+
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
 // cleaned. A plugin can persist its own data without a schema migration or DB access.

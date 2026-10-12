@@ -109,18 +109,18 @@ A generic client for the [Jev](https://jev-ai.org/docs/) decision API: one state
 
 ## Jev probe
 
-A command-line probe that builds the Jev decision state from MailFlow message-shaped fixtures and sends it through the Jev client twice, once with the full structured state (sender, reply-to, trusted authentication results, language, links as shown versus where they go, attachments, mailing-list signals) and once with subject and body only, then prints the answers side by side. It needs no running MailFlow.
+A command-line probe that builds the Jev decision state from MailFlow message-shaped fixtures and sends it through the Jev client twice, once with the full structured state (the message signals below plus the body text) and once with subject and body only, then prints the answers side by side. It needs no running MailFlow.
 
 ```bash
 cd backend
 JEV_API_KEY=… node fork-features/jev-probe/probe.js [--fixtures DIR] [--questions FILE] [--mode full|body|both] [--print-state]
 ```
 
-The probe runs outside MailFlow, so it builds the Jev client's configuration from its own command-line environment: `JEV_API_KEY` (required), `JEV_BASE_URL` and `JEV_MODEL` (defaulting to the client's defaults). A questions file maps question ids to questions in the Jev client's shape. A fixture is one JSON file shaped like a `messages` row plus `headers` (raw header lines) and `trusted_authserv_id`; `Authentication-Results` counts as trusted only when its authserv-id matches it.
+The probe runs outside MailFlow, so it builds the Jev client's configuration from its own command-line environment: `JEV_API_KEY` (required), `JEV_BASE_URL` and `JEV_MODEL` (defaulting to the client's defaults). A questions file maps question ids to questions in the Jev client's shape. A fixture is one JSON file holding the input of `extractSignals`: `message` (a `messages` row), `headers` (a header read result as `getMessageHeaders` returns it) and `account` (`trusted_authserv_id`). The state is built by the signals module; the probe has no parsing of its own.
 
 | Path | What |
 |---|---|
-| `backend/fork-features/jev-probe/probe.js` | State builder and comparison table; requests go through the Jev client |
+| `backend/fork-features/jev-probe/probe.js` | Comparison table; the state comes from `fork-features/signals` and requests go through the Jev client |
 | `backend/fork-features/jev-probe/questions.json` | Default question set: spam (noul), category (choice), urgency (score) |
 | `backend/fork-features/jev-probe/fixtures/*.json` | Sample messages |
 
@@ -286,3 +286,35 @@ Label-store accounts (Gmail) are not moved this way; a plugin labels them with `
 | `backend/src/plugins/gtd/gtdGist.js` | Counts a gist as written only on `{ kind: 'written' }` |
 | `backend/src/plugins/api.js` | `markMessages`, `currentUidFloors`, `listQueuedMessages`, `countQueued`, `moveMessagesVerified` |
 | `backend/src/plugins/README.md` | Lists those capabilities and the new `setMessageAnnotation` result |
+
+## Message signals
+
+One structured view of a stored message, built from its `messages` row and its retained headers, for everything that judges mail: the anti-spam pipeline, its training, and the state sent to Jev. Consumers take these signals from this module rather than parsing the message themselves, so they all reach the same conclusions.
+
+- `extractSignals({ message, headers, account })` is pure. `message` is a `messages` row, `headers` the header read result for it (`stored` or `unavailable`), `account` its account row, of which only `trusted_authserv_id` is read. It returns:
+  - `sender { from { name, email }, sender { name, email } | null, replyTo [{ name, email }] }`, `recipients { to, cc }` (counts), `subject`, `date` (ISO), `thread { isReply }` (the message has an `In-Reply-To`).
+  - `authentication`: `{ kind: 'trusted', authservId, spf, dkim, dmarc }` when one of the stored `Authentication-Results` headers carries the authserv-id the account trusts, with that header's results (`null` for a method it does not report); `{ kind: 'untrusted', authservIds }` when there are such headers but none from that id, or the account trusts none; `{ kind: 'absent' }` when the stored headers have none; `{ kind: 'headers_unavailable', reason }` when the headers could not be read. This is the anti-spam pipeline's trust gate, applied with the account's setting at the time of the call: changing the trusted id changes the result without re-ingesting anything, and no derived trust flag is stored.
+  - `links`: the first 50 `http(s)` anchors of the HTML body, each `{ href, hrefHost, hrefDomain, text, textHost, textDomain, mismatch }`. `text` is the anchor's visible text with whitespace collapsed, cut to 200 characters. `textHost` is set only when that whole text is an address (`https://www.bank.com/verify`, `www.bank.com`); "Click here" has none. Domains are registrable domains from the Public Suffix List (above), and `mismatch` is true exactly when the text names a domain other than the one the link goes to. `javascript:`, `mailto:` and relative links are left out. Plain-text bodies have no anchors and so no links.
+  - `attachments [{ filename, type }]`; `mailingList { listUnsubscribe, listId, bulk }` (`listId` from the stored `List-Id` header).
+  - `language` as `resolveLanguage` gives it, with the stored `Content-Language` header as the declared content language.
+- `resolveLanguage({ subject, bodyText, bodyHtml, contentLanguage })` is pure and returns `{ resolved, declared { htmlLang, contentLanguage }, script { dominant, letters } }`. The text is the subject and `bodyText` (or, without it, the visible text of `bodyHtml`, script and style left out); its first 4000 letters are counted by script (ISO 15924: `Latn`, `Cyrl`, `Hani`, `Hrkt` for kana, `Hang`, `Thai`, `Grek`, `Hebr`, `Arab`, and `Zzzz` for any other). The HTML declaration is the `<html>` element's `lang`, or else the first element's `lang`; the content language is the first value of `Content-Language`. Both are canonicalized with `Intl` and kept in `declared`, an invalid tag counting as none. `resolved` is the first of these that applies:
+  1. Kana make up at least 10% of the letters: `ja`. Hangul, Thai, Greek, Hebrew or Arabic is the dominant script: `ko`, `th`, `el`, `he`, `ar`.
+  2. Han is the dominant script: the declared language when it is `ja`, `zh` or `ko`, otherwise `zh`.
+  3. Latin or Cyrillic is the dominant script: the language among `en`, `it`, `de`, `es`, `fr` and `ru` whose stop words (`src/services/stopWords.js`) occur at least 3 times and at least 1.5 times as often as the runner-up's; otherwise the declared language if its script is the dominant one; otherwise `und-Latn` or `und-Cyrl`.
+  4. Otherwise, with no letters or another script: the declared language, or `und`.
+
+  Wherever a declaration decides, `resolved` is its primary language subtag (`zh-CN` gives `zh`), so the same language gets one tag whether or not a template declares it; the full tags stay in `declared`.
+- Stored bodies are the sanitized HTML, and the sanitizer drops the `<html>` and `<body>` elements with their `lang`. For mail read from the database `htmlLang` is therefore the first `lang` on an element inside the body, or `null`; an `<html lang>` is seen only when raw HTML is passed in.
+- `getMessageSignals(messageIds, { deadlineMs })` loads the rows with one query, reads all their headers with one `getMessageHeaders` call (which fetches missing ones from the server, one session per folder, within `deadlineMs`), and returns a `Map` from id to signals; an id without a row is not in it. `getAccountMessageSignals(accountId, messageIds, { deadlineMs })` does the same for the messages of one account only. Plugins get the account form as `getMessageSignals(accountId, ids, { deadlineMs })`.
+
+| Path | What |
+|---|---|
+| `backend/fork-features/signals/index.js` | `extractSignals`, `resolveLanguage`, `messageBodyText`, `getMessageSignals`, `getAccountMessageSignals` |
+| `backend/fork-features/signals/index.test.js` | Signal set of a phishing message; authentication variants; link limits and domains; language rules; one header read per batch |
+
+### Patches to upstream files (re-check on every upstream sync)
+
+| File | Change |
+|---|---|
+| `backend/src/plugins/api.js` | `getMessageSignals(accountId, ids, { deadlineMs })`: `fork-features/signals` scoped to one account |
+| `backend/src/plugins/README.md` | Lists `getMessageSignals` in the capability surface |

@@ -61,6 +61,7 @@ Everything a plugin may do, grouped:
 - **Jev decisions (fork-only):** `jevDecide`, `jevStatus` (async; use the Jev settings an admin saved; typed answers or a typed error; see `backend/fork-features/README.md`)
 - **Link reputation (fork-only):** `lookupDomainReputation`, `lookupUrlReputation`, `reputationStatus` (async; RDAP registration dates and blocklist verdicts for registrable domains, Safe Browsing verdicts for link URLs; a failed lookup is `unknown`; see `backend/fork-features/README.md`)
 - **Anti-spam (fork-only):** `recordJevSpamVerdict`, `requestSpamRetrain`, `ensureSpamVerdict` (Jev verdicts as training records, a per-user retrain, a message's verdict classified on demand; typed `kind` results; see `backend/fork-features/README.md`)
+- **Message signals (fork-only):** `getMessageSignals(accountId, ids, { deadlineMs })` (async; sender, recipients, trusted authentication, links, attachments, mailing-list marks and language of the account's messages; see `backend/fork-features/README.md`)
 - **Per-plugin storage:** `storage.*` (the `plugin_data` table — KV + blobs, owner-scoped, cascade-cleaned)
 - **Per-account plugin config:** `getAccountConfig`, `setAccountConfig` (the `plugin_account_config` table)
 - **Per-message annotations:** `getMessageAnnotations`, `setMessageAnnotation` (namespaced `messages.plugin_annotations`; the write resolves to `{ kind: 'written' }` or `{ kind: 'message_missing' }`)

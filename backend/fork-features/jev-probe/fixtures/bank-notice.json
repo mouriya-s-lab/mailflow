@@ -1,18 +1,27 @@
 {
-  "from_name": "招商银行",
-  "from_email": "notice@cmbchina.com",
-  "sender_email": null,
-  "reply_to": [],
-  "to_addresses": [{ "address": "user@example.org" }],
-  "cc_addresses": [],
-  "subject": "【招商银行】账户交易提醒",
-  "date": "2026-10-10T14:05:00+08:00",
-  "trusted_authserv_id": "mx.example.org",
-  "headers": ["Authentication-Results: mx.example.org; spf=pass smtp.mailfrom=cmbchina.com; dkim=pass header.d=cmbchina.com; dmarc=pass header.from=cmbchina.com"],
-  "list_unsubscribe": "<https://www.cmbchina.com/unsubscribe>",
-  "is_bulk": true,
-  "in_reply_to": null,
-  "attachments": [],
-  "body_text": null,
-  "body_html": "<html lang=\"zh-CN\"><body><p>尊敬的客户，您尾号8812的账户于今日发生一笔交易（¥8,600.00）。如非本人操作，请立即致电95555或登录手机银行冻结账户。</p><p><a href=\"https://www.cmbchina.com/mobile\">登录手机银行查看详情</a></p></body></html>"
+  "message": {
+    "from_name": "招商银行",
+    "from_email": "notice@cmbchina.com",
+    "sender_name": null,
+    "sender_email": null,
+    "reply_to": [],
+    "to_addresses": [{ "name": "", "email": "user@example.org" }],
+    "cc_addresses": [],
+    "subject": "【招商银行】账户交易提醒",
+    "date": "2026-10-10T14:05:00+08:00",
+    "in_reply_to": null,
+    "body_text": null,
+    "body_html": "<html lang=\"zh-CN\"><body><p>尊敬的客户，您尾号8812的账户于今日发生一笔交易（¥8,600.00）。如非本人操作，请立即致电95555或登录手机银行冻结账户。</p><p><a href=\"https://www.cmbchina.com/mobile\">登录手机银行查看详情</a></p></body></html>",
+    "attachments": [],
+    "list_unsubscribe": "<https://www.cmbchina.com/unsubscribe>",
+    "is_bulk": true
+  },
+  "headers": {
+    "kind": "stored",
+    "source": "ingest",
+    "headers": {
+      "authentication-results": "mx.example.org; spf=pass smtp.mailfrom=cmbchina.com; dkim=pass header.d=cmbchina.com; dmarc=pass header.from=cmbchina.com"
+    }
+  },
+  "account": { "trusted_authserv_id": "mx.example.org" }
 }
