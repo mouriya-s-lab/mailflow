@@ -19,6 +19,7 @@ import { adjustFolderCounts, resolveSpamFolder } from '../utils/mailUtils.js';
 import { getAccountAddresses } from './mailAccess.js';
 import { resolveForConnection, createPinnedLookup } from './hostValidation.js';
 import { proxyProviderOf } from '../../fork-features/emailproxy.js';
+import { recordIngestHeaders } from '../../fork-features/headers/index.js';
 import { getConnectionPolicy } from './connectionPolicy.js';
 import { applyInboxRules, applyBlockList } from './inboxRules.js';
 import { classifyAndTagMessage } from './spamPipeline.js';
@@ -4149,6 +4150,7 @@ export class ImapManager {
               sanitizeStr(parsed.senderName), sanitizeStr(parsed.senderEmail),
               sanitizeStr(parsed.forwardedFromName), sanitizeStr(parsed.forwardedFromEmail), sanitizeStr(parsed.forwardedVia),
             ]);
+            if (result.rows[0]) await recordIngestHeaders(result.rows[0].id, parsed.parsedHeaders);
             if (result.rows[0]?.is_new) {
               insertedCount++;
               // Inbox-ingest candidate: any newly-inserted INBOX row, read OR unread (read state
@@ -4891,6 +4893,7 @@ export class ImapManager {
                   sanitizeStr(parsed.senderName), sanitizeStr(parsed.senderEmail),
                   sanitizeStr(parsed.forwardedFromName), sanitizeStr(parsed.forwardedFromEmail), sanitizeStr(parsed.forwardedVia),
                 ]);
+                if (bfInsert?.rows[0]) await recordIngestHeaders(bfInsert.rows[0].id, parsed.parsedHeaders);
                 backfilledRows++;
                 // v0.2 antispam: classify genuinely-new rows — the same hook the
                 // sync path uses, so a manual reindex (or the initial population
@@ -6254,6 +6257,27 @@ export class ImapManager {
         }
 
         return headers;
+      } finally {
+        lock.release();
+      }
+    });
+  }
+
+  // Fork (#10): the named header fields of a set of UIDs in one folder, over one pooled session
+  // and one UID FETCH ... BODY.PEEK[HEADER.FIELDS (...)]. Returns the folder's UIDVALIDITY as
+  // this session saw it (a string, or null when the server reports none) and the raw header
+  // block of each UID the server returned; a UID it does not hold is absent from the map.
+  async fetchHeaderFields(account, folder, uids, fields) {
+    return withFreshClient(account, async (client) => {
+      const lock = await client.getMailboxLock(folder);
+      try {
+        const uidValidity = client.mailbox?.uidValidity == null ? null : String(client.mailbox.uidValidity);
+        const requested = new Set(uids);
+        const headers = new Map();
+        for await (const msg of client.fetch(uids, { uid: true, headers: [...fields] }, { uid: true })) {
+          if (requested.has(msg.uid) && !headers.has(msg.uid)) headers.set(msg.uid, msg.headers ?? null);
+        }
+        return { uidValidity, headers };
       } finally {
         lock.release();
       }
