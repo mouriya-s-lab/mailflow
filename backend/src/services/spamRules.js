@@ -1,6 +1,6 @@
 // Rules engine for the antispam classifier (v0.2) — Layer 1, always-on.
 //
-// 15 hand-crafted heuristic rules, evaluated as pure functions. The engine
+// Hand-crafted heuristic rules, evaluated as pure functions. The engine
 // provides a deterministic baseline that works even with zero ML training
 // records. Weights and logic are the authoritative values from
 // .hermes/design/spam-rules-detailed.md (maintainer-reviewed); auth-header
@@ -217,8 +217,8 @@ function hasMailingListHeaders(headers) {
 }
 
 // ---------------------------------------------------------------------------
-// The 15 rules. Signature: (email, ctx) => boolean
-// ctx = { authResults, userContacts, headers }
+// The rules. Signature: (email, ctx) => boolean
+// ctx = { authResults, userContacts, headers, linkFlags }
 // ---------------------------------------------------------------------------
 
 const RULES = [
@@ -282,6 +282,23 @@ const RULES = [
       }
       return false;
     },
+  },
+  // Link rules (fork, mouriya-s-lab/mailflow#16) read the flags fork-features/link-evidence derived
+  // before scoring; a flag that is null (the body or a lookup source could not tell) never fires.
+  {
+    name: 'LINK_TEXT_DOMAIN_MISMATCH',
+    weight: 0.5,
+    test: (_email, ctx) => ctx.linkFlags?.link_text_domain_mismatch === 1,
+  },
+  {
+    name: 'LINK_DOMAIN_NEW',
+    weight: 0.4,
+    test: (_email, ctx) => ctx.linkFlags?.link_domain_new === 1,
+  },
+  {
+    name: 'LINK_DOMAIN_LISTED',
+    weight: 0.6,
+    test: (_email, ctx) => ctx.linkFlags?.link_domain_listed === 1,
   },
   {
     name: 'FROM_REPLYTO_MISMATCH',
@@ -382,17 +399,19 @@ export function normalizeContactAddress(address) {
 const ATTACHMENT_RULES = new Set(['ATTACHMENT_EXECUTABLE', 'ATTACHMENT_ACTIVE_CONTENT', 'ATTACHMENT_DOUBLE_EXT']);
 
 /**
- * Score an email with the 15-rule engine.
+ * Score an email with the rule engine.
  *
  * @param {Object} email
  *   { subject, body, from?, replyTo?, attachments?, headers? }
  * @param {Object} [ctx]
- *   { userContacts?: Set<string>, trustedAuthservIds?: string|Array<string> }
+ *   { userContacts?: Set<string>, trustedAuthservIds?: string|Array<string>,
+ *     linkFlags?: { link_text_domain_mismatch, link_domain_new, link_domain_listed } }
  *   — normalized addresses, built once per classification call by the caller
  *   (contactsService), and the authserv-id(s) whose Authentication-Results
  *   headers this account trusts (email_accounts.trusted_authserv_id). With no
  *   trusted id the auth signal is neutral: an untrusted header is treated
- *   exactly like an absent one.
+ *   exactly like an absent one. linkFlags come from fork-features/link-evidence;
+ *   without them the link rules do not fire.
  * @returns {{ score: number, fired: Array<{name, weight}> }}
  *   score in [0, 1]; fired rules in evaluation order.
  */
@@ -403,6 +422,7 @@ export function scoreRules(email, ctx = {}) {
     authHeaderPresent: hasAuthHeader(headers, ctx.trustedAuthservIds),
     userContacts: ctx.userContacts || new Set(),
     headers,
+    linkFlags: ctx.linkFlags ?? null,
   };
 
   const fired = RULES.filter(rule => rule.test(email, fullCtx));
@@ -435,6 +455,7 @@ export function explainRules(email, ctx = {}) {
     authHeaderPresent: hasAuthHeader(headers, ctx.trustedAuthservIds),
     userContacts: ctx.userContacts || new Set(),
     headers,
+    linkFlags: ctx.linkFlags ?? null,
   };
   return RULES.map(rule => ({
     name: rule.name,

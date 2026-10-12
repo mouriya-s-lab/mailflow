@@ -10,8 +10,8 @@ const baseEmail = {
 };
 
 describe('rules table integrity', () => {
-  it('exports exactly 15 rules', () => {
-    expect(RULES).toHaveLength(15);
+  it('exports exactly 18 rules', () => {
+    expect(RULES).toHaveLength(18);
   });
 
   it('weights match the approved rules-detail doc', () => {
@@ -31,6 +31,9 @@ describe('rules table integrity', () => {
     expect(byName.AUTH_DMARC_FAIL).toBe(0.4);
     expect(byName.MAILING_LIST_HEADERS).toBe(-0.2);
     expect(byName.FROM_IN_USER_CONTACTS).toBe(-0.5);
+    expect(byName.LINK_TEXT_DOMAIN_MISMATCH).toBe(0.5);
+    expect(byName.LINK_DOMAIN_NEW).toBe(0.4);
+    expect(byName.LINK_DOMAIN_LISTED).toBe(0.6);
   });
 });
 
@@ -264,6 +267,23 @@ describe('scoreRules — individual rules', () => {
   });
 });
 
+describe('scoreRules — link rules', () => {
+  const LINK_RULES = ['LINK_TEXT_DOMAIN_MISMATCH', 'LINK_DOMAIN_NEW', 'LINK_DOMAIN_LISTED'];
+  const linkRulesFired = linkFlags => scoreRules(baseEmail, { linkFlags }).fired
+    .map(r => r.name).filter(name => LINK_RULES.includes(name));
+
+  it('fires each link rule on its flag', () => {
+    expect(linkRulesFired({ link_text_domain_mismatch: 1, link_domain_new: 1, link_domain_listed: 1 }))
+      .toEqual(LINK_RULES);
+  });
+
+  it('never fires on 0, on null (the evidence could not tell), or without link flags', () => {
+    expect(linkRulesFired({ link_text_domain_mismatch: 0, link_domain_new: 0, link_domain_listed: 0 })).toEqual([]);
+    expect(linkRulesFired({ link_text_domain_mismatch: null, link_domain_new: null, link_domain_listed: null })).toEqual([]);
+    expect(linkRulesFired(undefined)).toEqual([]);
+  });
+});
+
 describe('scoreRules — combined scoring', () => {
   it('returns a score clamped to [0, 1]', () => {
     const worst = scoreRules({
@@ -294,7 +314,7 @@ describe('scoreRules — combined scoring', () => {
 describe('explainRules', () => {
   it('reports every rule with fired status', () => {
     const detail = explainRules({ ...baseEmail, subject: 'CHEAP VIAGRA' });
-    expect(detail).toHaveLength(15);
+    expect(detail).toHaveLength(18);
     const fired = detail.filter(r => r.fired).map(r => r.name);
     expect(fired).toContain('SUBJECT_PHARMA_KEYWORDS');
     expect(fired).toContain('SUBJECT_ALL_CAPS');

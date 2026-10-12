@@ -337,11 +337,12 @@ One structured view of a stored message, built from its `messages` row and its r
 
   Wherever a declaration decides, `resolved` is its primary language subtag (`zh-CN` gives `zh`), so the same language gets one tag whether or not a template declares it; the full tags stay in `declared`.
 - Stored bodies are the sanitized HTML, and the sanitizer drops the `<html>` and `<body>` elements with their `lang`. For mail read from the database `htmlLang` is therefore the first `lang` on an element inside the body, or `null`; an `<html lang>` is seen only when raw HTML is passed in.
+- `messageLinks({ bodyHtml })` is pure and returns the `links` of a stored HTML body exactly as `extractSignals` reports them, for a consumer that needs the links alone.
 - `getMessageSignals(messageIds, { deadlineMs })` loads the rows with one query, reads all their headers with one `getMessageHeaders` call (which fetches missing ones from the server, one session per folder, within `deadlineMs`), and returns a `Map` from id to signals; an id without a row is not in it. `getAccountMessageSignals(accountId, messageIds, { deadlineMs })` does the same for the messages of one account only. Plugins get the account form as `getMessageSignals(accountId, ids, { deadlineMs })`.
 
 | Path | What |
 |---|---|
-| `backend/fork-features/signals/index.js` | `extractSignals`, `resolveLanguage`, `messageBodyText`, `getMessageSignals`, `getAccountMessageSignals` |
+| `backend/fork-features/signals/index.js` | `extractSignals`, `resolveLanguage`, `messageBodyText`, `messageLinks`, `getMessageSignals`, `getAccountMessageSignals` |
 | `backend/fork-features/signals/index.test.js` | Signal set of a phishing message; authentication variants; link limits and domains; language rules; one header read per batch |
 
 ### Patches to upstream files (re-check on every upstream sync)
@@ -350,3 +351,29 @@ One structured view of a stored message, built from its `messages` row and its r
 |---|---|
 | `backend/src/plugins/api.js` | `getMessageSignals(accountId, ids, { deadlineMs })`: `fork-features/signals` scoped to one account |
 | `backend/src/plugins/README.md` | Lists `getMessageSignals` in the capability surface |
+
+## Link rules in anti-spam
+
+The anti-spam rules see where a message's links go: a link that shows one domain and goes to another, a link to a domain registered in the last 30 days, and a link to a domain a lookup source lists. The same conclusions become flags of the training records, so the model learns them and keeps them after Jev is switched off.
+
+- **Link evidence.** `linkEvidenceFor(message, { lookUpReputation })` (`fork-features/link-evidence`) reads a `messages` row's links with `messageLinks` and, when `lookUpReputation` is set, asks `lookupDomains` once for every distinct destination domain (`hrefDomain`). It resolves to `{ kind: 'body_unavailable' }` when the row has neither `body_html` nor `body_text`, `{ kind: 'lookup_disabled', mismatch }` without a lookup, or `{ kind: 'checked', checkedAt, mismatch, domains }` with each domain's `{ registration, listings }` as the lookup answered. The lookup has 5 seconds in all, settings and cache queries included; a lookup that fails or has not answered by then makes every source of every domain `unknown` (`error` or `timeout`) and logs one `logger.warn` per minute at most, without domains.
+- **Flags.** `linkFlags(evidence)` gives `link_text_domain_mismatch`, `link_domain_new` and `link_domain_listed`, each `1`, `0` or `null` (the evidence cannot tell). Mismatch is 1 when any link's text names another domain than its destination. New is 1 when any destination was registered less than 30 days before `checkedAt`, else `null` when some registration is unknown (or its date is unusable), else 0; `not_found` is not new. Listed is 1 when any source lists any destination, else `null` when some source is unknown or no source is configured, else 0; `unconfigured` is never read as not listed. Without a body all three are `null`; without a lookup, new and listed are; a body without links gives 0 for all three.
+- **Rules.** `LINK_TEXT_DOMAIN_MISMATCH` (0.5), `LINK_DOMAIN_NEW` (0.4) and `LINK_DOMAIN_LISTED` (0.6) fire when their flag is 1. The rules stay synchronous: `classifyAndTagMessage` gathers the evidence after the anti-spam switches let it through and passes the flags to `scoreRules` as `ctx.linkFlags`. An account or user with anti-spam off is never looked up. No link rule subtracts, so an unknown source neither raises nor lowers a score. The verdict stores the evidence and the flags as `spam_details.links`, and "Why?" lists the rules that fired from `rulesFired` as before.
+- **Training.** `captureManualSpamLabel` and `recordJevSpamVerdict` take the flags when the record is made, from the row as it is then: the lookup runs alongside the header read and only while anti-spam is on for the message's account and user. They are stored in `flag_features`, and `flagTokensFor` turns a flag of 1 into a model token (`__link_text_domain_mismatch__`, `__link_domain_new__`, `__link_domain_listed__`); 0 and `null` give none. A retrain reads the stored flags and looks nothing up.
+- **At ingest the body is usually missing.** Every provider profile ingests without bodies and fetches them later, so classification at ingest sees `body_unavailable` and the link rules stay silent, as `BODY_URL_SHORTENER` already does there. They apply wherever the row holds its body when it is classified, such as `ensureSpamVerdict` on mail that was opened before.
+
+| Path | What |
+|---|---|
+| `backend/fork-features/link-evidence/index.js` | `linkEvidenceFor`, `linkFlags`, `LINK_LOOKUP_DEADLINE_MS` |
+| `backend/fork-features/link-evidence/index.test.js` | Flag truth tables; one lookup per distinct domain; the deadline, failures and a late rejection |
+| `backend/src/services/spamPipeline.links.test.js` | The three rules through classification with the lookup mocked: firing, unknown sources recorded without firing or subtracting, the 5-second deadline, no lookup with anti-spam off |
+
+### Patches to upstream files (re-check on every upstream sync)
+
+| File | Change |
+|---|---|
+| `backend/src/services/spamRules.js` | `LINK_TEXT_DOMAIN_MISMATCH`, `LINK_DOMAIN_NEW`, `LINK_DOMAIN_LISTED` reading `ctx.linkFlags`; `scoreRules` and `explainRules` pass it to the rules |
+| `backend/src/services/spamPipeline.js` | Link evidence before the rules; link flags in the flag features and the rule context; `spam_details.links` |
+| `backend/src/services/spamModel.js` | Three link flag tokens in `FLAG_TOKENS` and `flagTokensFor` |
+| `backend/src/services/spamTraining.js` | The row read includes both anti-spam switches; the link flags join `flag_features` when a record is made |
+| `backend/src/services/spamRules.test.js`, `backend/src/services/spamModel.test.js`, `backend/src/services/spamTraining.test.js`, `backend/src/routes/mail.spam.test.js` | Rule count and weights, link rules and tokens, the training snapshot, no lookup with anti-spam off or in a retrain |

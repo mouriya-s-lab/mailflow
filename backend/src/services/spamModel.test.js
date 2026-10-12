@@ -117,6 +117,15 @@ describe('flagTokensFor', () => {
     const tokens = flagTokensFor({ dkim_pass: 0, spf_pass: 0, dmarc_pass: 0 });
     expect(tokens).toEqual([]);
   });
+
+  it('maps a link flag to its token only when it is 1; 0 and null (unknown) yield none', () => {
+    expect(flagTokensFor({ link_text_domain_mismatch: 1, link_domain_new: 1, link_domain_listed: 1 })).toEqual([
+      '__link_text_domain_mismatch__',
+      '__link_domain_new__',
+      '__link_domain_listed__',
+    ]);
+    expect(flagTokensFor({ link_text_domain_mismatch: 0, link_domain_new: null, link_domain_listed: null })).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -234,6 +234,12 @@ function linksOf(anchors) {
   return links;
 }
 
+// The links of a stored HTML body, as extractSignals reports them. Only <a href> in body_html
+// yields links; a plain-text body has none.
+export function messageLinks({ bodyHtml }) {
+  return linksOf(readStoredHtml(bodyHtml).anchors);
+}
+
 const storedHeader = (headers, name) => {
   if (headers.kind !== 'stored') return null;
   const value = headers.headers[name];
