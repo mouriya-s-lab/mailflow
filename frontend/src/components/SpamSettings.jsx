@@ -174,13 +174,39 @@ export default function SpamSettings() {
       {/* Model status */}
       <Row label={t('spam.statusTitle')} help={t('spam.statusHelp')}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-          <Stat label={t('spam.statMaturity')} value={t(`spam.maturity.${status.maturity}`)} />
-          <Stat label={t('spam.statRecords')} value={String(status.trainingRecords)} />
           <Stat label={t('spam.statVersion')} value={String(status.modelVersion ?? '—')} />
-          <Stat label={t('spam.statLastTrained')}
-            value={status.lastTrainedAt ? new Date(status.lastTrainedAt).toLocaleString() : t('spam.never')} />
           <Stat label={t('spam.statDecay')} value={`${status.decayThresholdDays ?? 90} ${t('spam.days')}`} />
         </div>
+        {status.partitions.length > 0 ? (
+          <div style={{ overflowX: 'auto', marginTop: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, textAlign: 'left' }}>
+              <thead>
+                <tr style={{ color: 'var(--text-secondary)' }}>
+                  <th scope="col" style={{ padding: '8px 10px' }}>{t('spam.statLanguage')}</th>
+                  <th scope="col" style={{ padding: '8px 10px' }}>{t('spam.statRecords')}</th>
+                  <th scope="col" style={{ padding: '8px 10px' }}>{t('spam.statMaturity')}</th>
+                  <th scope="col" style={{ padding: '8px 10px' }}>{t('spam.statLastTrained')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {status.partitions.map(partition => (
+                  <tr key={partition.language} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                    <th scope="row" style={{ padding: '8px 10px', fontWeight: 600 }}>{partition.language}</th>
+                    <td style={{ padding: '8px 10px', fontVariantNumeric: 'tabular-nums' }}>{partition.trainingRecords}</td>
+                    <td style={{ padding: '8px 10px' }}>{t(`spam.maturity.${partition.maturity}`)}</td>
+                    <td style={{ padding: '8px 10px' }}>
+                      {partition.lastTrainedAt ? new Date(partition.lastTrainedAt).toLocaleString() : t('spam.never')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            {t('spam.noLanguageModels')}
+          </div>
+        )}
       </Row>
 
       {/* Master switch + per-account hint */}

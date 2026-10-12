@@ -33,33 +33,39 @@ describe('cleanText', () => {
 
 describe('normalizeToken', () => {
   it('lowercases', () => {
-    expect(normalizeToken('SPAM')).toBe('spam');
+    expect(normalizeToken('SPAM', 'en')).toBe('spam');
   });
 
-  it('drops stop-words', () => {
-    expect(normalizeToken('the')).toBeNull();
-    expect(normalizeToken('il')).toBeNull();
-    expect(normalizeToken('и')).toBeNull();
+  it('uses only the partition language stop words', () => {
+    expect(normalizeToken('il', 'it')).toBeNull();
+    expect(normalizeToken('il', 'en')).toBe('il');
+    expect(normalizeToken('the', 'en')).toBeNull();
+    expect(normalizeToken('the', 'und-Latn')).toBeNull();
+    expect(normalizeToken('the', 'it')).toBe('the');
+    expect(normalizeToken('the', 'pt')).toBe('the');
+    expect(normalizeToken('и', 'ru')).toBeNull();
   });
 
   it('drops pure-numeric tokens', () => {
-    expect(normalizeToken('12345')).toBeNull();
-    expect(normalizeToken('2024')).toBeNull();
+    expect(normalizeToken('12345', 'en')).toBeNull();
+    expect(normalizeToken('2024', 'en')).toBeNull();
   });
 
   it('enforces min length 2 and max length 30', () => {
-    expect(normalizeToken('a')).toBeNull();
-    expect(normalizeToken('x'.repeat(31))).toBeNull();
-    expect(normalizeToken('ab')).toBe('ab');
+    expect(normalizeToken('a', 'en')).toBeNull();
+    expect(normalizeToken('x'.repeat(31), 'en')).toBeNull();
+    expect(normalizeToken('ab', 'en')).toBe('ab');
   });
 
   it('keeps spam-discriminative words', () => {
-    expect(normalizeToken('viagra')).toBe('viagra');
-    expect(normalizeToken('click')).toBe('click');
+    expect(normalizeToken('viagra', 'en')).toBe('viagra');
+    expect(normalizeToken('click', 'en')).toBe('click');
   });
 
-  it('segments CJK runs into single ideographs', () => {
-    expect(normalizeToken('药店')).toBe('药'); // '药店' split
+  it('keeps whole Han words and single Han ideographs', () => {
+    expect(normalizeToken('药店', 'zh')).toBe('药店');
+    expect(normalizeToken('药', 'zh')).toBe('药');
+    expect(tokenize({ subject: '药' }, 'zh')).toEqual(['药', '药']);
   });
 });
 
@@ -68,7 +74,7 @@ describe('tokenize', () => {
     const tokens = tokenize({
       subject: 'free money',
       body: 'click here for viagra',
-    });
+    }, 'en');
     // subject appears twice (x2 weight), body once
     expect(tokens.filter(t => t === 'free').length).toBe(2);
     expect(tokens.filter(t => t === 'money').length).toBe(2);
@@ -77,28 +83,50 @@ describe('tokenize', () => {
   });
 
   it('returns empty when the subject is only emoji/stop-words', () => {
-    expect(tokenize({ subject: '🎉🎉 the and of for', body: '' }).length).toBe(0);
+    expect(tokenize({ subject: '🎉🎉 the and of for', body: '' }, 'en').length).toBe(0);
   });
 
   it('strips HTML from the body', () => {
-    const tokens = tokenize({ subject: 'sale', body: '<a href="#">buy now</a>' });
+    const tokens = tokenize({ subject: 'sale', body: '<a href="#">buy now</a>' }, 'en');
     expect(tokens.filter(t => t === 'buy').length).toBe(1);
   });
 
   it('handles Cyrillic tokens', () => {
-    const tokens = tokenize({ subject: 'виагра', body: '' });
+    const tokens = tokenize({ subject: 'виагра', body: '' }, 'en');
     expect(tokens).toContain('виагра');
   });
 
   it('extracts URL-host tokens separately', () => {
-    const tokens = tokenize({ subject: 'offer', body: 'visit https://bit.ly/x now' });
+    const tokens = tokenize({ subject: 'offer', body: 'visit https://bit.ly/x now' }, 'en');
     expect(tokens).toContain('bit.ly');
   });
 
   it('when body is missing falls back to bodyHtml', () => {
-    const tokens = tokenize({ subject: 'note', bodyHtml: '<p>urgent invoice</p>' });
+    const tokens = tokenize({ subject: 'note', bodyHtml: '<p>urgent invoice</p>' }, 'en');
     expect(tokens).toContain('urgent');
     expect(tokens).toContain('invoice');
+  });
+
+  it('segments Chinese into whole words rather than first characters', () => {
+    const tokens = tokenize({ body: '网上药店特价销售' }, 'zh');
+    expect(tokens).toContain('药店');
+    expect(tokens).not.toContain('药');
+  });
+
+  it('segments Japanese words and drops single kana', () => {
+    const tokens = tokenize({ body: '無料クーポンを今すぐ受け取る あ' }, 'ja');
+    expect(tokens).toContain('無料');
+    expect(tokens).not.toContain('を');
+    expect(tokens).not.toContain('あ');
+  });
+
+  it('keeps Korean Hangul words whole', () => {
+    expect(tokenize({ body: '무료 쿠폰을 지금 받으세요' }, 'ko'))
+      .toEqual(['무료', '쿠폰을', '지금', '받으세요']);
+  });
+
+  it('requires an explicit language', () => {
+    expect(() => tokenize({ subject: 'hello' })).toThrow(TypeError);
   });
 });
 
@@ -108,20 +136,20 @@ describe('tokenize — size caps', () => {
     const body = `${'alpha '.repeat(12_000)} zzmarkerzz`; // ~72k chars, marker past 64k
     expect(body.length).toBeGreaterThan(MAX_BODY_CHARS);
 
-    const tokens = tokenize({ subject: 'ok', body });
+    const tokens = tokenize({ subject: 'ok', body }, 'en');
     expect(tokens).toContain('alpha');
     expect(tokens).not.toContain('zzmarkerzz');
   });
 
   it('caps the token stream at MAX_TOKENS', () => {
     const body = Array.from({ length: MAX_TOKENS + 500 }, (_, i) => `w${i}`).join(' ');
-    const tokens = tokenize({ subject: 'subject', body });
+    const tokens = tokenize({ subject: 'subject', body }, 'en');
     expect(tokens.length).toBe(MAX_TOKENS);
   });
 
   it('keeps the subject tokens when the body alone would exhaust the cap', () => {
     const body = Array.from({ length: MAX_TOKENS + 500 }, (_, i) => `w${i}`).join(' ');
-    const tokens = tokenize({ subject: 'urgentpayment', body });
+    const tokens = tokenize({ subject: 'urgentpayment', body }, 'en');
     // Subject is pushed first (twice), so it survives the cap.
     expect(tokens.filter(t => t === 'urgentpayment').length).toBe(2);
   });
@@ -130,14 +158,14 @@ describe('tokenize — size caps', () => {
     // <script> opens well before the cap and is never closed (the cap cuts it),
     // so the whole tail must still be treated as script content and dropped.
     const html = `<p>hello</p><script>${'x'.repeat(MAX_BODY_CHARS * 2)}`;
-    const tokens = tokenize({ subject: 'ok', bodyHtml: html });
+    const tokens = tokenize({ subject: 'ok', bodyHtml: html }, 'en');
     expect(tokens).toContain('hello');
     expect(tokens.some(t => /^x+$/.test(t))).toBe(false);
   });
 
   it('caps an over-long subject too', () => {
     const subject = `${'y'.repeat(MAX_BODY_CHARS + 100)}`;
-    const tokens = tokenize({ subject, body: '' });
+    const tokens = tokenize({ subject, body: '' }, 'en');
     expect(tokens.length).toBeLessThanOrEqual(MAX_TOKENS);
   });
 });
@@ -222,17 +250,17 @@ describe('extractFlagFeatures', () => {
 describe('tokenFingerprint', () => {
   it('is deterministic for identical messages', () => {
     const a = { subject: 'hi', body: 'world' };
-    expect(tokenFingerprint(a)).toBe(tokenFingerprint({ ...a }));
+    expect(tokenFingerprint(a, 'en')).toBe(tokenFingerprint({ ...a }, 'en'));
   });
 
   it('changes when the content changes', () => {
-    expect(tokenFingerprint({ subject: 'hi', body: 'world' })).not.toBe(
-      tokenFingerprint({ subject: 'hi', body: 'different' }),
+    expect(tokenFingerprint({ subject: 'hi', body: 'world' }, 'en')).not.toBe(
+      tokenFingerprint({ subject: 'hi', body: 'different' }, 'en'),
     );
   });
 
   it('yields a 64-char hex digest', () => {
-    expect(tokenFingerprint({ subject: 'hi' })).toMatch(/^[0-9a-f]{64}$/);
+    expect(tokenFingerprint({ subject: 'hi' }, 'en')).toMatch(/^[0-9a-f]{64}$/);
   });
 });
 

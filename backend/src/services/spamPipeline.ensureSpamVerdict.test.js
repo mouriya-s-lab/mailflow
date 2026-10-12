@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('./db.js', () => ({ query: vi.fn() }));
-vi.mock('./spamModelStore.js', () => ({ getModelForUser: vi.fn() }));
+vi.mock('./spamModelStore.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  getModelForUser: vi.fn(),
+}));
 vi.mock('./logger.js', () => ({ logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } }));
 vi.mock('../../fork-features/headers/index.js', () => ({ getMessageHeaders: vi.fn() }));
 

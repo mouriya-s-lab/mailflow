@@ -15,14 +15,17 @@ vi.mock('../index.js', () => ({
     broadcast: vi.fn(),
   },
 }));
-vi.mock('../services/spamTokenizer.js', () => ({
+vi.mock('../services/spamTokenizer.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   tokenize: vi.fn(),
   extractFlagFeatures: vi.fn(),
 }));
-vi.mock('../services/spamModelStore.js', () => ({
+vi.mock('../services/spamModelStore.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   updateIncrementalForUser: vi.fn(),
   retrainUser: vi.fn(),
 }));
+vi.mock('../../fork-features/headers/index.js', () => ({ getMessageHeaders: vi.fn() }));
 
 import express from 'express';
 import mailRoutes from './mail.js';
@@ -30,6 +33,8 @@ import { query } from '../services/db.js';
 import { imapManager } from '../index.js';
 import { tokenize, extractFlagFeatures } from '../services/spamTokenizer.js';
 import { updateIncrementalForUser } from '../services/spamModelStore.js';
+import { getMessageHeaders } from '../../fork-features/headers/index.js';
+import { TOKENIZER_VERSION } from '../services/spamTokenizer.js';
 
 const USER_ID = 'user-1';
 const ACCOUNT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -80,6 +85,8 @@ beforeEach(() => {
   tokenize.mockReset();
   extractFlagFeatures.mockReset();
   updateIncrementalForUser.mockReset();
+  getMessageHeaders.mockReset();
+  getMessageHeaders.mockResolvedValue(new Map([[MESSAGE_ID, { kind: 'stored', headers: { 'content-language': 'en' } }]]));
   imapManager._guardMoveUid.mockReset();
   imapManager._unguardMoveUid.mockReset();
   imapManager.moveMessage.mockReset();
@@ -146,11 +153,13 @@ describe('POST /api/mail/messages/:id/spam — no-op path (already in spam folde
     expect(insertParams.some(p => typeof p === 'string' && p.includes('"viagra"'))).toBe(true);
     expect(insertParams).toContain('spoof.net');
     expect(insertParams).toContainEqual(['exe']);
+    expect(insertParams).toHaveLength(15);
+    expect(insertParams.slice(13)).toEqual(['en', TOKENIZER_VERSION]);
 
     // Incremental training is fed once with the extracted features.
     expect(updateIncrementalForUser).toHaveBeenCalledTimes(1);
     expect(updateIncrementalForUser).toHaveBeenCalledWith(
-      USER_ID, expect.objectContaining({ subject: 'Cheap Viagra' }), 'spam'
+      USER_ID, 'en', ['cheap', 'viagra', 'buy', 'now'], extractFlagFeatures.mock.results[0].value, 'spam'
     );
   });
 });
@@ -194,7 +203,9 @@ describe('POST /api/mail/messages/:id/ham — move path (message leaves spam)', 
     expect(getSpamInserts()[0][0]).toContain('token_counts');
 
     expect(updateIncrementalForUser).toHaveBeenCalledTimes(1);
-    expect(updateIncrementalForUser).toHaveBeenCalledWith(USER_ID, expect.anything(), 'ham');
+    expect(updateIncrementalForUser).toHaveBeenCalledWith(
+      USER_ID, 'en', ['cheap', 'viagra', 'buy', 'now'], extractFlagFeatures.mock.results[0].value, 'ham',
+    );
   });
 
   it('records the source UID at the destination when the server has no UIDPLUS', async () => {

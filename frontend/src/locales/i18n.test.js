@@ -147,6 +147,8 @@ const SAME_VALUE_ALLOWED = {
   'message.via': [['en', 'fr', 'ptBR']],
   // "por {{actor}}" (who made an admin change) — the same preposition in es and pt-BR
   'admin.security.byActor': [['es', 'ptBR']],
+  // "Idioma" — the same word for language in Spanish and Brazilian Portuguese
+  'spam.statLanguage': [['es', 'ptBR']],
   // "Account" — identical in en/it; "Konto" — identical in de/pl
   'admin.cleanup.account': [['en', 'it'], ['de', 'pl']],
   // "{{n}} min" — the "min" abbreviation is shared in en, es, fr, it

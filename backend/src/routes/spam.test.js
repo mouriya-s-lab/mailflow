@@ -18,16 +18,22 @@ vi.mock('../services/spamTokenizer.js', () => ({
 vi.mock('../services/spamRules.js', () => ({
   scoreRules: vi.fn(),
 }));
-vi.mock('../services/spamModel.js', () => ({
+vi.mock('../services/spamModel.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   classifyMessage: vi.fn(),
   blendScores: vi.fn(),
   extractTopTokens: vi.fn(),
 }));
-vi.mock('../services/spamModelStore.js', () => ({
+vi.mock('../services/spamModelStore.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   getModelForUser: vi.fn(),
+  getModelsForUser: vi.fn(),
+  getDecayThresholdDays: vi.fn(),
+  setDecayThresholdDays: vi.fn(),
   invalidateModelCache: vi.fn(),
   retrainUser: vi.fn(),
 }));
+vi.mock('../../fork-features/headers/index.js', () => ({ getMessageHeaders: vi.fn() }));
 vi.mock('../services/spamScheduler.js', () => ({
   runFullRetrain: vi.fn(),
 }));
@@ -41,7 +47,11 @@ import { query } from '../services/db.js';
 import { tokenize, extractFlagFeatures } from '../services/spamTokenizer.js';
 import { scoreRules } from '../services/spamRules.js';
 import { classifyMessage, extractTopTokens } from '../services/spamModel.js';
-import { getModelForUser, invalidateModelCache } from '../services/spamModelStore.js';
+import {
+  getModelForUser, getModelsForUser, getDecayThresholdDays, setDecayThresholdDays, invalidateModelCache,
+} from '../services/spamModelStore.js';
+import { getMessageHeaders } from '../../fork-features/headers/index.js';
+import { MODEL_VERSION } from '../services/spamModel.js';
 import { runFullRetrain } from '../services/spamScheduler.js';
 import { detectAuthservIds } from '../services/spamAuthservIds.js';
 
@@ -73,6 +83,13 @@ beforeEach(() => {
   classifyMessage.mockReset();
   extractTopTokens.mockReset();
   getModelForUser.mockReset();
+  getModelsForUser.mockReset();
+  getModelsForUser.mockResolvedValue(new Map());
+  getDecayThresholdDays.mockReset();
+  getDecayThresholdDays.mockResolvedValue(90);
+  setDecayThresholdDays.mockReset();
+  getMessageHeaders.mockReset();
+  getMessageHeaders.mockResolvedValue(new Map([[MESSAGE_ID, { kind: 'stored', headers: { 'content-language': 'en' } }]]));
   invalidateModelCache.mockReset();
   runFullRetrain.mockReset();
   detectAuthservIds.mockReset();
@@ -98,15 +115,23 @@ describe('GET /api/spam/status', () => {
 
     expect(res.status).toBe(200);
     expect(body.enabled).toBe(false);
-    expect(body.trainingRecords).toBe(0);
+    expect(body.partitions).toEqual([]);
+    expect(body.modelVersion).toBeNull();
     expect(body.decayThresholdDays).toBe(90);
-    expect(body.maturity).toBe('insufficient');
+    expect(body).not.toHaveProperty('trainingRecords');
+    expect(body).not.toHaveProperty('maturity');
+    expect(body).not.toHaveProperty('lastTrainedAt');
   });
 
-  it('reports enabled when a matching account exists', async () => {
-    getModelForUser.mockResolvedValue({
-      modelVersion: 1, trainingRecords: 120, lastTrainedAt: '2026-08-18T00:00:00Z', decayThresholdDays: 90,
-    });
+  it('reports sorted language partitions, their maturity and the user decay preference', async () => {
+    const lastTrainedAt = '2026-08-18T00:00:00Z';
+    getModelsForUser.mockResolvedValue(new Map([
+      ['fr', { trainingRecords: 120, lastTrainedAt }],
+      ['ja', { trainingRecords: 30, lastTrainedAt }],
+      ['zh', { trainingRecords: 500, lastTrainedAt }],
+      ['en', { trainingRecords: 120, lastTrainedAt }],
+    ]));
+    getDecayThresholdDays.mockResolvedValue(30);
     query.mockResolvedValueOnce({ rows: [{ n: 1 }] });
     query.mockResolvedValueOnce({ rows: [{ preferences: {} }] });
 
@@ -116,8 +141,16 @@ describe('GET /api/spam/status', () => {
     await new Promise((r) => server.close(r));
 
     expect(body.enabled).toBe(true);
-    expect(body.trainingRecords).toBe(120);
-    expect(body.maturity).toBe('fresh');
+    expect(body.modelVersion).toBe(MODEL_VERSION);
+    expect(body.decayThresholdDays).toBe(30);
+    expect(getModelsForUser).toHaveBeenCalledWith(USER_ID);
+    expect(getDecayThresholdDays).toHaveBeenCalledWith(USER_ID);
+    expect(body.partitions).toEqual([
+      { language: 'zh', trainingRecords: 500, maturity: 'mature', lastTrainedAt },
+      { language: 'en', trainingRecords: 120, maturity: 'fresh', lastTrainedAt },
+      { language: 'fr', trainingRecords: 120, maturity: 'fresh', lastTrainedAt },
+      { language: 'ja', trainingRecords: 30, maturity: 'insufficient', lastTrainedAt },
+    ]);
   });
 });
 
@@ -182,7 +215,7 @@ describe('PATCH /api/spam/decay-threshold', () => {
     expect(res.status).toBe(400);
   });
 
-  it('upserts the value into spam_models', async () => {
+  it('stores the value as a per-user preference', async () => {
     getModelForUser.mockResolvedValue(null);
     query.mockResolvedValue({ rows: [] });
     const { server, base } = await startServer();
@@ -195,7 +228,7 @@ describe('PATCH /api/spam/decay-threshold', () => {
     await new Promise((r) => server.close(r));
     expect(res.status).toBe(200);
     expect(body.decayThresholdDays).toBe(30);
-    expect(invalidateModelCache).toHaveBeenCalled();
+    expect(setDecayThresholdDays).toHaveBeenCalledWith(USER_ID, 30);
   });
 });
 
@@ -343,6 +376,8 @@ describe('GET /api/spam/explain', () => {
     expect(body.method).toBe('blended');
     expect(body.rulesFired[0].name).toBe('SUBJECT_PHARMA_KEYWORDS');
     expect(body.mlTopTokens).toHaveLength(1);
+    expect(body.partition).toEqual({ language: 'en', trainingRecords: 120, maturity: 'fresh' });
+    expect(getModelForUser).toHaveBeenCalledWith(USER_ID, 'en');
   });
 
   it('404s for an unowned message', async () => {
@@ -402,8 +437,26 @@ describe('GET /api/spam/explain (#457)', () => {
       expect(body.rulesScore).toBe(0.9);
       expect(body.confidence).toBe(0.9);
       expect(body.mlTopTokens).toEqual(stored.topTokens);
+      expect(body.partition).toBeNull();
       expect(scoreRules).not.toHaveBeenCalled();
       expect(classifyMessage).not.toHaveBeenCalled();
+    } finally { server.close(); }
+  });
+
+  it('replays the stored partition rather than selecting a current model', async () => {
+    const details = { ...stored, partition: { language: 'ja', trainingRecords: 30 } };
+    query.mockResolvedValueOnce({ rows: [{
+      id: MESSAGE_ID, owner_id: USER_ID, spam_verdict: 'spam', spam_details: JSON.stringify(details), attachments: [],
+    }] });
+    const { server, base } = await startServer();
+    try {
+      const res = await fetch(`${base}/api/spam/explain?messageId=${MESSAGE_ID}`);
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.replayed).toBe(true);
+      expect(body.partition).toEqual({ language: 'ja', trainingRecords: 30, maturity: 'insufficient' });
+      expect(getModelForUser).not.toHaveBeenCalled();
+      expect(getMessageHeaders).not.toHaveBeenCalled();
     } finally { server.close(); }
   });
 

@@ -13,8 +13,12 @@ import { query } from '../services/db.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { tokenize, extractFlagFeatures } from '../services/spamTokenizer.js';
 import { scoreRules } from '../services/spamRules.js';
-import { classifyMessage, extractTopTokens } from '../services/spamModel.js';
-import { getModelForUser, invalidateModelCache } from '../services/spamModelStore.js';
+import { classifyMessage, extractTopTokens, maturityOf, MODEL_VERSION } from '../services/spamModel.js';
+import {
+  getModelsForUser, getModelForUser, invalidateModelCache, partitionLanguage,
+  getDecayThresholdDays, setDecayThresholdDays,
+} from '../services/spamModelStore.js';
+import { getMessageHeaders } from '../../fork-features/headers/index.js';
 import { runFullRetrain } from '../services/spamScheduler.js';
 import { detectAuthservIds } from '../services/spamAuthservIds.js';
 
@@ -31,7 +35,9 @@ const DEFAULT_THRESHOLDS = {
   spamThreshold: 0.85,
   autoMoveThreshold: 0.95,
 };
-const DEFAULT_DECAY_DAYS = 90;
+
+// How long the explain recompute waits for a message's retained headers.
+const HEADER_DEADLINE_MS = 10_000;
 
 async function getUserPreferences(userId) {
   const result = await query('SELECT preferences FROM users WHERE id = $1', [userId]);
@@ -67,25 +73,32 @@ async function writeThresholds(userId, patch) {
 }
 
 // ── GET /api/spam/status ────────────────────────────────────────────────────
+// The user's model partitions, one per language, largest first.
 router.get('/status', async (req, res, next) => {
   try {
     const userId = req.session.userId;
-    const [model, accounts, prefs] = await Promise.all([
-      getModelForUser(userId),
+    const [models, accounts, prefs, decayThresholdDays] = await Promise.all([
+      getModelsForUser(userId),
       query('SELECT count(*)::int AS n FROM email_accounts WHERE user_id = $1 AND antispam_enabled = true', [userId]),
       getUserPreferences(userId),
+      getDecayThresholdDays(userId),
     ]);
     const enabled = prefs.spamEnabled !== false && accounts.rows[0].n > 0;
+    const partitions = [...models]
+      .map(([language, model]) => ({
+        language,
+        trainingRecords: model.trainingRecords,
+        maturity: maturityOf(model.trainingRecords),
+        lastTrainedAt: model.lastTrainedAt,
+      }))
+      .sort((a, b) => b.trainingRecords - a.trainingRecords || a.language.localeCompare(b.language));
     res.json({
       enabled,
       masterEnabled: prefs.spamEnabled !== false,
       antispamAccounts: accounts.rows[0].n,
-      modelVersion: model?.modelVersion ?? null,
-      trainingRecords: model?.trainingRecords ?? 0,
-      lastTrainedAt: model?.lastTrainedAt ?? null,
-      decayThresholdDays: model?.decayThresholdDays ?? DEFAULT_DECAY_DAYS,
-      maturity: model?.trainingRecords >= 500
-        ? 'mature' : model?.trainingRecords >= 50 ? 'fresh' : 'insufficient',
+      modelVersion: models.size > 0 ? MODEL_VERSION : null,
+      decayThresholdDays,
+      partitions,
     });
   } catch (err) { next(err); }
 });
@@ -124,8 +137,7 @@ router.patch('/thresholds', requireAdmin, async (req, res, next) => {
 // ── GET/PATCH /api/spam/decay-threshold ────────────────────────────────────
 router.get('/decay-threshold', async (req, res, next) => {
   try {
-    const model = await getModelForUser(req.session.userId);
-    res.json({ decayThresholdDays: model?.decayThresholdDays ?? DEFAULT_DECAY_DAYS });
+    res.json({ decayThresholdDays: await getDecayThresholdDays(req.session.userId) });
   } catch (err) { next(err); }
 });
 
@@ -136,17 +148,9 @@ router.patch('/decay-threshold', async (req, res, next) => {
     if (!Number.isInteger(days) || days < 7 || days > 365) {
       return res.status(400).json({ error: 'decayThresholdDays must be an integer between 7 and 365' });
     }
-    // Decay lives on the spam_models row; ensure one exists so the value
-    // survives until the next patch (retrainUser reads it from there).
-    const existing = await getModelForUser(req.session.userId);
-    await query(
-      `INSERT INTO spam_models (user_id, decay_threshold_days)
-       VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET decay_threshold_days = $2`,
-      [req.session.userId, days],
-    );
-    invalidateModelCache(req.session.userId);
+    // A per-user setting shared by every language partition; retrainUser reads it.
+    await setDecayThresholdDays(req.session.userId, days);
     res.json({ decayThresholdDays: days });
-    void existing;
   } catch (err) { next(err); }
 });
 
@@ -272,8 +276,10 @@ router.get('/explain', async (req, res, next) => {
 
     // Replay what the verdict saw (#457). Recomputing against the row as it is now drifted from
     // the verdict: attachments and bodies fill in after ingest, and the recompute had none of the
-    // headers the auth rules read. spamPipeline records every input below with each verdict.
+    // headers the auth rules read. spamPipeline records every input below with each verdict,
+    // the model partition included (a verdict from before partitions has none).
     if (storedDetails?.rulesFired) {
+      const used = storedDetails.partition;
       return res.json({
         verdict: row.spam_verdict,
         storedScore: row.spam_score_ml ?? null,
@@ -283,12 +289,16 @@ router.get('/explain', async (req, res, next) => {
         rulesScore: storedDetails.rulesScore ?? null,
         mlProbability: storedDetails.mlProbability ?? null,
         mlTopTokens: storedDetails.topTokens || [],
+        partition: used
+          ? { language: used.language, trainingRecords: used.trainingRecords, maturity: maturityOf(used.trainingRecords) }
+          : null,
         replayed: true,
         storedDetails,
       });
     }
 
-    // No recorded inputs (a verdict from before they were stored): recompute, as before.
+    // No recorded inputs (a verdict from before they were stored, or none yet): recompute, as
+    // before, with the partition the message would be classified in now.
     const msg = {
       subject: row.subject || '',
       body: row.body_text || '',
@@ -298,11 +308,16 @@ router.get('/explain', async (req, res, next) => {
       attachments: Array.isArray(row.attachments) ? row.attachments : [],
       headers: [],
     };
-    const tokens = tokenize(msg);
+    const headers = (await getMessageHeaders([row.id], { deadlineMs: HEADER_DEADLINE_MS })).get(row.id);
+    const language = partitionLanguage({
+      subject: row.subject,
+      contentLanguage: headers?.kind === 'stored' ? headers.headers['content-language'] ?? null : null,
+    });
+    const tokens = tokenize(msg, language);
     const flagFeatures = extractFlagFeatures(msg);
 
     const rules = scoreRules(msg, { userContacts: new Set() });
-    const model = await getModelForUser(row.owner_id);
+    const model = await getModelForUser(row.owner_id, language);
     const trainingRecords = model?.trainingRecords ?? 0;
     const mlActive = trainingRecords >= 50;
     let mlResult = null;
@@ -319,6 +334,7 @@ router.get('/explain', async (req, res, next) => {
       mlTopTokens: extractTopTokens(model, tokens, 5, flagFeatures).map(t => ({
         token: t.token, contribution: Math.round(t.contribution * 1000) / 1000,
       })),
+      partition: { language, trainingRecords, maturity: maturityOf(trainingRecords) },
       replayed: false,
       storedDetails,
     });
@@ -350,8 +366,8 @@ accountSpamRouter.post('/:id/spam/reset-training', async (req, res, next) => {
       'DELETE FROM spam_training_log WHERE user_id = $1 AND account_id = $2',
       [userId, id],
     );
-    // The model is per-user: this reset clears the user's whole vocabulary
-    // (documented in the UI) rather than keeping a half-trained model.
+    // The models are per user (one per language), not per account: this reset clears all of
+    // the user's partitions (documented in the UI) rather than keeping half-trained models.
     const modelRes = await query('DELETE FROM spam_models WHERE user_id = $1', [userId]);
     await query(
       `INSERT INTO spam_training_deletions (user_id, account_id, scope, records_deleted, ip_address, user_agent)
