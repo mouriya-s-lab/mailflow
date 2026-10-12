@@ -4132,7 +4132,7 @@ describe('CONDSTORE-less full sync (#495)', () => {
     const serverMsgs = [{ uid: 10, seen: true }, { uid: 20, seen: true }, { uid: 30, seen: false }];
     const { mgr, client, calls, applied } = arrange({ serverMsgs, cachedUids: [10, 20, 30], maxKnownUid: 30 });
 
-    await mgr.syncMessages(account, client, 'Work', 20, false);
+    await mgr.syncMessages(account, client, 'Work', 20);
 
     expect(calls.cheapFetches).toEqual(['1:*']);          // one uid+flags pass over the window
     expect(calls.fullFetches).toEqual([]);                // NOT one full-metadata download per tick
@@ -4145,7 +4145,7 @@ describe('CONDSTORE-less full sync (#495)', () => {
     const serverMsgs = [{ uid: 10, seen: true }, { uid: 20, seen: true }, { uid: 30, seen: true }];
     const { mgr, client, calls, applied } = arrange({ serverMsgs, cachedUids: [10, 30], maxKnownUid: 30 });
 
-    await mgr.syncMessages(account, client, 'Work', 20, false);
+    await mgr.syncMessages(account, client, 'Work', 20);
 
     expect(calls.fullFetches).toEqual([{ range: '20', uid: true }]); // fetched BY UID, alone
     expect(calls.upserts).toEqual([20]);
@@ -4159,7 +4159,7 @@ describe('CONDSTORE-less full sync (#495)', () => {
       serverMsgs, cachedUids: [10, 20], maxKnownUid: 20, storedValidity: '5', // server says 7
     });
 
-    await mgr.syncMessages(account, client, 'Work', 20, false);
+    await mgr.syncMessages(account, client, 'Work', 20);
 
     expect(calls.cachedSelects).toEqual([]);            // the split trusts (folder, uid) identity — unusable here
     expect(calls.fullFetches).toEqual([{ range: '1:*', uid: false }]);
@@ -4171,7 +4171,7 @@ describe('CONDSTORE-less full sync (#495)', () => {
     const { mgr, client, applied } = arrange({ serverMsgs, cachedUids: [10], maxKnownUid: 10 });
     applied.mockResolvedValue(1); // one row's flags genuinely changed
 
-    await mgr.syncMessages(account, client, 'Work', 20, false);
+    await mgr.syncMessages(account, client, 'Work', 20);
 
     expect(mgr.broadcast).toHaveBeenCalledWith({ type: 'flags_synced', accountId: account.id }, account.user_id);
   });
@@ -4186,7 +4186,7 @@ describe('CONDSTORE-less full sync (#495)', () => {
       serverMsgs, cachedUids: [30], maxKnownUid: 30, uidPhaseYields: [{ uid: 30, seen: true }],
     });
 
-    await mgr.syncMessages(account, client, 'Work', 20, false);
+    await mgr.syncMessages(account, client, 'Work', 20);
 
     expect(calls.uidPhase).toEqual(['31:*']); // the phase ran and the server echoed uid 30
     expect(calls.upserts).toEqual([]);        // and the echo was filtered, not rewritten
@@ -4200,7 +4200,7 @@ describe('CONDSTORE-less full sync (#495)', () => {
       serverMsgs, cachedUids: [30, 31], maxKnownUid: 30, uidPhaseYields: [{ uid: 31, seen: true }],
     });
 
-    await mgr.syncMessages(account, client, 'Work', 20, false);
+    await mgr.syncMessages(account, client, 'Work', 20);
 
     expect(calls.upserts).toEqual([31]);
   });
