@@ -447,34 +447,6 @@ export function classifyJevError(error) {
   }
 }
 
-// Whether a message whose decisions are due can be asked, from its body outcome
-// (ensureMessageBodies): { kind: 'ask' } with its body stored, or none on the server;
-// { kind: 'wait' } when it has no outcome or the deadline came first, so it stays queued as it
-// is; { kind: 'fail', failure } when the body could not be had, so no state without it is sent.
-const BODY_UNAVAILABLE = Object.freeze({ kind: 'retry', errorKind: 'body_unavailable' });
-export function bodyGate(outcome) {
-  if (!outcome) return { kind: 'wait' };
-  switch (outcome.kind) {
-    case 'stored':
-    case 'fetched':
-    case 'empty':
-      return { kind: 'ask' };
-    case 'unavailable':
-      switch (outcome.reason) {
-        case 'deadline':
-          return { kind: 'wait' };
-        case 'provider_refusing':
-        case 'imap_error':
-        case 'message_missing':
-          return { kind: 'fail', failure: BODY_UNAVAILABLE };
-        default:
-          throw new Error(`jev-classify: unhandled body unavailability ${JSON.stringify(outcome.reason)}`);
-      }
-    default:
-      throw new Error(`jev-classify: unhandled body outcome ${JSON.stringify(outcome.kind)}`);
-  }
-}
-
 // Record a failed decision attempt (`failure` = { kind: 'retry' | 'terminal', errorKind }) on
 // each decision that was asked.
 export function failDecisions(lines, asked, failure, now) {

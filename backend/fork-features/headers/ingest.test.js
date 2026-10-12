@@ -104,7 +104,7 @@ async function backfill() {
   await pending;
 }
 async function sync() {
-  const pending = ImapManager.prototype.syncMessages.call(manager(), account, client(), 'INBOX', 50);
+  const pending = ImapManager.prototype.syncMessages.call(manager(), account, client(), 'INBOX', 50, false, true);
   await vi.runAllTimersAsync();
   await pending;
 }

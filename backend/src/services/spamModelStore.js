@@ -35,11 +35,10 @@ export function invalidateModelCache(userId) {
 
 /**
  * The model partition of a message: the language the message signals resolve from
- * its subject and Content-Language header. The body is left out on purpose: the body
- * a message is classified with at ingest and the one stored when it is marked later
- * can differ (a row ingested without its body, a fetch that failed), so a language
- * read from the body could put its training record in another partition than the
- * one it was classified with.
+ * its subject and Content-Language header. The body is left out on purpose: new
+ * mail is classified at ingest before its body is fetched, so a language read from
+ * the body when the message is marked later would put its training record in
+ * another partition than the one it was classified with.
  *
  * @param {{ subject: string|null, contentLanguage: string|null }} message
  * @returns {string} BCP 47 tag

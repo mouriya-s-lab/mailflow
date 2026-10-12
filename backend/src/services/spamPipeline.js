@@ -117,9 +117,9 @@ export async function classifyAndTagMessage(messageId, opts = {}) {
   const tokens = tokenize(msg, language);
 
   // The links and what the domain lookup services say about where they go, gathered once before
-  // the rules (at most LINK_LOOKUP_DEADLINE_MS). New mail is ingested with its body; a message whose
-  // body is not stored (ingested before that, or its body parts came back empty) has no link
-  // evidence and the link rules stay silent.
+  // the rules (at most LINK_LOOKUP_DEADLINE_MS). A message whose body is not stored yet — the usual
+  // case at ingest, where bodies are fetched later — has no link evidence and the link rules stay
+  // silent.
   const linkEvidence = await linkEvidenceFor(row, { lookUpReputation: true });
   const linkFlagValues = linkFlags(linkEvidence);
   const flagFeatures = {

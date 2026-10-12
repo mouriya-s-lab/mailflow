@@ -909,12 +909,8 @@ function safeDate(d) {
 
 // Per-provider capability flags and rate-limit tuning.
 //
-// fetchBody:           fetch body parts in the same FETCH that ingests a message (sync and
-//                      backfill) and store body_html/body_text on the new row. True for every
-//                      provider in this fork: anti-spam classifies new mail at insert, and it and
-//                      the Jev classification need the body and its links then (#38 in
-//                      mouriya-s-lab/mailflow). Batch sizes, delays and connection limits are not
-//                      changed for it.
+// fetchBody:           store body_html/body_text during backfill/sync.
+//                      Disabled for providers that throttle BODY[] fetches at scale.
 // usesIdle:            keep the persistent sync connection in IMAP IDLE for push events.
 // maxSyncIntervalMs:   CEILING on the tick value — Math.min, so it can only make the tick
 //                      FASTER. Intended for providers whose IDLE is unreliable and therefore
@@ -937,10 +933,10 @@ const PROVIDERS = {
   google: {
     // Gmail folders are label memberships; matching Message-IDs are not proof of a move.
     labelStore: true,
-    // Large batches, short delay: Gmail throttles BODY[] rather than envelope/flags/uid. These
-    // sizes were set for envelope-only backfills and are kept now that fetchBody brings bodies.
+    // Large batches, short delay: Gmail only throttles BODY[] not envelope/flags/uid.
+    // Backfills 30k+ messages in ~2 min instead of 12+ hours.
     batchSize: 500, batchDelay: 2000, errorDelay: 30000, batchesPerConn: 10,
-    fetchBody: true,
+    fetchBody: false,
     pushesFlags: false,
     snippetIndex: false,
     speculativeFetch: false,
@@ -951,7 +947,7 @@ const PROVIDERS = {
   },
   yahoo: {
     batchSize: 100, batchDelay: 2000, errorDelay: 30000, batchesPerConn: 10,
-    fetchBody: true,
+    fetchBody: false,
     pushesFlags: true,
     snippetIndex: true,
     speculativeFetch: false,
@@ -980,7 +976,7 @@ const PROVIDERS = {
   apple: {
     // iCloud is permissive — large batches, short delay.
     batchSize: 200, batchDelay: 1000, errorDelay: 10000, batchesPerConn: 20,
-    fetchBody: true,
+    fetchBody: false,
     pushesFlags: true,
     snippetIndex: true,
     speculativeFetch: true,
@@ -989,7 +985,7 @@ const PROVIDERS = {
   },
   microsoft: {
     batchSize: 100, batchDelay: 1500, errorDelay: 15000, batchesPerConn: 15,
-    fetchBody: true,
+    fetchBody: false,
     pushesFlags: true,
     snippetIndex: true,
     speculativeFetch: true,
@@ -1018,7 +1014,7 @@ const PROVIDERS = {
     //                             so the socket stays alive. maxSyncIntervalMs is now a backstop.
     batchSize: 100, batchDelay: 1500, errorDelay: 15000, batchesPerConn: 15,
     connectStaggerMs: 1200, // connection-sensitive — space initial connects wide (#218)
-    fetchBody: true,
+    fetchBody: false,
     usesIdle: true,
     idleKeepaliveMs: 4 * 60 * 1000, // re-issue IDLE every 4 min (Apple Mail-style) so the connection never goes deaf
     pushesFlags: false,             // IDLE 'flags' handles most changes; keep the periodic flag poll as a backstop
@@ -1052,7 +1048,7 @@ const PROVIDERS = {
     // broken IMAP4rev2 implementations; see makeClientCfg.
     batchSize: 100, batchDelay: 1500, errorDelay: 15000, batchesPerConn: 15,
     connectStaggerMs: 500,
-    fetchBody: true,
+    fetchBody: false,
     pushesFlags: true,
     snippetIndex: true,
     speculativeFetch: true,
@@ -1063,7 +1059,7 @@ const PROVIDERS = {
   generic: {
     batchSize: 100, batchDelay: 1500, errorDelay: 15000, batchesPerConn: 15,
     connectStaggerMs: 500, // unknown provider — moderate connect spacing (#218)
-    fetchBody: true,
+    fetchBody: false,
     pushesFlags: true,
     snippetIndex: true,
     speculativeFetch: true,
@@ -2656,11 +2652,13 @@ export class ImapManager {
       try {
         await raceTimeout(this.syncFolders(account, client), 20000, 'Initial folder sync');
         this.lastFolderSyncAt.set(account.id, Date.now());
+        // noBodyParts=true: consistent with the periodic sync — envelope/flags/uid only.
+        // Fetching body parts on initial connect stalls on slow servers (purelymail et al).
         if (providerProfile(account).freshInboxSync) {
           await this._syncInboxWithFreshLogin(account);
         } else {
           await raceTimeout(
-            this.syncMessages(account, client, 'INBOX', 20),
+            this.syncMessages(account, client, 'INBOX', 20, false, true),
             40000,
             'Initial message sync',
           );
@@ -2842,7 +2840,7 @@ export class ImapManager {
       }
 
       const syncResult = await raceTimeout(
-        this.syncMessages(fresh, client, 'INBOX', 20),
+        this.syncMessages(fresh, client, 'INBOX', 20, false, true),
         40000,
         'Poll-only INBOX sync',
       );
@@ -3022,7 +3020,7 @@ export class ImapManager {
       // desktop stayed stale until a manual refresh. modseq bumps on flag changes too, so
       // deferring the decision to syncMessages catches them.
       return await raceTimeout(
-        this.syncMessages(account, client, 'INBOX', 20),
+        this.syncMessages(account, client, 'INBOX', 20, false, true),
         55000,
         'Fresh sync wall-clock',
       );
@@ -3133,6 +3131,7 @@ export class ImapManager {
       // that's rejecting logins. Cleared on any healthy sync (below) and on a good reconnect.
       const syncCd = this._connectCooldown.get(account.id);
       if (syncCd && Date.now() < syncCd.until) return;
+      // noBodyParts=true: envelope/flags/uid only — avoids slow servers timing out on body fetches.
       // PurelyMail's long-lived sessions can go "deaf" while a brand-new login sees current
       // mail; use a fresh login for the periodic backstop so missed IDLE events are caught on
       // the user's sync interval instead of waiting for the 3-minute staleness probe.
@@ -3142,7 +3141,7 @@ export class ImapManager {
       } else {
         // Wall-clock timeout guards against half-open TCP sockets that never trigger commandTimeout.
         syncResult = await Promise.race([
-          this.syncMessages(syncAccount, activeClient, 'INBOX', 20),
+          this.syncMessages(syncAccount, activeClient, 'INBOX', 20, false, true),
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Sync wall-clock timeout (55s)')), 55000)
           ),
@@ -3435,7 +3434,7 @@ export class ImapManager {
   // a plugin tick can mock this away instead of exercising a live IMAP pool.
   async syncFolderViaPool(account, folder) {
     return withFreshClient(account, (client) =>
-      this.syncMessages(account, client, folder, 100));
+      this.syncMessages(account, client, folder, 100, false, true));
   }
 
   // Called when a user changes their sync interval preference — replaces running
@@ -3576,7 +3575,7 @@ export class ImapManager {
     await this._withCountClient(account, async client => {
       // Entire operation is bounded and the finally in _withCountClient destroys a hung transport.
       try { await raceTimeout((async () => {
-        await this.syncMessages(account, client, path, 100);
+        await this.syncMessages(account, client, path, 100, false, true);
         const lock = await client.getMailboxLock(path);
         try {
           if (String(client.mailbox?.uidValidity) !== String(observed.uidValidity)) return;
@@ -3822,6 +3821,18 @@ export class ImapManager {
     }
   }
 
+  // prefetchBody: fetch and cache message bodies during sync.
+  // Set to false for the initial connect sync to avoid stalling on slow IMAP servers
+  // (e.g. purelymail.com times out fetching 8 body parts × 50 messages).
+  // Periodic interval syncs set this to true so bodies get cached incrementally.
+  //
+  // Gmail is treated specially: body parts are never fetched during sync because Gmail
+  // throttles heavily on BODY[] requests.  Messages still appear in the list (metadata
+  // comes from ENVELOPE); snippets and bodies are populated by the backfill instead.
+  // noBodyParts: skip ALL body part fetches (uid/flags/envelope/bodyStructure only).
+  // Used for the periodic sync interval so slow servers like purelymail.com don't time out
+  // fetching 3+ body parts × 50 messages.  Snippets come from backfill or on-demand fetches.
+
   /**
    * v0.2 antispam: hand a freshly-inserted message to the classification
    * pipeline. Fire-and-forget — the sync/backfill loop must never be blocked by
@@ -3874,12 +3885,7 @@ export class ImapManager {
     });
   }
 
-  // Body parts come in the same FETCH as the message whenever the provider profile's fetchBody is
-  // set, so a new row is inserted with its body and the anti-spam classification at insert sees it.
-  // Only messages the sync newly fetches carry them; the flag scans fetch uid and flags alone.
-  // PurelyMail is the known risk: its profile notes slow body fetches and malformed literals for
-  // batched multi-part BODY[] requests (speculativeFetch: false).
-  async syncMessages(account, client, folder = 'INBOX', limit = 50) {
+  async syncMessages(account, client, folder = 'INBOX', limit = 50, prefetchBody = true, noBodyParts = false) {
     const provider = providerProfile(account);
 
     try {
@@ -3970,8 +3976,8 @@ export class ImapManager {
           SET unread_count = $4, uid_validity = COALESCE($5, folders.uid_validity), updated_at = NOW()
         `, [account.id, folder, 0, dbUnreadCount, currentValidity]);
 
-        // Body parts only when the provider profile asks for them; envelope, flags, uid and
-        // bodyStructure always.
+        // Omit body parts for providers that throttle BODY[] fetches, and when
+        // noBodyParts is set. Envelope/flags/uid/bodyStructure always fetched.
         const fetchQuery = {
           uid: true, flags: true, envelope: true,
           bodyStructure: true,
@@ -3979,7 +3985,7 @@ export class ImapManager {
           internalDate: true,
           headers: true,
         };
-        if (provider.fetchBody) {
+        if (provider.fetchBody && !noBodyParts) {
           fetchQuery.bodyParts = BODY_PREFETCH_PARTS;
         }
 
@@ -4029,7 +4035,7 @@ export class ImapManager {
               return;
             }
             let safeHtml = null, text = null, atts = attachmentsFromStructure(msg);
-            if (provider.fetchBody) {
+            if (prefetchBody && provider.fetchBody) {
               const body = extractBodyFromMsg(msg);
               safeHtml = body.html ? sanitizeEmail(body.html) : null;
               text = body.text;
@@ -4537,8 +4543,8 @@ export class ImapManager {
   //   2. SELECT uid FROM messages → get UIDs we already have in DB.
   //   3. Diff → fetch only truly missing UIDs, newest-first so recent mail is available
   //      quickly even on a fresh account with tens of thousands of messages.
-  //   4. When the provider profile's fetchBody is set (every provider in this fork), also store
-  //      body_html/body_text so clicking an old email never needs a live IMAP round-trip.
+  //   4. For non-Gmail providers also store body_html/body_text during backfill so
+  //      clicking an old email never needs a live IMAP round-trip.
   async backfillMessages(account, folder = 'INBOX') {
     const backfillKey = `${account.id}:${folder}`;
     if (this.backfillRunning.has(backfillKey)) return;
@@ -4701,9 +4707,10 @@ export class ImapManager {
       }, account.user_id);
 
       // Step 4 — fetch missing UIDs in batches using UID FETCH (stable, regardless of
-      // concurrent deletions), with the body parts when the provider profile's fetchBody is set,
-      // so opening old emails doesn't need a live IMAP connection. Without it the batch is
-      // envelope metadata only and bodies load on demand.
+      // concurrent deletions).  For non-Gmail providers also fetch and cache the full
+      // message body so opening old emails doesn't need a live IMAP connection.
+      // For Gmail (cfg.fetchBody=false): skip ALL body parts to avoid IMAP throttling.
+      // Messages still appear in the list via envelope metadata; bodies load on-demand.
       const bodyParts = cfg.fetchBody ? BODY_PREFETCH_PARTS : [];
       let consecutiveErrors = 0;
       let reconnectFailures = 0;
@@ -4746,7 +4753,7 @@ export class ImapManager {
           const lock = await bfClient.getMailboxLock(folder);
           try {
             // Third arg { uid: true } issues UID FETCH instead of sequence FETCH.
-            // bodyParts omitted when fetchBody is off (empty array) — metadata only.
+            // bodyParts omitted for Gmail (empty array) — metadata only, no throttling.
             const bfQuery = {
               uid: true, flags: true, envelope: true,
               bodyStructure: true, size: true,
@@ -5722,7 +5729,7 @@ export class ImapManager {
     console.log(`syncFolderOnDemand start: ${logAccount(account)}/${folder}`);
     try {
       await withFreshClient(account, async (client) => {
-        await this.syncMessages(account, client, folder, 100);
+        await this.syncMessages(account, client, folder, 100, false, true);
       });
       console.log(`syncFolderOnDemand done: ${logAccount(account)}/${folder}`);
       // sync_complete fires mailflow:refresh in the frontend, reloading the message list
@@ -5765,7 +5772,7 @@ export class ImapManager {
       await this._bgConnSem.acquire(host);
       try {
         await withFreshClient(account, async (client) => {
-          await this.syncMessages(account, client, spamPath, 50);
+          await this.syncMessages(account, client, spamPath, 50, false, true);
         });
         this.broadcast({ type: 'folders_synced', accountId: account.id }, account.user_id);
       } finally {
@@ -5921,22 +5928,6 @@ export class ImapManager {
       }
       consecutiveErrors = 0;
     }
-  }
-
-  // What a failed background body fetch means for the rest of its batch, by the stop policy of
-  // prefetchFolderBodies above: { kind: 'refusing' } when our own gate refused it or the provider
-  // refused the connection or the login (the secondary backoff is armed here unless the pool grow
-  // already armed it), otherwise { kind: 'failed', stop }, stopping once
-  // PREFETCH_MAX_CONSECUTIVE_ERRORS fetches failed in a row. Used by the fork's
-  // ensureMessageBodies (fork-features/message-bodies).
-  _bodyFetchFailure(account, err, consecutiveErrors) {
-    if (err?.providerRefusing) return { kind: 'refusing' };
-    const detail = extractImapError(err);
-    if (isConnectionRefusal(detail) || isAuthFailure(detail)) {
-      if (!err?.secondaryBackoffArmed) this._noteSecondaryRefusal(account);
-      return { kind: 'refusing' };
-    }
-    return { kind: 'failed', stop: consecutiveErrors >= PREFETCH_MAX_CONSECUTIVE_ERRORS };
   }
 
   // Uses a fresh connection to avoid lock contention with sync connection.
@@ -7050,6 +7041,8 @@ export class ImapManager {
       this.syncStartedAt.set(account.id, Date.now());
       let usedFreshSyncClient = false;
       try {
+        // noBodyParts=true: metadata-only, same as the periodic interval sync.
+        // Bodies are cached on first open; fetching them here would slow manual refresh.
         // For freshInboxSync providers (PurelyMail) the persistent connection can be "deaf"
         // to new mail, so a manual refresh must use a brand-new login too — otherwise the
         // button is less reliable than the automatic poll it's meant to shortcut.
@@ -7057,7 +7050,7 @@ export class ImapManager {
           usedFreshSyncClient = true;
           await this._syncInboxWithFreshLogin(account);
         } else {
-          await this.syncMessages(account, client, 'INBOX', 20);
+          await this.syncMessages(account, client, 'INBOX', 20, false, true);
         }
         console.log(`syncNow complete: ${logAccount(account)}`);
       } catch (err) {
