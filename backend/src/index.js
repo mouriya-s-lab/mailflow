@@ -22,6 +22,7 @@ import mailRoutes from './routes/mail.js';
 import searchRoutes from './routes/search.js';
 import adminRoutes from './routes/admin.js';
 import forkServiceConfigRoutes from '../fork-features/service-config/routes.js';
+import forkMessageTagsRoutes from '../fork-features/message-tags/routes.js';
 import totpRoutes from './routes/totp.js';
 import oidcApiRouter, { oidcBrowserRouter } from './routes/oidc.js';
 import rulesRoutes from './routes/rules.js';
@@ -190,6 +191,8 @@ app.use('/api/search', searchRoutes);
 app.use('/api/admin/backup', backupRoutes);
 // Fork: Jev and link-reputation settings; before the generic admin router, which would also run requireAdmin.
 app.use('/api/admin/fork', forkServiceConfigRoutes);
+// Fork: the reputation tag summary the mail list and the message view read (per-user, read-only).
+app.use('/api/message-tags', forkMessageTagsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/totp', totpRoutes);
 app.use('/api/rules', rulesRoutes);

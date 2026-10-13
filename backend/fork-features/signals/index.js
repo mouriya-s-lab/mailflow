@@ -339,3 +339,18 @@ export async function getAccountMessageBodyTexts(accountId, messageIds) {
   );
   return new Map(rows.map(row => [row.id, messageBodyText({ bodyText: row.body_text, bodyHtml: row.body_html })]));
 }
+
+// getAccountMessageLinks(accountId, messageIds) → Map<id, Link[]>: the links of each message's
+// stored HTML body, as messageLinks gives them (a plain-text body has none). One query and no
+// header read: unlike getAccountMessageSignals this never fetches anything from the server, so a
+// caller that only needs the links (the tag plugins) cannot trigger an IMAP round trip. An id
+// that is not a message of the account is absent from the Map.
+export async function getAccountMessageLinks(accountId, messageIds) {
+  const ids = [...new Set(messageIds)];
+  if (ids.length === 0) return new Map();
+  const { rows } = await query(
+    'SELECT id, body_html FROM messages WHERE account_id = $1 AND id = ANY($2::uuid[])',
+    [accountId, ids],
+  );
+  return new Map(rows.map(row => [row.id, messageLinks({ bodyHtml: row.body_html })]));
+}
