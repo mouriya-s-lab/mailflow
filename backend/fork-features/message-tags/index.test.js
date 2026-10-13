@@ -208,4 +208,44 @@ describe('summarizeForUser', () => {
   it('answers an empty list without querying anything', async () => {
     expect(await tags.summarizeForUser(USER, [])).toEqual({ kind: 'ok', tags: {} });
   });
+
+  it('rejects an id that is not a message id instead of letting it reach the database', async () => {
+    expect(await tags.summarizeForUser(USER, ['not-a-uuid'])).toEqual({ kind: 'invalid', error: 'ids must be an array of message ids' });
+  });
+});
+
+describe('the states a plugin may answer with', () => {
+  it('accepts the reasons the contract names, including body_unavailable', async () => {
+    plugin('rdap', { ensure: async (accountId, ids) => new Map(ids.map(i => [i, { kind: 'unavailable', reason: 'body_unavailable' }])) });
+    plugin('urlhaus', { ensure: async (accountId, ids) => new Map(ids.map(i => [i, { kind: 'unavailable', reason: 'deadline' }])) });
+    const states = await tags.ensureMessageTags(ACCOUNT, [id(1)], { deadlineMs: 100 });
+    expect(states.get(id(1)).rdap).toEqual({ kind: 'unavailable', reason: 'body_unavailable' });
+    expect(states.get(id(1)).urlhaus).toEqual({ kind: 'unavailable', reason: 'deadline' });
+  });
+
+  it('reports an answer outside the contract as plugin_failed, and warns', async () => {
+    plugin('rdap', { ensure: async (accountId, ids) => new Map(ids.map(i => [i, { kind: 'weird' }])) });
+    plugin('urlhaus', { ensure: async (accountId, ids) => new Map(ids.map(i => [i, { kind: 'complete', subjects: {} }])) }); // no checkedAt
+    plugin('spamhaus_dbl', { ensure: async (accountId, ids) => new Map(ids.map(i => [i, { kind: 'unavailable', reason: 'because' }])) });
+    const states = await tags.ensureMessageTags(ACCOUNT, [id(1)], { deadlineMs: 100 });
+    expect(states.get(id(1)).rdap).toEqual({ kind: 'unavailable', reason: 'plugin_failed' });
+    expect(states.get(id(1)).urlhaus).toEqual({ kind: 'unavailable', reason: 'plugin_failed' });
+    expect(states.get(id(1)).spamhaus_dbl).toEqual({ kind: 'unavailable', reason: 'plugin_failed' });
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('answered an unknown tag state'));
+  });
+
+  it('reports unchecked on the ensure path as plugin_failed, but passes it through on the read path', async () => {
+    plugin('rdap', {
+      ensure: async (accountId, ids) => new Map(ids.map(i => [i, { kind: 'unchecked' }])),
+      read: async (accountId, ids) => new Map(ids.map(i => [i, { kind: 'unchecked' }])),
+    });
+    expect((await tags.ensureMessageTags(ACCOUNT, [id(1)], { deadlineMs: 100 })).get(id(1)).rdap)
+      .toEqual({ kind: 'unavailable', reason: 'plugin_failed' });
+    expect((await tags.getMessageTags(ACCOUNT, [id(1)])).get(id(1)).rdap).toEqual({ kind: 'unchecked' });
+  });
+
+  it('refuses an id that is not a message id', async () => {
+    await expect(tags.ensureMessageTags(ACCOUNT, ['nope'], { deadlineMs: 100 })).rejects.toThrow(/must be a message id/);
+    await expect(tags.getMessageTags(ACCOUNT, ['nope'])).rejects.toThrow(/must be a message id/);
+  });
 });

@@ -13,9 +13,16 @@
 //   { kind: 'complete', checkedAt, subjects } what the plugin stored: the source's own domain
 //                                             types (see fork-features/reputation), kept as they
 //                                             are rather than flattened into a common verdict
-//   { kind: 'unavailable', reason }            'deadline'   the plugin did not answer in time
-//                                             'plugin_failed' its handler threw, or left this id
-//                                             out of its answer (ensureMessageTags only)
+//   { kind: 'unavailable', reason }            'deadline'        the plugin did not answer in time
+//                                             'plugin_failed'   its handler threw, answered
+//                                                               something outside this contract, or
+//                                                               left this id out
+//                                             'body_unavailable' it needs the message's body and
+//                                                               the server could not give it
+//                                             A plugin's answer outside this contract is logged and
+//                                             reported as plugin_failed, never passed on.
+//   'deadline' and 'body_unavailable' are answers of the ensure path only; 'unchecked' is the read
+//   path's "nothing stored yet".
 //
 // ensureMessageTags asks the plugins for a result and waits for it (a message that already has
 // one is answered from its annotation, one that does not is looked up and stored now);
@@ -28,6 +35,7 @@
 
 import { query } from '../../src/services/db.js';
 import { logger } from '../../src/services/logger.js';
+import { isUuid } from '../../src/utils/uuid.js';
 import { pluginRegistry } from '../../src/plugins/registry.js';
 
 // The sources a tag plugin can own. A plugin declares one in its manifest's tagSource.
@@ -49,9 +57,35 @@ function parseArgs(accountId, messageIds) {
   if (typeof accountId !== 'string' || !accountId) throw new TypeError('accountId must be a non-empty string');
   if (!Array.isArray(messageIds)) throw new TypeError('messageIds must be an array');
   messageIds.forEach((id, i) => {
-    if (typeof id !== 'string' || !id) throw new TypeError(`messageIds[${i}] must be a non-empty string`);
+    // A message id is a row id; anything else would reach a uuid-typed comparison as a database
+    // error rather than the programming mistake it is.
+    if (!isUuid(id)) throw new TypeError(`messageIds[${i}] must be a message id`);
   });
   return { accountId, ids: [...new Set(messageIds)] };
+}
+
+const UNAVAILABLE_REASONS = Object.freeze(['plugin_failed', 'deadline', 'body_unavailable']);
+
+// What a plugin answers for one message. Anything outside the contract is a plugin bug: it is
+// reported as this source's `plugin_failed` (and logged) rather than passed on to a consumer that
+// would have to guess, or allowed to break the read path. An `unchecked` answer on the ensure path
+// is the same kind of bug: that state means "nothing is stored", which the read path answers.
+function tagStateOf(value, kind) {
+  if (!value || typeof value !== 'object') return null;
+  switch (value.kind) {
+    case 'inactive':
+    case 'unconfigured':
+      return value;
+    case 'unchecked':
+      return kind === 'read' ? value : null;
+    case 'complete':
+      return typeof value.checkedAt === 'string' && value.subjects && typeof value.subjects === 'object'
+        ? value : null;
+    case 'unavailable':
+      return UNAVAILABLE_REASONS.includes(value.reason) ? value : null;
+    default:
+      return null;
+  }
 }
 
 // A source's subjects hold that source's own type: RDAP a Registration, Spamhaus DBL and URLhaus a
@@ -208,7 +242,7 @@ export function createMessageTags({ registry = pluginRegistry, queryFn = (...arg
         ? { deadlineMs: deadlineAt === null ? 0 : Math.max(0, deadlineAt - now()) }
         : undefined;
       const call = () => (kind === 'ensure' ? plugin.ensure(accountId, ids, options) : plugin.read(accountId, ids));
-      answers.set(plugin.source, await answerOf(plugin, kind, call, ids, deadlineAt));
+      answers.set(plugin.source, { pluginId: plugin.pluginId, ...(await answerOf(plugin, kind, call, ids, deadlineAt)) });
     }));
     const out = new Map();
     for (const id of ids) {
@@ -218,7 +252,11 @@ export function createMessageTags({ registry = pluginRegistry, queryFn = (...arg
         if (!answer) record[source] = INACTIVE;
         else if (answer.kind === 'deadline') record[source] = DEADLINE;
         else if (answer.kind === 'failed') record[source] = PLUGIN_FAILED;
-        else record[source] = answer.map instanceof Map ? (answer.map.get(id) ?? PLUGIN_FAILED) : PLUGIN_FAILED;
+        else {
+          const state = answer.map instanceof Map ? tagStateOf(answer.map.get(id), kind) : null;
+          if (state === null) logger.warn(`[message-tags] ${answer.pluginId} answered an unknown tag state for message ${id} on the ${kind} path`);
+          record[source] = state ?? PLUGIN_FAILED;
+        }
       }
       out.set(id, record);
     }
@@ -273,7 +311,7 @@ export function createMessageTags({ registry = pluginRegistry, queryFn = (...arg
   async function summarizeForUser(userId, ids) {
     if (typeof userId !== 'string' || !userId) throw new TypeError('userId must be a non-empty string');
     if (!Array.isArray(ids)) return { kind: 'invalid', error: 'ids must be an array' };
-    if (ids.some(id => typeof id !== 'string' || !id)) return { kind: 'invalid', error: 'ids must be an array of message ids' };
+    if (ids.some(id => !isUuid(id))) return { kind: 'invalid', error: 'ids must be an array of message ids' };
     const unique = [...new Set(ids)];
     if (unique.length > MAX_SUMMARY_IDS) return { kind: 'invalid', error: `at most ${MAX_SUMMARY_IDS} ids per request` };
     if (unique.length === 0) return { kind: 'ok', tags: {} };
