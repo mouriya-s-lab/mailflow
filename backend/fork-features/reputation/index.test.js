@@ -607,6 +607,113 @@ describe('Google Safe Browsing', () => {
       .toMatchObject({ expires_at: new Date(START + 3600 * SECOND) });
   });
 
+  // Encoded independently with protoc from the official v5 field numbers. The synthetic hash is
+  // SHA-256('phish-example.com/'); Duration is { seconds: 3600, nanos: 123456789 }.
+  const PROTO_HASH = '0a207b5bcaac8021558595e6b4bbc8809f1371c2c720b5a2b2652e6427809a620d74';
+  const PROTO_DURATION = '120808901c10959aef3a';
+  const PROTO_HIT = `0a26${PROTO_HASH}12020802${PROTO_DURATION}`;
+
+  async function protobufSource(hex) {
+    const sb = await startHttp((_request, response) => {
+      response.writeHead(200, { 'Content-Type': 'Application/X-Protobuf; charset=binary' });
+      response.end(Buffer.from(hex, 'hex'));
+    });
+    return { sb, rep: reputation({ config, endpoints: { safeBrowsing: `${sb.base}/v5/hashes:search` } }) };
+  }
+
+  it('decodes protobuf bytes, matches full hashes, applies fractional TTL and serves a cached repeat', async () => {
+    const { sb, rep } = await protobufSource(PROTO_HIT);
+    const expected = new Map([[HIT, { kind: 'listed', detail: 'SOCIAL_ENGINEERING' }], [MISS, { kind: 'not_listed' }]]);
+    expect(await rep.lookupSafeBrowsing([HIT, MISS])).toEqual(expected);
+    for (const subject of ['login.phish-example.com/account/verify?id=1', 'clean-example.com/a/b.html']) {
+      expect(rep.database.row('safe_browsing', subject).expires_at).toEqual(new Date(START + 3600123));
+    }
+    expect(await rep.lookupSafeBrowsing([HIT, MISS])).toEqual(expected);
+    expect(sb.requests).toHaveLength(1);
+    clock = START + 31 * MINUTE;
+    expect((await rep.lookupSafeBrowsing([HIT, MISS])).get(HIT)).toEqual(expected.get(HIT));
+    expect(sb.requests).toHaveLength(2);
+    clock = START + 3600124;
+    await rep.lookupSafeBrowsing([MISS]);
+    expect(sb.requests).toHaveLength(3);
+  });
+
+  it('accepts an omitted full_hashes list and a zero protobuf duration without caching it', async () => {
+    const { rep } = await protobufSource('1200');
+    expect((await rep.lookupSafeBrowsing([HIT])).get(HIT)).toEqual({ kind: 'not_listed' });
+    expect(rep.database.writes()).toBe(0);
+  });
+
+  it.each([
+    ['CANARY', `0a29${PROTO_HASH}12050802120101${PROTO_DURATION}`],
+    ['FRAME_ONLY', `0a29${PROTO_HASH}12050802120102${PROTO_DURATION}`],
+    ['unknown threat', `0a26${PROTO_HASH}12020863${PROTO_DURATION}`],
+    ['unknown attribute', `0a29${PROTO_HASH}12050802120163${PROTO_DURATION}`],
+    ['unspecified attribute', `0a29${PROTO_HASH}12050802120100${PROTO_DURATION}`],
+    ['unpacked CANARY', `0a28${PROTO_HASH}120408021001${PROTO_DURATION}`],
+    ['default threat', `0a24${PROTO_HASH}1200${PROTO_DURATION}`],
+  ])('disregards %s in protobuf without treating the response as a failure', async (_name, hex) => {
+    const { rep } = await protobufSource(hex);
+    expect((await rep.lookupSafeBrowsing([HIT])).get(HIT)).toEqual({ kind: 'not_listed' });
+    expect(rep.database.row('safe_browsing', 'login.phish-example.com/account/verify?id=1').expires_at).toEqual(new Date(START + 3600123));
+    expect(reputationLines('safe_browsing')).toEqual([]);
+  });
+
+  it('skips unknown fields of every supported wire type and merges repeated Duration messages', async () => {
+    // Unknown fields #3 (varint), #4 (fixed64), #5 (bytes), #6 (fixed32) precede the answer.
+    const unknownFields = '18ffffffffffffffffff012100000000000000002a02ff003500000000';
+    const { rep } = await protobufSource(`${unknownFields}0a28${PROTO_HASH}120408021801120308901c120510959aef3a`);
+    expect((await rep.lookupSafeBrowsing([HIT])).get(HIT)).toEqual({ kind: 'listed', detail: 'SOCIAL_ENGINEERING' });
+    expect(rep.database.row('safe_browsing', 'login.phish-example.com/account/verify?id=1').expires_at).toEqual(new Date(START + 3600123));
+  });
+
+  it.each([
+    ['80', 'SearchHashesResponse: truncated varint'],
+    ['ffffffffffffffffffff02', 'SearchHashesResponse: varint exceeds uint64'],
+    ['00', 'SearchHashesResponse: invalid field tag'],
+    ['0b', 'SearchHashesResponse: unsupported wire type'],
+    ['0a80', 'SearchHashesResponse: truncated varint'],
+    ['0a05ff', 'SearchHashesResponse: truncated length-delimited or fixed-width field'],
+    ['1900', 'SearchHashesResponse: truncated length-delimited or fixed-width field'],
+    ['0801', 'SearchHashesResponse: wrong wire type for field 1'],
+    ['0a020a00', 'FullHash: invalid fullHash length (expected 32 bytes)'],
+    [`0a26${PROTO_HASH}12020880`, 'FullHashDetail: truncated varint'],
+    [PROTO_HIT.slice(0, -2), 'SearchHashesResponse: truncated length-delimited or fixed-width field'],
+    [`0a26${PROTO_HASH}12020802`, 'SearchHashesResponse: missing cacheDuration'],
+    ['120b08ffffffffffffffffff01', 'SearchHashesResponse: invalid cacheDuration seconds or nanos'],
+    ['12061080c2d72f', 'SearchHashesResponse: truncated length-delimited or fixed-width field'],
+    ['1206108080808010', 'SearchHashesResponse: invalid cacheDuration seconds or nanos'],
+    ['1206108094ebdc03', 'SearchHashesResponse: invalid cacheDuration seconds or nanos'],
+    ['12020880', 'Duration: truncated varint'],
+  ])('rejects malformed protobuf %s with a bounded diagnostic and no cached answer', async (hex, diagnostic) => {
+    const { sb, rep } = await protobufSource(hex);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect((await rep.lookupSafeBrowsing([HIT])).get(HIT)).toEqual({ kind: 'unknown', reason: 'error' });
+    }
+    expect(sb.requests).toHaveLength(2);
+    expect(rep.database.writes()).toBe(0);
+    expect(reputationLines('safe_browsing')).toEqual([`[warn] [reputation] safe_browsing lookup failed: protobuf ${diagnostic}`]);
+  });
+
+  it.each([
+    ['text/html', '<html>upstream error</html>', 'unsupported response Content-Type'],
+    ['application/json', '{"fullHashes":', 'JSON response: malformed JSON'],
+    ['application/json', '{"cacheDuration":"bad"}', 'JSON response: invalid cacheDuration'],
+    ['application/json', '{"cacheDuration":"300s","fullHashes":42}', 'JSON response: invalid fullHashes'],
+  ])('returns unknown without caching a bad %s response, and logs only the parsing step', async (contentType, body, diagnostic) => {
+    const sb = await startHttp((_request, response) => {
+      response.writeHead(200, { 'Content-Type': contentType });
+      response.end(body);
+    });
+    const rep = reputation({ config, endpoints: { safeBrowsing: `${sb.base}/v5/hashes:search` } });
+    expect((await rep.lookupSafeBrowsing([HIT])).get(HIT)).toEqual({ kind: 'unknown', reason: 'error' });
+    expect(rep.database.writes()).toBe(0);
+    const lines = reputationLines('safe_browsing');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain(diagnostic);
+    for (const secret of [...KEYS, HIT, body]) expect(lines[0]).not.toContain(secret);
+  });
+
   it('asks again for a cached listing older than 30 minutes, and for anything past its cacheDuration', async () => {
     const sb = await startSafeBrowsing();
     const rep = reputation({ config, endpoints: { safeBrowsing: `${sb.base}/v5/hashes:search` } });
