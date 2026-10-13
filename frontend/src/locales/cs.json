@@ -2076,5 +2076,26 @@
       "noMessageId": "(bez Message-ID)",
       "clear": "Vymazat seznam"
     }
+  },
+  "reputationTags": {
+    "description": "Zkontrolujte nastavení zdroje a doplňte reputační štítky starších zpráv v jednotlivých účtech.",
+    "configured": "Nastaveno",
+    "unconfigured": "Nenastaveno — požádejte správce o zadání klíče v části Správa → Externí služby.",
+    "disabled": "Vypnuto — požádejte správce o zapnutí RDAP v části Správa → Externí služby.",
+    "idle": "Doplnění zatím nebylo spuštěno",
+    "running": "Probíhá · spuštěno {{time}}",
+    "completed": "Dokončeno · ukončeno {{time}}",
+    "stopped": "Zastaveno · zastavení {{time}}",
+    "counts": "Označeno: {{marked}} · Zpracováno: {{processed}} · Selhalo: {{failed}}",
+    "start": "Spustit doplnění",
+    "stop": "Zastavit doplnění",
+    "stopHint": "Zastavení zabrání novým dávkám. Zprávy již ve frontě se zpracují, takže počet zpracovaných může dále růst.",
+    "refresh": "Obnovit stav",
+    "refreshFailed": "Obnovení stavu selhalo: {{error}}",
+    "startConflict": "Doplnění již probíhá. Stav byl obnoven.",
+    "stopConflict": "Žádné doplnění neprobíhá. Stav byl obnoven.",
+    "accountNotFound": "Účet nebyl nalezen nebo již není přístupný.",
+    "actionFailed": "Akce doplnění selhala: {{error}}",
+    "noAccounts": "Nejsou k dispozici žádné poštovní účty pro doplnění."
   }
 }

@@ -2057,5 +2057,26 @@
       "noMessageId": "(keine Message-ID)",
       "clear": "Liste leeren"
     }
+  },
+  "reputationTags": {
+    "description": "Prüfe die Quellenkonfiguration und ergänze Reputations-Tags für ältere Nachrichten jedes Kontos.",
+    "configured": "Konfiguriert",
+    "unconfigured": "Nicht konfiguriert — bitte einen Administrator, den Schlüssel unter Administration → Externe Dienste einzutragen.",
+    "disabled": "Deaktiviert — bitte einen Administrator, RDAP unter Administration → Externe Dienste zu aktivieren.",
+    "idle": "Noch kein Rücklauf gestartet",
+    "running": "Läuft · gestartet {{time}}",
+    "completed": "Abgeschlossen · beendet {{time}}",
+    "stopped": "Gestoppt · angehalten {{time}}",
+    "counts": "Markiert: {{marked}} · Verarbeitet: {{processed}} · Fehlgeschlagen: {{failed}}",
+    "start": "Rücklauf starten",
+    "stop": "Rücklauf stoppen",
+    "stopHint": "Stoppen verhindert neue Stapel. Bereits eingereihte Nachrichten werden weiter verarbeitet; die Anzahl kann nach dem Stoppen steigen.",
+    "refresh": "Status aktualisieren",
+    "refreshFailed": "Statusaktualisierung fehlgeschlagen: {{error}}",
+    "startConflict": "Ein Rücklauf läuft bereits. Der Status wurde aktualisiert.",
+    "stopConflict": "Es läuft kein Rücklauf. Der Status wurde aktualisiert.",
+    "accountNotFound": "Konto nicht gefunden oder nicht mehr zugänglich.",
+    "actionFailed": "Rücklaufaktion fehlgeschlagen: {{error}}",
+    "noAccounts": "Keine E-Mail-Konten für einen Rücklauf vorhanden."
   }
 }

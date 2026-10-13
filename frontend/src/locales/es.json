@@ -2057,5 +2057,26 @@
       "noMessageId": "(sin Message-ID)",
       "clear": "Vaciar lista"
     }
+  },
+  "reputationTags": {
+    "description": "Comprueba la configuración de la fuente y añade etiquetas de reputación al correo histórico de cada cuenta.",
+    "configured": "Configurada",
+    "unconfigured": "Sin configurar — pide a un administrador que introduzca la clave en Administración → Servicios externos.",
+    "disabled": "Desactivada — pide a un administrador que active RDAP en Administración → Servicios externos.",
+    "idle": "Sin relleno iniciado",
+    "running": "En curso · iniciado {{time}}",
+    "completed": "Completado · finalizado {{time}}",
+    "stopped": "Detenido · parado {{time}}",
+    "counts": "Marcados: {{marked}} · Procesados: {{processed}} · Fallidos: {{failed}}",
+    "start": "Iniciar relleno",
+    "stop": "Detener relleno",
+    "stopHint": "Detener impide nuevos lotes. El correo ya en cola se sigue procesando y el contador puede aumentar después.",
+    "refresh": "Actualizar estado",
+    "refreshFailed": "No se pudo actualizar el estado: {{error}}",
+    "startConflict": "Ya hay un relleno en curso. Se ha actualizado el estado.",
+    "stopConflict": "No hay ningún relleno en curso. Se ha actualizado el estado.",
+    "accountNotFound": "Cuenta no encontrada o ya no accesible.",
+    "actionFailed": "La acción de relleno falló: {{error}}",
+    "noAccounts": "No hay cuentas de correo para rellenar."
   }
 }

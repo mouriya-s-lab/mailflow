@@ -2057,5 +2057,26 @@
       "noMessageId": "(nessun Message-ID)",
       "clear": "Svuota elenco"
     }
+  },
+  "reputationTags": {
+    "description": "Controlla la configurazione della fonte e aggiungi i tag di reputazione ai messaggi storici di ogni account.",
+    "configured": "Configurata",
+    "unconfigured": "Non configurata — chiedi a un amministratore di inserire la chiave in Amministrazione → Servizi esterni.",
+    "disabled": "Disattivata — chiedi a un amministratore di attivare RDAP in Amministrazione → Servizi esterni.",
+    "idle": "Nessun recupero avviato",
+    "running": "In corso · avviato {{time}}",
+    "completed": "Completato · terminato {{time}}",
+    "stopped": "Interrotto · arrestato {{time}}",
+    "counts": "Contrassegnati: {{marked}} · Elaborati: {{processed}} · Falliti: {{failed}}",
+    "start": "Avvia recupero",
+    "stop": "Interrompi recupero",
+    "stopHint": "L’arresto impedisce nuovi lotti. I messaggi già in coda vengono ancora elaborati, quindi il contatore può aumentare.",
+    "refresh": "Aggiorna stato",
+    "refreshFailed": "Aggiornamento dello stato non riuscito: {{error}}",
+    "startConflict": "Un recupero è già in corso. Lo stato è stato aggiornato.",
+    "stopConflict": "Nessun recupero è in corso. Lo stato è stato aggiornato.",
+    "accountNotFound": "Account non trovato o non più accessibile.",
+    "actionFailed": "Azione di recupero non riuscita: {{error}}",
+    "noAccounts": "Nessun account di posta da recuperare."
   }
 }
