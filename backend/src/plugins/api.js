@@ -74,7 +74,7 @@ export const jevStatus = async () => jevConfigStatus(await loadJevConfig());
 // verdicts for registrable domains, Safe Browsing verdicts for link URLs, and each source's status.
 // A failed lookup is `unknown`, never "not listed"; a link itself is never fetched.
 export {
-  lookupRdap, lookupSpamhausDbl, lookupUrlhaus, lookupSafeBrowsing, sourceStatus,
+  lookupRdap, lookupSpamhausDbl, lookupUrlhaus, lookupSafeBrowsing, sourceStatus, reputationUrlSubject,
 } from '../../fork-features/reputation/index.js';
 
 // ── Anti-spam ─────────────────────────────────────────────────────────────────

@@ -171,13 +171,14 @@ Some headers say things nothing else in a stored message does: who authenticated
 
 ## Link reputation
 
-What the links in a message point to, judged by outside lookup services without ever opening a link: when a domain was registered (RDAP), whether Spamhaus DBL or URLhaus list it, and whether Google Safe Browsing lists a link's URL. Each source has its own lookup function, which asks only that source's service and reads and writes only that source's cache rows; plugins reach the five functions below through the plugin API under the same names. Whether RDAP runs and the keys of the other three sources are the link reputation block of the external service settings above, read on every call.
+What the links in a message point to, judged by outside lookup services without ever opening a link: when a domain was registered (RDAP), whether Spamhaus DBL or URLhaus list it, and whether Google Safe Browsing lists a link's URL. Each source has its own lookup function, which asks only that source's service and reads and writes only that source's cache rows; plugins reach these capabilities through the plugin API under the same names. Whether RDAP runs and the keys of the other three sources are the link reputation block of the external service settings above, read on every call.
 
 - `lookupRdap(domains, { deadlineMs })` takes registrable domains as `registrableDomain` returns them (anything else throws) and resolves to a `Map` from each domain to its registration: `{ kind: 'known', registeredAt }` (ISO 8601), `{ kind: 'not_found' }`, or `{ kind: 'unknown', reason }` with `reason` `timeout`, `rate_limited`, `error`, `unsupported_tld` (IANA's bootstrap names no RDAP service for the TLD) or `disabled` (RDAP is switched off).
 - `lookupSpamhausDbl(domains, { deadlineMs })` and `lookupUrlhaus(domains, { deadlineMs })` take registrable domains the same way and resolve to a `Map` from each domain to that source's listing.
 - `lookupSafeBrowsing(urls, { deadlineMs })` takes absolute http(s) URLs and resolves to a `Map` from each URL to its listing. It is a verdict on that URL, not on its domain.
 - A listing is `{ kind: 'listed', detail }`, `{ kind: 'not_listed' }`, `{ kind: 'unknown', reason }` (`timeout`, `rate_limited`, `error`) or `{ kind: 'unconfigured' }` (no key). There is no "clean": `not_listed` says only that this source has no listing.
 - `sourceStatus(source)`, with `source` one of `rdap`, `spamhaus_dbl`, `urlhaus`, `safe_browsing`, resolves to `enabled` or `unconfigured`, and for RDAP `enabled` or `disabled` (switched off). It reads the settings and nothing else; any other `source` throws.
+- `reputationUrlSubject(url)` is pure and returns `{ urlDigest, host }`: the lowercase hexadecimal SHA-256 of exactly the canonical subject Safe Browsing uses for its cache, and the link host. Invalid or non-http(s) inputs throw `TypeError`; it reads no setting and sends no request.
 - `deadlineMs` bounds the whole lookup from the call, and each request also stops after 5 seconds. At most 4 RDAP, 8 DBL, 4 URLhaus and 2 Safe Browsing requests run at once across all callers; one that cannot start before the deadline is not sent and is `unknown { timeout }`. A caller that needs several sources asks their functions side by side, each with its own deadline.
 
 | Source | Request | Kept for |
@@ -206,9 +207,66 @@ What the links in a message point to, judged by outside lookup services without 
 
 | File | Change |
 |---|---|
-| `backend/src/plugins/api.js` | `lookupRdap`, `lookupSpamhausDbl`, `lookupUrlhaus`, `lookupSafeBrowsing` and `sourceStatus` from `fork-features/reputation` |
+| `backend/src/plugins/api.js` | Per-source lookups and `sourceStatus`, plus pure `reputationUrlSubject` from `fork-features/reputation` |
 | `backend/src/plugins/README.md` | Lists them in the capability surface |
 | `backend/src/services/backup.js` | `fork_reputation_cache` is in `TRANSIENT_TABLES`, whose comment now covers caches of outside lookups |
+
+## Reputation tag plugins
+
+`backend/src/plugins/reputation-tags/` registers four independent plugins: `tag-rdap` (`rdap`),
+`tag-spamhaus` (`spamhaus_dbl`), `tag-urlhaus` (`urlhaus`) and `tag-safebrowsing`
+(`safe_browsing`). A user activates each separately; it applies to every account of that user.
+There are no new parameters, quotas or per-account switches. Source keys and the RDAP switch
+remain exclusively in the administrator's external-service settings.
+
+- **Snapshot ownership.** Each plugin writes only `messages.plugin_annotations[pluginId]`.
+  Alongside K7's `revision` and `queue`, `result` is `complete { checkedAt, subjects }`.
+  RDAP subjects map registrable domains to `Registration`; DBL and URLhaus map them to
+  `SourceVerdict`. Safe Browsing subjects map `reputationUrlSubject`'s canonical URL digest to
+  `{ host, verdict }`, never storing a URL's path or query. A body with no links produces an
+  empty subjects object. Snapshots are not refreshed according to cache age.
+- **New mail.** Each plugin's 60-second tick owns a `pluginId:accountId` single-flight turn.
+  `inboxIngest` only schedules it. The first activated tick records UID floors in
+  `plugin_account_config.newMailFloors`; folders newly seen or renumbered take fresh floors.
+  It marks up to 200 new rows through `above_uid_floor`. A source without configuration, or
+  disabled RDAP, writes no message annotations and retains its initial floors, so configuring
+  it later picks up mail received since that tick.
+- **Processing.** Using the existing Jev budgets, a tick reads up to 200 queued rows and
+  processes at most 50, new mail first, starting none with under 5 seconds of its 60-second
+  budget remaining. `ensureMessageBodies` precedes the read-only `getMessageLinks`. Unavailable
+  bodies leave the row untouched and spend no attempt; server-confirmed `empty` bodies produce
+  an empty snapshot. Unknown source answers are stored immediately together with a retry queue
+  in one annotation write. Five attempts use the existing 2, 4, 8 and 16 minute backoff; success
+  replaces the unknown snapshot and completes the queue, exhaustion preserves the last unknown
+  snapshot and completes it. A source switched off during a lookup writes nothing.
+- **Synchronous consumers.** Both `tagSource.read` and `tagSource.ensure` first check current
+  activation and source configuration: inactive or unconfigured sources answer that state without
+  reading annotations, so retained snapshots cannot contribute chips after deactivation. When
+  available, `tagSource.ensure` returns existing complete snapshots without querying, including
+  unknown snapshots currently in backoff. A missing snapshot is checked and stored within the
+  caller's deadline. A body failure returns
+  `unavailable { body_unavailable }`, an exhausted caller deadline `unavailable { deadline }`.
+  `tagSource.read` never queries a service. Consumers use `ensureMessageTags`/`getMessageTags`,
+  not another plugin's private annotation. HTTP summary likewise only reads stored snapshots.
+- **Backfill.** Each plugin keeps `plugin_data[account:<id>:backfill]`, owned by the account's
+  user: `idle`, `running`, `completed` or `stopped`, with revision, timestamps and
+  `marked`/`processed`/`failed` counters. A running tick marks the next 50 `not_at_revision` rows
+  after the pending batch is worked off, and completes only when no further rows or retries
+  remain. The authenticated `/api/<pluginId>` router exposes `GET /status` and
+  `POST`/`DELETE /accounts/:id/backfill` (409 for duplicate start or stop without a running
+  run, 404 for another user's account). Stop prevents new marking batches; already queued work
+  still finishes and increments `processed` without changing the `stopped` state. These commands,
+  ticks and synchronous ensures hold the same plugin/account turn, so progress and stop cannot
+  overwrite one another.
+
+| Path | What |
+|---|---|
+| `backend/src/plugins/reputation-tags/index.js` | Four manifests with independent source, hook, tick and authenticated router |
+| `backend/src/plugins/reputation-tags/model.js` | Snapshot, annotation and stored-record parsing; existing Jev retry values |
+| `backend/src/plugins/reputation-tags/records.js` | Per-plugin/account turns, UID floors and owned backfill records |
+| `backend/src/plugins/reputation-tags/processor.js` | New-mail marking, batched backfill, source lookup, snapshot read/ensure |
+| `backend/src/plugins/reputation-tags/routes.js` | Status and account backfill start/stop |
+| `backend/src/plugins/loadPlugins.js` | Registers the four manifests after Jev |
 
 ## Anti-spam training records and verdict requests
 
