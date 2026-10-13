@@ -119,12 +119,13 @@ describe('flagTokensFor', () => {
   });
 
   it('maps a link flag to its token only when it is 1; 0 and null (unknown) yield none', () => {
-    expect(flagTokensFor({ link_text_domain_mismatch: 1, link_domain_new: 1, link_domain_listed: 1 })).toEqual([
+    expect(flagTokensFor({ link_text_domain_mismatch: 1, link_domain_new: 1, link_domain_listed: 1, link_url_unsafe: 1 })).toEqual([
       '__link_text_domain_mismatch__',
       '__link_domain_new__',
       '__link_domain_listed__',
+      '__link_url_unsafe__',
     ]);
-    expect(flagTokensFor({ link_text_domain_mismatch: 0, link_domain_new: null, link_domain_listed: null })).toEqual([]);
+    expect(flagTokensFor({ link_text_domain_mismatch: 0, link_domain_new: null, link_domain_listed: null, link_url_unsafe: null })).toEqual([]);
   });
 });
 

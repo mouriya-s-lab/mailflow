@@ -301,6 +301,11 @@ const RULES = [
     test: (_email, ctx) => ctx.linkFlags?.link_domain_listed === 1,
   },
   {
+    name: 'LINK_URL_UNSAFE',
+    weight: 0.6,
+    test: (_email, ctx) => ctx.linkFlags?.link_url_unsafe === 1,
+  },
+  {
     name: 'FROM_REPLYTO_MISMATCH',
     weight: 0.4,
     test: (email) => {

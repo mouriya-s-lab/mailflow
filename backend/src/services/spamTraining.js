@@ -84,9 +84,8 @@ function extractSpamFeatures(message, language, linkFlagValues) {
   };
 }
 
-// The language and the link evidence are independent reads, so they run side by side. The domain
-// lookup services are asked only while anti-spam is on for the message's account and user, as at
-// classification.
+// The language and tag snapshots are independent reads, so they run side by side. Like
+// classification, training requests tags only while anti-spam is on for the account and user.
 async function messageFeatures(message) {
   const lookUpReputation = message.master_spam_enabled !== 'false' && Boolean(message.antispam_enabled);
   const [language, linkEvidence] = await Promise.all([

@@ -105,7 +105,7 @@ beforeEach(() => {
 function recordedFlagFeatures() {
   return {
     ...extractFlagFeatures.mock.results[0].value,
-    link_text_domain_mismatch: 0, link_domain_new: null, link_domain_listed: null,
+    link_text_domain_mismatch: 0, link_domain_new: null, link_domain_listed: null, link_url_unsafe: null,
   };
 }
 

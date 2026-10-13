@@ -38,6 +38,7 @@ export const FLAG_TOKENS = {
   link_text_domain_mismatch: '__link_text_domain_mismatch__',
   link_domain_new: '__link_domain_new__',
   link_domain_listed: '__link_domain_listed__',
+  link_url_unsafe: '__link_url_unsafe__',
 };
 
 const ALL_CAPS_RATIO_THRESHOLD = 0.5; // matches rules rule SUBJECT_ALL_CAPS
@@ -93,7 +94,7 @@ export function flagTokensFor(flagFeatures) {
   if ((flagFeatures.all_caps_subject_ratio ?? 0) > ALL_CAPS_RATIO_THRESHOLD) {
     tokens.push(FLAG_TOKENS.all_caps_subject_high);
   }
-  for (const flag of ['link_text_domain_mismatch', 'link_domain_new', 'link_domain_listed']) {
+  for (const flag of ['link_text_domain_mismatch', 'link_domain_new', 'link_domain_listed', 'link_url_unsafe']) {
     if (flagFeatures[flag] === 1) tokens.push(FLAG_TOKENS[flag]);
   }
   return tokens;

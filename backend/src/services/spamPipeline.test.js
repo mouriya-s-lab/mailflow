@@ -5,6 +5,13 @@ vi.mock('./spamModelStore.js', async (importOriginal) => ({
   ...(await importOriginal()),
   getModelForUser: vi.fn(),
 }));
+vi.mock('../../fork-features/message-tags/index.js', async importOriginal => ({
+  ...(await importOriginal()),
+  ensureMessageTags: vi.fn(async (_accountId, ids) => new Map(ids.map(id => [id, {
+    rdap: { kind: 'inactive' }, spamhaus_dbl: { kind: 'inactive' },
+    urlhaus: { kind: 'inactive' }, safe_browsing: { kind: 'inactive' },
+  }]))),
+}));
 
 import { query } from './db.js';
 import { getModelForUser } from './spamModelStore.js';
