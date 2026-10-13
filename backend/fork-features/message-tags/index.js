@@ -244,10 +244,13 @@ export function createMessageTags({ registry = pluginRegistry, queryFn = (...arg
   async function ensureMessageTags(accountId, messageIds, options) {
     const { deadlineMs } = options || {};
     if (!Number.isFinite(deadlineMs) || deadlineMs < 0) throw new TypeError('deadlineMs must be a non-negative number');
+    // The deadline counts from the call, so it is fixed before this function's own queries: the
+    // time they take comes out of the caller's budget, not out of thin air.
+    const deadlineAt = now() + deadlineMs;
     const { ids } = parseArgs(accountId, messageIds);
     const owned = await ownedIds(accountId, ids);
     if (owned.length === 0) return new Map();
-    return dispatch(tagPlugins(), accountId, owned, 'ensure', now() + deadlineMs);
+    return dispatch(tagPlugins(), accountId, owned, 'ensure', deadlineAt);
   }
 
   /**

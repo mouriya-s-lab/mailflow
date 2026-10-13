@@ -19,6 +19,7 @@ const complete = (subjects, checkedAt = '2026-10-12T00:00:00.000Z') => ({ kind: 
 let messages; // id -> { id, account_id, user_id }
 let registry;
 let tags;
+let queryStub; // the fake messages table, shared by the per-case instances
 
 function plugin(source, overrides = {}) {
   const tag = {
@@ -40,7 +41,7 @@ beforeEach(() => {
   const manifests = [];
   registry = { list: () => manifests };
   vi.spyOn(logger, 'warn').mockImplementation(() => {});
-  const queryFn = async (sql, params) => {
+  queryStub = async (sql, params) => {
     if (sql.includes('JOIN email_accounts')) {
       const [userId, ids] = params;
       return { rows: ids.map(i => messages.get(i)).filter(r => r && r.user_id === userId).map(r => ({ id: r.id, account_id: r.account_id })) };
@@ -51,7 +52,23 @@ beforeEach(() => {
     }
     throw new Error(`unexpected SQL in test: ${sql}`);
   };
-  tags = createMessageTags({ registry, queryFn, now: () => NOW });
+  tags = createMessageTags({ registry, queryFn: queryStub, now: () => NOW });
+});
+
+it('counts the deadline from the call, not from after its own query', async () => {
+  const rdap = plugin('rdap');
+  let clock = NOW;
+  const queryMs = 500;
+  const slow = createMessageTags({
+    registry,
+    now: () => clock,
+    queryFn: async (sql, params) => {
+      clock += queryMs; // the ownership query costs the caller budget
+      return queryStub(sql, params);
+    },
+  });
+  await slow.ensureMessageTags(ACCOUNT, [id(1)], { deadlineMs: 5000 });
+  expect(rdap.ensure).toHaveBeenCalledWith(ACCOUNT, [id(1)], { deadlineMs: 5000 - queryMs });
 });
 
 describe('ensureMessageTags', () => {
