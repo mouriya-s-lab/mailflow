@@ -1,4 +1,20 @@
 {
+  "messageTags": {
+    "show": "Afficher les tags des messages",
+    "showDescription": "Afficher les tags de réputation notables dans la liste et l’état des quatre sources dans les détails. La consultation ne lance aucune requête de réputation.",
+    "sources": "Sources de réputation",
+    "listed": "Répertorié par {{source}}",
+    "newDomain": "{{domain}} enregistré il y a {{ageDays}} jours",
+    "unknown": "{{source}} : résultat inconnu",
+    "inactive": "Plugin non activé",
+    "unconfigured": "Source non configurée ou désactivée",
+    "unchecked": "Non vérifié",
+    "complete": "Vérifié le {{checkedAt}} · {{subjects}} objets · {{listed}} répertoriés · {{unknown}} inconnus",
+    "pluginFailed": "Indisponible : échec du plugin",
+    "deadline": "Indisponible : délai dépassé",
+    "bodyUnavailable": "Indisponible : corps du message inaccessible",
+    "loadFailed": "Impossible de charger les tags : {{message}}"
+  },
   "common": {
     "cancel": "Annuler",
     "save": "Enregistrer",

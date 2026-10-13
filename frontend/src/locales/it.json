@@ -1,4 +1,20 @@
 {
+  "messageTags": {
+    "show": "Mostra i tag dei messaggi",
+    "showDescription": "Mostra i tag di reputazione rilevanti nell’elenco e lo stato delle quattro fonti nei dettagli. La lettura non avvia query di reputazione.",
+    "sources": "Fonti di reputazione",
+    "listed": "Segnalato da {{source}}",
+    "newDomain": "{{domain}} registrato {{ageDays}} giorni fa",
+    "unknown": "{{source}}: risultato sconosciuto",
+    "inactive": "Plugin non attivato",
+    "unconfigured": "Fonte non configurata o disattivata",
+    "unchecked": "Non controllato",
+    "complete": "Controllato {{checkedAt}} · {{subjects}} oggetti · {{listed}} segnalati · {{unknown}} sconosciuti",
+    "pluginFailed": "Non disponibile: errore del plugin",
+    "deadline": "Non disponibile: tempo scaduto",
+    "bodyUnavailable": "Non disponibile: corpo del messaggio non recuperabile",
+    "loadFailed": "Impossibile caricare i tag: {{message}}"
+  },
   "common": {
     "cancel": "Annulla",
     "save": "Salva",

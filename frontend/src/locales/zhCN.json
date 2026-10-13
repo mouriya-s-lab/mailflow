@@ -1,4 +1,20 @@
 {
+  "messageTags": {
+    "show": "显示邮件 tag",
+    "showDescription": "列表显示值得注意的信誉 tag，详情显示四个来源的状态。浏览邮件不会发起信誉查询。",
+    "sources": "信誉来源",
+    "listed": "被 {{source}} 列入",
+    "newDomain": "{{domain}} 注册于 {{ageDays}} 天前",
+    "unknown": "{{source}}：查询未知",
+    "inactive": "插件未启用",
+    "unconfigured": "来源未配置或已关闭",
+    "unchecked": "尚未检查",
+    "complete": "检查于 {{checkedAt}} · {{subjects}} 个对象 · {{listed}} 个被列入 · {{unknown}} 个未知",
+    "pluginFailed": "不可用：插件故障",
+    "deadline": "不可用：超过截止时间",
+    "bodyUnavailable": "不可用：无法获取邮件正文",
+    "loadFailed": "无法加载邮件 tag：{{message}}"
+  },
   "common": {
     "cancel": "取消",
     "save": "保存",

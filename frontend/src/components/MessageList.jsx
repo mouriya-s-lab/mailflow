@@ -30,6 +30,7 @@ import FolderPathLabel from './FolderPathLabel.jsx';
 import { folderDisplayName, folderMatchesQuery, favoriteMoveTargets, recentMoveTargets } from '../utils/folderDisplay.js';
 import SpamBadge from './SpamBadge.jsx';
 import ReplyDraftIndicator from './ReplyDraftIndicator.jsx';
+import MessageTags from './MessageTags.jsx';
 import SpamExplainModal from './SpamExplainModal.jsx';
 import { shortcutBus } from '../utils/shortcutBus.js';
 import { createLatestRequest } from '../utils/latestRequest.js';
@@ -4641,6 +4642,7 @@ function ThreadRow({ message, isExpanded, threadMsgs, isLoadingThread, selectedM
             <ReplyDraftIndicator message={message} />
             <SpamBadge message={message} onClick={onExplainSpam} />
           </div>
+          <MessageTags messageId={message.id} />
           {/* Row 3: snippet */}
           {showMessagePreviews && (
             <div style={{
@@ -4717,6 +4719,7 @@ function ThreadRow({ message, isExpanded, threadMsgs, isLoadingThread, selectedM
                     {formatDate(msg.date)}
                   </span>
                 </div>
+                <MessageTags messageId={msg.id} />
                 {showMessagePreviews && (
                 <div style={{
                   fontSize: 11, color: 'var(--text-tertiary)',
@@ -4973,6 +4976,7 @@ function MessageRow({ message, selected, lastViewed, isChecked, selectionMode, s
           <ReplyDraftIndicator message={message} />
           <SpamBadge message={message} onClick={onExplainSpam} />
         </div>
+        <MessageTags messageId={message.id} />
 
         {/* Row 3: Snippet */}
         {showMessagePreviews && (

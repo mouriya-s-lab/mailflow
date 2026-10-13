@@ -1,4 +1,20 @@
 {
+  "messageTags": {
+    "show": "Show message tags",
+    "showDescription": "Show notable reputation tags in the list and all four source statuses in message details. Browsing never starts reputation queries.",
+    "sources": "Reputation sources",
+    "listed": "Listed by {{source}}",
+    "newDomain": "{{domain}} registered {{ageDays}} days ago",
+    "unknown": "{{source}}: query unknown",
+    "inactive": "Plugin not enabled",
+    "unconfigured": "Source not configured or disabled",
+    "unchecked": "Not checked",
+    "complete": "Checked {{checkedAt}} · {{subjects}} subjects · {{listed}} listed · {{unknown}} unknown",
+    "pluginFailed": "Unavailable: plugin failed",
+    "deadline": "Unavailable: deadline exceeded",
+    "bodyUnavailable": "Unavailable: message body could not be retrieved",
+    "loadFailed": "Could not load message tags: {{message}}"
+  },
   "common": {
     "cancel": "Cancel",
     "save": "Save",

@@ -201,3 +201,13 @@ describe('PATCH /auth/preferences afterRemove (#572)', () => {
     expect(query.mock.calls[0][1][45]).toBeNull();
   });
 });
+
+describe('PATCH /auth/preferences showMessageTags', () => {
+  it.each(['false', 0, null, {}, []])('rejects nonboolean %p before any write', async value => {
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    await patchPreferences({ session: { userId: 'user-1' }, body: { showMessageTags: value } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'showMessageTags must be a boolean' });
+    expect(query).not.toHaveBeenCalled();
+  });
+});

@@ -1,4 +1,20 @@
 {
+  "messageTags": {
+    "show": "Mostrar etiquetas de mensajes",
+    "showDescription": "Mostrar las etiquetas de reputación destacadas en la lista y el estado de las cuatro fuentes en los detalles. La navegación no inicia consultas de reputación.",
+    "sources": "Fuentes de reputación",
+    "listed": "Incluido en {{source}}",
+    "newDomain": "{{domain}} registrado hace {{ageDays}} días",
+    "unknown": "{{source}}: resultado desconocido",
+    "inactive": "Plugin no activado",
+    "unconfigured": "Fuente sin configurar o desactivada",
+    "unchecked": "Sin comprobar",
+    "complete": "Comprobado {{checkedAt}} · {{subjects}} objetos · {{listed}} incluidos · {{unknown}} desconocidos",
+    "pluginFailed": "No disponible: fallo del plugin",
+    "deadline": "No disponible: plazo agotado",
+    "bodyUnavailable": "No disponible: no se pudo obtener el cuerpo del mensaje",
+    "loadFailed": "No se pudieron cargar las etiquetas: {{message}}"
+  },
   "common": {
     "cancel": "Cancelar",
     "save": "Guardar",

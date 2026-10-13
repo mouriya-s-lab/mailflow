@@ -270,6 +270,22 @@ remain exclusively in the administrator's external-service settings.
 | `backend/src/plugins/reputation-tags/routes.js` | Status and account backfill start/stop |
 | `backend/src/plugins/loadPlugins.js` | Registers the four manifests after Jev |
 
+## Message tags
+
+The four tag plugins write their findings into their own namespace of a message's annotations, and nothing outside a plugin parses that namespace. `fork-features/message-tags` is the one way to read them: `ensureMessageTags(accountId, ids, { deadlineMs })` returns, for every requested message, a state for each of the four sources — `inactive` (that plugin is not activated for the user), `unconfigured` (its source has no key, or is switched off), `complete { checkedAt, subjects }` (the snapshot the plugin stored, in the source's own types), `unchecked` (nothing stored yet; the read path only) or `unavailable { reason }` with `reason` `plugin_failed`, `deadline` or `body_unavailable` — and asks a plugin to look a missing snapshot up, waiting up to the caller's deadline. `getMessageTags(accountId, ids)` answers from what is stored and contacts nothing. A plugin that throws, answers outside this contract, or leaves a requested message out is that source's `plugin_failed`: logged, and never passed on to a consumer. `POST /api/message-tags/summary { ids }` answers the caller's own messages with the chips worth showing and a per-source summary that carries no domain and no URL. The plugin API exports `ensureMessageTags`, `getMessageTags`, `tagSourcePlugins` and the read-only `getMessageLinks`.
+
+| Path | What |
+|---|---|
+| `backend/fork-features/message-tags/index.js` | `ensureMessageTags`, `getMessageTags`, `summarizeForUser`, the tag states and `NEW_DOMAIN_MAX_AGE_MS` |
+| `backend/fork-features/message-tags/routes.js` | `POST /api/message-tags/summary`, signed-in user only, own messages only |
+| `backend/fork-features/message-tags/index.test.js`, `routes.test.js` | The state contract, the failure paths, chips and the HTTP entry |
+| `backend/src/plugins/registry.js` | `tagSource` on a manifest: one source per plugin, checked at registration |
+| `backend/src/plugins/api.js` | `ensureMessageTags`, `getMessageTags`, `tagSourcePlugins`, `getMessageLinks` |
+
+### Tags in the mail list
+
+Every message row and every open message shows what the tag plugins found for it, and a single user preference `showMessageTags` (Settings, stored in `users.preferences`) turns the whole thing off. The list shows the findings worth noticing — a domain a lookup source lists, a domain registered in the last 30 days, or a source that could not answer — and the message view additionally lists the state of all four sources, including the ones the user has not activated, because "not checked" and "not enabled" are different facts. Core owns this rendering: it reads `POST /api/message-tags/summary` for the message ids currently on screen (one request per set of visible ids, the way the reply-draft indicators work) and never looks a source up itself, so scrolling and opening messages cost no outside queries. With the preference off, nothing is requested and nothing is drawn.
+
 ## Anti-spam training records and verdict requests
 
 Jev's confident spam and ham verdicts can train a user's anti-spam model, so a new user's model is ready without hundreds of manual marks, and a plugin can ask anti-spam for a message's verdict instead of guessing from `spam_analyzed_at`, which stays empty for mail stored before anti-spam was switched on.
