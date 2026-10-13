@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   setMessageAnnotation: vi.fn(),
   jevStatus: vi.fn(),
   sourceStatus: vi.fn(),
+  tagSourcePlugins: vi.fn(),
+  reputationUrlSubject: vi.fn(),
   storage: { getValue: vi.fn(), put: vi.fn() },
   getAccountConfig: vi.fn(),
   setAccountConfig: vi.fn(),
@@ -20,10 +22,7 @@ const mocks = vi.hoisted(() => ({
   markMessages: vi.fn(),
   getMessageSignals: vi.fn(),
   getMessageBodyTexts: vi.fn(),
-  lookupRdap: vi.fn(),
-  lookupSpamhausDbl: vi.fn(),
-  lookupUrlhaus: vi.fn(),
-  lookupSafeBrowsing: vi.fn(),
+  ensureMessageTags: vi.fn(),
   jevDecide: vi.fn(),
   recordJevSpamVerdict: vi.fn(),
   requestSpamRetrain: vi.fn(),
@@ -156,6 +155,9 @@ beforeEach(() => {
   mocks.setMessageAnnotation.mockResolvedValue({ kind: 'written' });
   mocks.jevStatus.mockResolvedValue({ kind: 'unconfigured' });
   mocks.sourceStatus.mockImplementation(async source => source === 'rdap' ? 'enabled' : 'unconfigured');
+  mocks.tagSourcePlugins.mockReturnValue({
+    rdap: 'registration-plugin', spamhaus_dbl: 'dbl-plugin', urlhaus: 'host-protection', safe_browsing: 'url-protection',
+  });
 });
 
 // Decisive observation: real HTTP responses and the capability Maps must agree. Only the
@@ -442,12 +444,16 @@ describe('Jev classification HTTP routes', () => {
     const backfill = { pending: 1, retry: 2, terminal: 3, done: 4 };
     const newMail = { pending: 5, retry: 6, terminal: 7, done: 8 };
     mocks.countQueued.mockImplementation(async ({ origin }) => origin === 'backfill' ? backfill : newMail);
+    mocks.isPluginActivated.mockImplementation(async (userId, pluginId) => !['dbl-plugin', 'url-protection'].includes(pluginId));
     const response = await request('/status');
     expect(response.status).toBe(200);
     expect(response.body.activated).toBe(true);
     expect(response.body.jev).toEqual({ kind: 'unconfigured' });
     expect(response.body.reputation).toEqual({
-      rdap: 'enabled', spamhaus_dbl: 'unconfigured', urlhaus: 'unconfigured', safe_browsing: 'unconfigured',
+      rdap: { pluginId: 'registration-plugin', activated: true, configuration: 'enabled' },
+      spamhaus_dbl: { pluginId: 'dbl-plugin', activated: false, configuration: 'unconfigured' },
+      urlhaus: { pluginId: 'host-protection', activated: true, configuration: 'unconfigured' },
+      safe_browsing: { pluginId: 'url-protection', activated: false, configuration: 'unconfigured' },
     });
     expect(mocks.sourceStatus).toHaveBeenCalledTimes(4);
     for (const source of ['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing']) {

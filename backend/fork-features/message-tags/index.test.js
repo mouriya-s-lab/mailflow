@@ -55,6 +55,13 @@ beforeEach(() => {
   tags = createMessageTags({ registry, queryFn: queryStub, now: () => NOW });
 });
 
+it('reads source ownership from registered ids and reflects registrations on the next call', () => {
+  registry.list().push({ id: 'custom-rdap-owner', tagSource: { source: 'rdap' } }, { id: 'non-tag-plugin' });
+  expect(tags.tagSourcePlugins()).toEqual({ rdap: 'custom-rdap-owner' });
+  registry.list().push({ id: 'url-protection', tagSource: { source: 'safe_browsing' } });
+  expect(tags.tagSourcePlugins()).toEqual({ rdap: 'custom-rdap-owner', safe_browsing: 'url-protection' });
+});
+
 it('counts the deadline from the call, not from after its own query', async () => {
   const rdap = plugin('rdap');
   let clock = NOW;

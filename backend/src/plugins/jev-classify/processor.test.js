@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // model.js and records.js run for real over in-memory plugin storage.
 const store = vi.hoisted(() => ({ data: new Map(), configs: new Map() }));
 
-vi.mock('../api.js', () => ({
+vi.mock('../api.js', async () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
   isPluginActivated: vi.fn(),
   markMessages: vi.fn(),
@@ -16,11 +16,8 @@ vi.mock('../api.js', () => ({
   getMessageSignals: vi.fn(),
   getMessageBodyTexts: vi.fn(),
   ensureMessageBodies: vi.fn(),
-  lookupRdap: vi.fn(),
-  lookupSpamhausDbl: vi.fn(),
-  lookupUrlhaus: vi.fn(),
-  lookupSafeBrowsing: vi.fn(),
-  sourceStatus: vi.fn(),
+  ensureMessageTags: vi.fn(),
+  reputationUrlSubject: (await vi.importActual('../../../fork-features/reputation/index.js')).reputationUrlSubject,
   jevDecide: vi.fn(),
   recordJevSpamVerdict: vi.fn(),
   requestSpamRetrain: vi.fn(),
@@ -79,19 +76,10 @@ const signalsFor = links => ({
   mailingList: { listUnsubscribe: null, listId: null, bulk: false },
   language: { resolved: 'en', declared: { htmlLang: null, contentLanguage: null }, script: { dominant: 'Latn', letters: 100 } },
 });
-const reputationOf = domains => new Map(domains.map(d => [d, {
-  registration: { kind: 'known', registeredAt: '2001-01-01T00:00:00.000Z' },
-  listings: { spamhaus_dbl: { kind: 'unconfigured' }, urlhaus: { kind: 'unconfigured' } },
-}]));
-const domainLookups = [api.lookupRdap, api.lookupSpamhausDbl, api.lookupUrlhaus];
-function mockReputation(answerFor) {
-  api.lookupRdap.mockImplementation(async domains =>
-    new Map([...answerFor(domains)].map(([domain, value]) => [domain, value.registration])));
-  api.lookupSpamhausDbl.mockImplementation(async domains =>
-    new Map([...answerFor(domains)].map(([domain, value]) => [domain, value.listings.spamhaus_dbl])));
-  api.lookupUrlhaus.mockImplementation(async domains =>
-    new Map([...answerFor(domains)].map(([domain, value]) => [domain, value.listings.urlhaus])));
-}
+const complete = subjects => ({ kind: 'complete', checkedAt: '2026-10-13T00:00:00.000Z', subjects });
+const inactiveTags = () => Object.fromEntries(
+  ['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing'].map(source => [source, { kind: 'inactive' }]),
+);
 const answers = ({ choice = 'money-and-orders', confidence = 0.95, probability } = {}) => ({
   kind: 'ok', model: 'typesafe/jev', inputTokens: 100,
   answers: {
@@ -111,7 +99,7 @@ const patchFor = id => patches().find(p => p.id === id)?.patch;
 beforeEach(() => {
   vi.clearAllMocks();
   // clearAllMocks keeps queued once-implementations; drop them so no test inherits another's.
-  for (const fn of [api.listQueuedMessages, api.listMessagesInQueueState, api.jevDecide, api.countQueued, api.markMessages, api.setMessageAnnotation, ...domainLookups]) fn.mockReset();
+  for (const fn of [api.listQueuedMessages, api.listMessagesInQueueState, api.jevDecide, api.countQueued, api.markMessages, api.setMessageAnnotation, api.ensureMessageTags]) fn.mockReset();
   store.data.clear();
   store.configs.clear();
   api.isPluginActivated.mockResolvedValue(true);
@@ -125,7 +113,7 @@ beforeEach(() => {
   api.getMessageSignals.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, signalsFor([])])));
   api.getMessageBodyTexts.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, 'Statement body'])));
   api.ensureMessageBodies.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, { kind: 'stored' }])));
-  mockReputation(reputationOf);
+  api.ensureMessageTags.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, inactiveTags()])));
   api.jevDecide.mockImplementation(answering());
   api.recordJevSpamVerdict.mockResolvedValue({ kind: 'recorded' });
   api.requestSpamRetrain.mockResolvedValue({ kind: 'retrained', records: 1 });
@@ -517,7 +505,7 @@ describe('tick budget and single flight (row 10)', () => {
 });
 
 describe('the state sent to Jev (row 12)', () => {
-  it('carries every signal, a reputation summary per link domain and exactly the first 8000 body characters', async () => {
+  it('carries signals, per-subject TagStates, private URL evidence and the first 8000 body characters', async () => {
     const account = newAccount();
     store.configs.set(account.id, config());
     const categories = [
@@ -537,28 +525,40 @@ describe('the state sent to Jev (row 12)', () => {
     // The visible text of a long HTML-only body, with an astral character straddling 8000.
     const body = `${'x'.repeat(7999)}😀${'tail'.repeat(1000)}`;
     api.getMessageBodyTexts.mockResolvedValue(new Map([[r.id, body]]));
-    mockReputation(domains => new Map(domains.map(d => [d, {
-      registration: d === 'bank-secure.top' ? { kind: 'known', registeredAt: '2026-10-05T00:00:00.000Z' } : { kind: 'unknown', reason: 'timeout' },
-      listings: { spamhaus_dbl: { kind: 'unconfigured' }, urlhaus: { kind: 'listed', detail: 'malware_download' } },
-    }])));
+    const urlSubjects = Object.fromEntries(links.map(link => {
+      const { urlDigest, host } = api.reputationUrlSubject(link.href);
+      return [urlDigest, { host, verdict: { kind: 'listed', detail: 'phishing' } }];
+    }));
+    const tags = {
+      rdap: complete({
+        'bank-secure.top': { kind: 'known', registeredAt: '2026-10-05T00:00:00.000Z' },
+        'bank.example': { kind: 'unknown', reason: 'timeout' },
+        'unrelated.example': { kind: 'not_found' },
+      }),
+      spamhaus_dbl: { kind: 'unconfigured' },
+      urlhaus: { kind: 'unavailable', reason: 'plugin_failed' },
+      safe_browsing: complete(urlSubjects),
+    };
+    api.ensureMessageTags.mockResolvedValue(new Map([[r.id, tags]]));
     api.jevDecide.mockResolvedValue(answers({ choice: 'bills' }));
 
     await runTick({ mgr: mgr(), account });
 
-    for (const lookup of domainLookups) {
-      expect(lookup).toHaveBeenCalledTimes(1);
-      expect(lookup).toHaveBeenCalledWith(['bank-secure.top', 'bank.example'], expect.objectContaining({ deadlineMs: expect.any(Number) }));
-    }
+    expect(api.ensureMessageTags).toHaveBeenCalledWith(account.id, [r.id], expect.objectContaining({ deadlineMs: expect.any(Number) }));
     const [request] = api.jevDecide.mock.calls[0];
     const state = JSON.parse(request.state);
     for (const [key, value] of Object.entries(signals)) expect(state[key]).toEqual(value);
     expect(state.linkDomains).toEqual({
-      'bank-secure.top': { registration: { kind: 'known', registeredAt: '2026-10-05T00:00:00.000Z' }, spamhaus_dbl: 'unconfigured', urlhaus: 'listed' },
-      'bank.example': { registration: { kind: 'unknown', reason: 'timeout' }, spamhaus_dbl: 'unconfigured', urlhaus: 'listed' },
+      'bank-secure.top': { rdap: complete({ 'bank-secure.top': tags.rdap.subjects['bank-secure.top'] }), spamhaus_dbl: tags.spamhaus_dbl, urlhaus: tags.urlhaus },
+      'bank.example': { rdap: complete({ 'bank.example': tags.rdap.subjects['bank.example'] }), spamhaus_dbl: tags.spamhaus_dbl, urlhaus: tags.urlhaus },
     });
+    expect(state.linkUrls).toEqual(Object.fromEntries(Object.entries(urlSubjects).map(([digest, subject]) => [
+      digest, { host: subject.host, safe_browsing: complete({ [digest]: subject }) },
+    ])));
+    expect(JSON.stringify(state.linkUrls)).not.toContain('https://');
     expect([...state.bodyText].length).toBe(8000);
     expect(state.bodyText).toBe(`${'x'.repeat(7999)}😀`);
-    expect(Object.keys(state).sort()).toEqual([...Object.keys(signals), 'bodyText', 'linkDomains'].sort());
+    expect(Object.keys(state).sort()).toEqual([...Object.keys(signals), 'bodyText', 'linkDomains', 'linkUrls'].sort());
     expect(state.attachments).toEqual([{ filename: 'statement.pdf', type: 'application/pdf' }]);
     expect(request.questions.category).toEqual({
       kind: 'choice', instructions: expect.any(String),
@@ -566,6 +566,51 @@ describe('the state sent to Jev (row 12)', () => {
     });
     expect(request.questions.spam).toBeUndefined();
     expect(patchFor(r.id).category.decision).toMatchObject({ kind: 'done', revision: 3, choice: 'bills' });
+  });
+
+  it('keeps complete snapshots complete when current links are absent and preserves inactive sources', async () => {
+    const account = newAccount();
+    store.configs.set(account.id, config());
+    const r = row(402, fresh());
+    api.listQueuedMessages.mockResolvedValue([r]);
+    const href = 'https://changed.example/path?private=value';
+    api.getMessageSignals.mockResolvedValue(new Map([[r.id, signalsFor([{ href, hrefDomain: 'changed.example' }])]]));
+    const tags = { ...inactiveTags(), rdap: complete({ 'previous.example': { kind: 'not_found' } }), safe_browsing: complete({}) };
+    api.ensureMessageTags.mockResolvedValue(new Map([[r.id, tags]]));
+    await runTick({ mgr: mgr(), account });
+    const state = JSON.parse(api.jevDecide.mock.calls[0][0].state);
+    expect(state.linkDomains['changed.example']).toEqual({ rdap: complete({}), spamhaus_dbl: { kind: 'inactive' }, urlhaus: { kind: 'inactive' } });
+    const { urlDigest, host } = api.reputationUrlSubject(href);
+    expect(state.linkUrls).toEqual({ [urlDigest]: { host, safe_browsing: complete({}) } });
+    expect(state.links[0].href).toBe(href);
+  });
+
+  it.each(['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing'])('does not ask, write, or spend an attempt on a %s deadline', async source => {
+    const account = newAccount();
+    store.configs.set(account.id, config({ trainSpam: true }));
+    const annotation = { revision: 0, queue: { state: 'retry', dueAt: '2026-10-01T00:00:00.000Z', origin: 'backfill' },
+      category: { decision: { kind: 'retry', attempts: 2, errorKind: 'network', dueAt: '2026-10-01T00:00:00.000Z' }, action: { kind: 'blocked' } } };
+    const original = structuredClone(annotation);
+    const r = row(403, annotation);
+    api.listQueuedMessages.mockResolvedValue([r]);
+    api.ensureMessageTags.mockResolvedValue(new Map([[r.id, { ...inactiveTags(), [source]: { kind: 'unavailable', reason: 'deadline' } }]]));
+    await runTick({ mgr: mgr(), account });
+    expect(api.jevDecide).not.toHaveBeenCalled();
+    expect(api.setMessageAnnotation).not.toHaveBeenCalled();
+    expect(api.recordJevSpamVerdict).not.toHaveBeenCalled();
+    expect(r.plugin_annotation).toEqual(original);
+    expect(jevCallCount(account.id)).toBe(0);
+  });
+
+  it('retries reputation_error only when the dispatcher itself throws', async () => {
+    const account = newAccount();
+    store.configs.set(account.id, config());
+    const r = row(404, fresh());
+    api.listQueuedMessages.mockResolvedValue([r]);
+    api.ensureMessageTags.mockRejectedValue(new Error('database unavailable'));
+    await runTick({ mgr: mgr(), account });
+    expect(api.jevDecide).not.toHaveBeenCalled();
+    expect(patchFor(r.id).category.decision).toMatchObject({ kind: 'retry', attempts: 1, errorKind: 'reputation_error' });
   });
 
   it('uses the default categories until the user saves some', async () => {

@@ -1988,7 +1988,9 @@
       "jevUnconfigured": "Jev nie jest skonfigurowany, więc poczta nie jest klasyfikowana. Administrator może ustawić klucz API Jev w sekcji Ustawienia → Usługi zewnętrzne.",
       "jevConfigured": "Jev jest skonfigurowany: model {{model}} pod adresem {{baseUrl}}",
       "reputation": "Źródła reputacji linków",
-      "sourceEnabled": "włączone",
+      "pluginActivated": "wtyczka włączona",
+      "pluginInactive": "wtyczka wyłączona",
+      "sourceConfigured": "skonfigurowane",
       "sourceUnconfigured": "brak klucza",
       "sourceDisabled": "wyłączone"
     },

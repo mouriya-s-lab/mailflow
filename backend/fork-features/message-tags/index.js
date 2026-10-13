@@ -190,6 +190,11 @@ export function createMessageTags({ registry = pluginRegistry, queryFn = (...arg
     return out;
   }
 
+  // Registered ownership, not a naming convention: consumers use this for plugin activation.
+  function tagSourcePlugins() {
+    return Object.fromEntries(tagPlugins().map(({ source, pluginId }) => [source, pluginId]));
+  }
+
   // Answer a plugin never gives: 'deadline' when it did not answer in time, 'failed' when it
   // threw. A late answer is dropped, not awaited — the caller's deadline is the caller's, and the
   // request it started is left to finish on its own. Without a deadline (a stored read) the
@@ -345,7 +350,7 @@ export function createMessageTags({ registry = pluginRegistry, queryFn = (...arg
     return { kind: 'ok', tags };
   }
 
-  return { ensureMessageTags, getMessageTags, summarizeForUser };
+  return { ensureMessageTags, getMessageTags, summarizeForUser, tagSourcePlugins };
 }
 
 const messageTags = createMessageTags();
@@ -353,3 +358,4 @@ const messageTags = createMessageTags();
 export const ensureMessageTags = messageTags.ensureMessageTags;
 export const getMessageTags = messageTags.getMessageTags;
 export const summarizeForUser = messageTags.summarizeForUser;
+export const tagSourcePlugins = messageTags.tagSourcePlugins;

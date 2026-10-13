@@ -125,7 +125,7 @@ function JevService({ jev }) {
 
 function sourceStateText(t, state) {
   switch (state) {
-    case 'enabled': return t('jevClassify.service.sourceEnabled');
+    case 'enabled': return t('jevClassify.service.sourceConfigured');
     case 'unconfigured': return t('jevClassify.service.sourceUnconfigured');
     case 'disabled': return t('jevClassify.service.sourceDisabled');
     default: throw new Error(`unknown reputation source state ${JSON.stringify(state)}`);
@@ -145,7 +145,10 @@ function Services({ status, error }) {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px' }}>
             {REPUTATION_SOURCES.map(source => (
               <span key={source.id} data-testid={`reputation-${source.id}`} style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                {source.name}: <span style={{ color: 'var(--text-primary)' }}>{sourceStateText(t, status.reputation[source.id])}</span>
+                {source.name}: <span style={{ color: 'var(--text-primary)' }}>
+                  {t(status.reputation[source.id].activated ? 'jevClassify.service.pluginActivated' : 'jevClassify.service.pluginInactive')}
+                  {' · '}{sourceStateText(t, status.reputation[source.id].configuration)}
+                </span>
               </span>
             ))}
           </div>

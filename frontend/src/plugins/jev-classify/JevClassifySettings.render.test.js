@@ -86,7 +86,12 @@ function resetServer() {
     status: {
       activated: true,
       jev: { kind: 'configured', baseUrl: 'https://jev.example.invalid/v1', model: 'typesafe/jev' },
-      reputation: { rdap: 'enabled', spamhaus_dbl: 'unconfigured', urlhaus: 'unconfigured', safe_browsing: 'disabled' },
+      reputation: {
+        rdap: { pluginId: 'tag-rdap', activated: true, configuration: 'enabled' },
+        spamhaus_dbl: { pluginId: 'tag-spamhaus', activated: false, configuration: 'unconfigured' },
+        urlhaus: { pluginId: 'tag-urlhaus', activated: true, configuration: 'unconfigured' },
+        safe_browsing: { pluginId: 'tag-safebrowsing', activated: false, configuration: 'disabled' },
+      },
       accounts: [accountStatus(MS), accountStatus(GMAIL, { state: 'paused' })],
     },
     statusGate: null,
@@ -214,8 +219,10 @@ describe('Jev classification settings', () => {
     assert.equal($('[data-testid="jev-unconfigured"]').textContent, 'jevClassify.service.jevUnconfigured');
     assert.deepEqual(
       ['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing'].map(id => $(`[data-testid="reputation-${id}"]`).textContent),
-      ['RDAP: jevClassify.service.sourceEnabled', 'Spamhaus DBL: jevClassify.service.sourceUnconfigured',
-        'URLhaus: jevClassify.service.sourceUnconfigured', 'Google Safe Browsing: jevClassify.service.sourceDisabled'],
+      ['RDAP: jevClassify.service.pluginActivated · jevClassify.service.sourceConfigured',
+        'Spamhaus DBL: jevClassify.service.pluginInactive · jevClassify.service.sourceUnconfigured',
+        'URLhaus: jevClassify.service.pluginActivated · jevClassify.service.sourceUnconfigured',
+        'Google Safe Browsing: jevClassify.service.pluginInactive · jevClassify.service.sourceDisabled'],
     );
     const cells = origin => [...$(`[data-testid="jev-status-${MS}"] [data-testid="jev-queue-${origin}"]`).querySelectorAll('td')].slice(1).map(td => td.textContent);
     assert.deepEqual(cells('backfill'), ['4', '1', '30', '2']);

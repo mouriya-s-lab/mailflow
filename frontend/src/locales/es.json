@@ -1969,7 +1969,9 @@
       "jevUnconfigured": "Jev no está configurado, por lo que no se clasifica ningún mensaje. Un administrador puede introducir la clave API de Jev en Ajustes → Servicios externos.",
       "jevConfigured": "Jev está configurado: modelo {{model}} en {{baseUrl}}",
       "reputation": "Fuentes de reputación de enlaces",
-      "sourceEnabled": "activada",
+      "pluginActivated": "plugin activado",
+      "pluginInactive": "plugin desactivado",
+      "sourceConfigured": "configurada",
       "sourceUnconfigured": "sin clave",
       "sourceDisabled": "desactivada"
     },
