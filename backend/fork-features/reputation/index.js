@@ -20,6 +20,7 @@ import { getReputationConfig } from '../service-config/index.js';
 import { hostOfUrl, registrableDomain } from '../domains/index.js';
 import { queryA } from './dnsQuery.js';
 import { expressionHash, urlExpressions } from './safeBrowsing.js';
+import { parseSafeBrowsingResponse } from './safeBrowsingResponse.js';
 
 // The same canonical subject Safe Browsing caches, but safe to persist in a message snapshot:
 // no URL path or query survives in this identity.
@@ -135,7 +136,7 @@ async function exchange(fetchFn, url, init, timeoutMs, maxBytes = MAX_BODY_BYTES
     const response = await fetchFn(url, { ...init, signal: controller.signal });
     const body = await readBody(response.body, maxBytes);
     if (body === null) return { kind: 'failed', failure: failure('error', 'response body too large') };
-    return { kind: 'response', status: response.status, body };
+    return { kind: 'response', status: response.status, contentType: response.headers.get('content-type'), body };
   } catch {
     return { kind: 'failed', failure: timedOut ? DEADLINE_PASSED : failure('error', 'endpoint unreachable') };
   } finally {
@@ -199,13 +200,6 @@ function threatTypes(fullHash) {
     types.add(detail.threatType);
   }
   return types;
-}
-
-// "300s" or "3.5s" in milliseconds; null for anything else.
-function parseDuration(value) {
-  const match = typeof value === 'string' ? /^(\d+)(?:\.(\d{1,9}))?s$/.exec(value) : null;
-  if (!match) return null;
-  return Number(match[1]) * 1000 + Math.floor(Number(`0.${match[2] ?? '0'}`) * 1000);
 }
 
 // ── Module ────────────────────────────────────────────────────────────────────
@@ -439,12 +433,9 @@ export function createReputation({
     const answer = await exchange(fetchFn, url.href, { headers: { 'X-Goog-Api-Key': key, Accept: 'application/json' } }, timeoutMs);
     if (answer.kind === 'failed') return every(answer.failure);
     if (answer.status !== 200) return every(httpFailure(answer.status));
-    const parsed = parseJson(answer.body);
-    const ttlMs = isRecord(parsed) ? parseDuration(parsed.cacheDuration) : null;
-    const fullHashes = isRecord(parsed) ? parsed.fullHashes ?? [] : null;
-    if (ttlMs === null || !Array.isArray(fullHashes) || !fullHashes.every(h => isRecord(h) && typeof h.fullHash === 'string')) {
-      return every(failure('error', 'invalid response'));
-    }
+    const parsed = parseSafeBrowsingResponse(answer.body, answer.contentType);
+    if (parsed.kind === 'invalid') return every(failure('error', parsed.detail));
+    const { fullHashes, ttlMs } = parsed;
     const threats = new Map(fullHashes.map(h => [h.fullHash, threatTypes(h)]));
     return new Map(entries.map(entry => {
       const types = new Set(entry.hashes.flatMap(h => [...(threats.get(h.toString('base64')) ?? [])]));
