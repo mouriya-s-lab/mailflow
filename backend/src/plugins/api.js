@@ -69,13 +69,12 @@ export const jevDecide = async (request, options) => decideJev(await loadJevConf
 export const jevStatus = async () => jevConfigStatus(await loadJevConfig());
 
 // ── Link reputation ───────────────────────────────────────────────────────────
-// Registration dates and blocklist verdicts for registrable domains, and Safe Browsing verdicts for
-// link URLs, from the lookup services the admin configured (fork-only, see fork-features/reputation).
+// One lookup per source, each asking only its own service from the settings the admin saved
+// (fork-only, see fork-features/reputation): RDAP registration dates, Spamhaus DBL and URLhaus
+// verdicts for registrable domains, Safe Browsing verdicts for link URLs, and each source's status.
 // A failed lookup is `unknown`, never "not listed"; a link itself is never fetched.
 export {
-  lookupDomains as lookupDomainReputation,
-  lookupUrls as lookupUrlReputation,
-  status as reputationStatus,
+  lookupRdap, lookupSpamhausDbl, lookupUrlhaus, lookupSafeBrowsing, sourceStatus,
 } from '../../fork-features/reputation/index.js';
 
 // ── Anti-spam ─────────────────────────────────────────────────────────────────

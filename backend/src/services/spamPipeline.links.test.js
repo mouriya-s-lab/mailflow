@@ -8,11 +8,11 @@ vi.mock('./spamModelStore.js', async (importOriginal) => ({
   ...(await importOriginal()),
   getModelForUser: vi.fn(),
 }));
-vi.mock('../../fork-features/reputation/index.js', () => ({ lookupDomains: vi.fn() }));
+vi.mock('../../fork-features/reputation/index.js', () => ({ lookupRdap: vi.fn(), lookupSpamhausDbl: vi.fn(), lookupUrlhaus: vi.fn() }));
 
 import { query } from './db.js';
 import { getModelForUser } from './spamModelStore.js';
-import { lookupDomains } from '../../fork-features/reputation/index.js';
+import { lookupRdap, lookupSpamhausDbl, lookupUrlhaus } from '../../fork-features/reputation/index.js';
 import { classifyAndTagMessage } from './spamPipeline.js';
 import { RULES } from './spamRules.js';
 
@@ -48,8 +48,12 @@ function messageRow(overrides = {}) {
 
 const NOT_LISTED = { kind: 'not_listed' };
 const UNCONFIGURED = { kind: 'unconfigured' };
-const answer = (domain, registration, listings = { spamhaus_dbl: UNCONFIGURED, urlhaus: UNCONFIGURED }) =>
-  new Map([[domain, { registration, listings }]]);
+const domainLookups = [lookupRdap, lookupSpamhausDbl, lookupUrlhaus];
+function answer(domain, registration, listings = { spamhaus_dbl: UNCONFIGURED, urlhaus: UNCONFIGURED }) {
+  lookupRdap.mockResolvedValue(new Map([[domain, registration]]));
+  lookupSpamhausDbl.mockResolvedValue(new Map([[domain, listings.spamhaus_dbl]]));
+  lookupUrlhaus.mockResolvedValue(new Map([[domain, listings.urlhaus]]));
+}
 const registeredDaysAgo = days => ({ kind: 'known', registeredAt: new Date(Date.now() - days * DAY_MS).toISOString() });
 
 // spam_details as written by the classification UPDATE.
@@ -70,7 +74,10 @@ beforeEach(() => {
   query.mockResolvedValue({ rows: [] });
   getModelForUser.mockReset();
   getModelForUser.mockResolvedValue(null);
-  lookupDomains.mockReset();
+  for (const lookup of domainLookups) {
+    lookup.mockReset();
+    lookup.mockResolvedValue(new Map());
+  }
 });
 
 afterEach(() => {
@@ -79,21 +86,21 @@ afterEach(() => {
 
 describe('LINK_TEXT_DOMAIN_MISMATCH', () => {
   it('fires when a link shows one domain and goes to another', async () => {
-    lookupDomains.mockResolvedValue(answer('cmb-verify-login.xyz', { kind: 'not_found' }));
+    answer('cmb-verify-login.xyz', { kind: 'not_found' });
     await classify(messageRow());
     expect(fired()).toContain('LINK_TEXT_DOMAIN_MISMATCH');
     expect(storedDetails().rulesFired).toContainEqual({ name: 'LINK_TEXT_DOMAIN_MISMATCH', weight: 0.5 });
   });
 
   it('does not fire for a link whose text is not an address', async () => {
-    lookupDomains.mockResolvedValue(answer('cmbchina.com', registeredDaysAgo(9000)));
+    answer('cmbchina.com', registeredDaysAgo(9000));
     await classify(messageRow({ body_html: NOTICE_HTML }));
     expect(fired()).not.toContain('LINK_TEXT_DOMAIN_MISMATCH');
   });
 
   it('stays silent, with every flag null, when the body is not stored yet', async () => {
     await classify(messageRow({ body_html: null, body_text: null }));
-    expect(lookupDomains).not.toHaveBeenCalled();
+    for (const lookup of domainLookups) expect(lookup).not.toHaveBeenCalled();
     expect(fired().filter(name => name.startsWith('LINK_'))).toEqual([]);
     expect(storedDetails().links).toEqual({
       kind: 'body_unavailable',
@@ -104,20 +111,20 @@ describe('LINK_TEXT_DOMAIN_MISMATCH', () => {
 
 describe('LINK_DOMAIN_NEW', () => {
   it('fires for a link to a domain registered this month', async () => {
-    lookupDomains.mockResolvedValue(answer('fresh-offer.example', registeredDaysAgo(5)));
+    answer('fresh-offer.example', registeredDaysAgo(5));
     await classify(messageRow({ body_html: ONE_LINK_HTML('fresh-offer.example') }));
     expect(storedDetails().rulesFired).toContainEqual({ name: 'LINK_DOMAIN_NEW', weight: 0.4 });
   });
 
   it('does not fire for a link to an old domain', async () => {
-    lookupDomains.mockResolvedValue(answer('example.com', registeredDaysAgo(11000)));
+    answer('example.com', registeredDaysAgo(11000));
     await classify(messageRow({ body_html: ONE_LINK_HTML('example.com') }));
     expect(fired()).not.toContain('LINK_DOMAIN_NEW');
     expect(storedDetails().links.flags.link_domain_new).toBe(0);
   });
 
   it('result 3: RDAP unknown neither fires it nor fires any minus rule, and spam_details says unknown', async () => {
-    lookupDomains.mockResolvedValue(answer('fresh-offer.example', { kind: 'unknown', reason: 'error' }));
+    answer('fresh-offer.example', { kind: 'unknown', reason: 'error' });
     await classify(messageRow({ body_html: ONE_LINK_HTML('fresh-offer.example') }));
     expect(fired()).not.toContain('LINK_DOMAIN_NEW');
     expect(fired().filter(name => NEGATIVE_RULES.includes(name))).toEqual([]);
@@ -129,7 +136,7 @@ describe('LINK_DOMAIN_NEW', () => {
 
 describe('LINK_DOMAIN_LISTED', () => {
   const classifyWithListing = async verdict => {
-    lookupDomains.mockResolvedValue(answer('fresh-offer.example', { kind: 'not_found' }, { spamhaus_dbl: verdict, urlhaus: UNCONFIGURED }));
+    answer('fresh-offer.example', { kind: 'not_found' }, { spamhaus_dbl: verdict, urlhaus: UNCONFIGURED });
     await classify(messageRow({ body_html: ONE_LINK_HTML('fresh-offer.example') }));
     return storedDetails();
   };
@@ -158,7 +165,7 @@ describe('LINK_DOMAIN_LISTED', () => {
 describe('result 5: the lookup cannot hold classification up, and only runs with anti-spam on', () => {
   it('finishes at the 5 s deadline when the lookup never answers, with every source unknown', async () => {
     vi.useFakeTimers();
-    lookupDomains.mockReturnValue(new Promise(() => {}));
+    lookupRdap.mockReturnValue(new Promise(() => {}));
     query.mockResolvedValueOnce({ rows: [messageRow({ body_html: ONE_LINK_HTML('fresh-offer.example') })] });
     let result;
     const run = classifyAndTagMessage(MESSAGE_ID, {}).then(r => { result = r; });
@@ -170,18 +177,19 @@ describe('result 5: the lookup cannot hold classification up, and only runs with
     const reputation = storedDetails().links.domains['fresh-offer.example'];
     expect(reputation.registration).toEqual({ kind: 'unknown', reason: 'timeout' });
     expect(reputation.listings.spamhaus_dbl).toEqual({ kind: 'unknown', reason: 'timeout' });
+    expect(reputation.listings.urlhaus).toEqual({ kind: 'unknown', reason: 'timeout' });
     expect(storedDetails().links.flags).toEqual({ link_text_domain_mismatch: 0, link_domain_new: null, link_domain_listed: null });
   });
 
   it('does not look anything up for an account with anti-spam off', async () => {
     const result = await classify(messageRow({ antispam_enabled: false }));
     expect(result).toEqual({ skipped: 'antispam_disabled' });
-    expect(lookupDomains).not.toHaveBeenCalled();
+    for (const lookup of domainLookups) expect(lookup).not.toHaveBeenCalled();
   });
 
   it("does not look anything up when the user's anti-spam master switch is off", async () => {
     const result = await classify(messageRow({ master_spam_enabled: 'false' }));
     expect(result).toEqual({ skipped: 'spam_disabled' });
-    expect(lookupDomains).not.toHaveBeenCalled();
+    for (const lookup of domainLookups) expect(lookup).not.toHaveBeenCalled();
   });
 });

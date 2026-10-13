@@ -44,9 +44,9 @@ describe.skipIf(!process.env.MAILFLOW_TEST_DATABASE_URL)('fork_reputation_cache 
   )).rows;
 
   it('stores answers with their lifetimes, serves them back, and overwrites an expired row', async () => {
-    const first = await rep.lookupDomains(['old.com', 'gone.com'], { deadlineMs: 5000 });
-    expect(first.get('old.com').registration).toEqual({ kind: 'known', registeredAt: '1997-04-28T04:00:00.000Z' });
-    expect(first.get('gone.com').registration).toEqual({ kind: 'not_found' });
+    const first = await rep.lookupRdap(['old.com', 'gone.com'], { deadlineMs: 5000 });
+    expect(first.get('old.com')).toEqual({ kind: 'known', registeredAt: '1997-04-28T04:00:00.000Z' });
+    expect(first.get('gone.com')).toEqual({ kind: 'not_found' });
     expect(await rows()).toEqual([
       { source: 'rdap', subject: 'gone.com', result: { kind: 'not_found' }, fetched_at: new Date(START), expires_at: new Date(START + DAY) },
       {
@@ -57,12 +57,12 @@ describe.skipIf(!process.env.MAILFLOW_TEST_DATABASE_URL)('fork_reputation_cache 
 
     clock = START + 60 * 60 * 1000;
     const before = requested.length;
-    const second = await rep.lookupDomains(['old.com', 'gone.com'], { deadlineMs: 5000 });
+    const second = await rep.lookupRdap(['old.com', 'gone.com'], { deadlineMs: 5000 });
     expect(requested.length).toBe(before);
     expect(second).toEqual(first);
 
     clock = START + DAY + 1;
-    await rep.lookupDomains(['gone.com'], { deadlineMs: 5000 });
+    await rep.lookupRdap(['gone.com'], { deadlineMs: 5000 });
     expect(requested.at(-1)).toBe('https://rdap.registry.test/domain/gone.com');
     const gone = (await rows()).find(r => r.subject === 'gone.com');
     expect(gone).toMatchObject({ fetched_at: new Date(START + DAY + 1), expires_at: new Date(START + 2 * DAY + 1) });

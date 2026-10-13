@@ -10,7 +10,7 @@
 
 import { logger } from '../../src/services/logger.js';
 import { messageLinks } from '../signals/index.js';
-import { lookupDomains } from '../reputation/index.js';
+import { lookupRdap, lookupSpamhausDbl, lookupUrlhaus } from '../reputation/index.js';
 
 export const LINK_LOOKUP_DEADLINE_MS = 5000;
 const NEW_DOMAIN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -42,12 +42,15 @@ const unanswered = reason => ({
   listings: Object.fromEntries(LISTING_SOURCES.map(source => [source, { kind: 'unknown', reason }])),
 });
 
-// K6's answer for each domain, or `unknown` for all of them when it fails or misses the deadline.
-// The lookup's own promise is always handled, so a rejection after the deadline goes nowhere.
+// K6's three domain sources for each domain, or `unknown` for all of them when one fails or they
+// miss the deadline. The lookup's own promise is always handled, so a rejection after the deadline
+// goes nowhere.
 async function lookUp(domains) {
+  const options = { deadlineMs: LINK_LOOKUP_DEADLINE_MS };
   const answer = Promise.resolve()
-    .then(() => lookupDomains(domains, { deadlineMs: LINK_LOOKUP_DEADLINE_MS }))
-    .then(map => ({ kind: 'answered', map }), err => ({ kind: 'failed', message: err?.message ?? String(err) }));
+    .then(() => Promise.all([lookupRdap(domains, options), lookupSpamhausDbl(domains, options), lookupUrlhaus(domains, options)]))
+    .then(([registration, dbl, urlhaus]) => ({ kind: 'answered', registration, dbl, urlhaus }),
+      err => ({ kind: 'failed', message: err?.message ?? String(err) }));
   let timer;
   const late = new Promise(resolve => {
     timer = setTimeout(() => resolve({ kind: 'timed_out' }), LINK_LOOKUP_DEADLINE_MS);
@@ -55,7 +58,13 @@ async function lookUp(domains) {
   const outcome = await Promise.race([answer, late]).finally(() => clearTimeout(timer));
   switch (outcome.kind) {
     case 'answered':
-      return Object.fromEntries(domains.map(domain => [domain, outcome.map.get(domain) ?? unanswered('error')]));
+      return Object.fromEntries(domains.map(domain => [domain, {
+        registration: outcome.registration.get(domain) ?? { kind: 'unknown', reason: 'error' },
+        listings: {
+          spamhaus_dbl: outcome.dbl.get(domain) ?? { kind: 'unknown', reason: 'error' },
+          urlhaus: outcome.urlhaus.get(domain) ?? { kind: 'unknown', reason: 'error' },
+        },
+      }]));
     case 'failed':
       warnLookupFailed(`failed: ${outcome.message}`);
       return Object.fromEntries(domains.map(domain => [domain, unanswered('error')]));

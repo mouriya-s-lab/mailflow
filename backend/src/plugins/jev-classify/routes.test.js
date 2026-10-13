@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   listMessagesInQueueState: vi.fn(),
   setMessageAnnotation: vi.fn(),
   jevStatus: vi.fn(),
-  reputationStatus: vi.fn(),
+  sourceStatus: vi.fn(),
   storage: { getValue: vi.fn(), put: vi.fn() },
   getAccountConfig: vi.fn(),
   setAccountConfig: vi.fn(),
@@ -20,7 +20,10 @@ const mocks = vi.hoisted(() => ({
   markMessages: vi.fn(),
   getMessageSignals: vi.fn(),
   getMessageBodyTexts: vi.fn(),
-  lookupDomainReputation: vi.fn(),
+  lookupRdap: vi.fn(),
+  lookupSpamhausDbl: vi.fn(),
+  lookupUrlhaus: vi.fn(),
+  lookupSafeBrowsing: vi.fn(),
   jevDecide: vi.fn(),
   recordJevSpamVerdict: vi.fn(),
   requestSpamRetrain: vi.fn(),
@@ -152,7 +155,7 @@ beforeEach(() => {
   mocks.listMessagesInQueueState.mockResolvedValue([]);
   mocks.setMessageAnnotation.mockResolvedValue({ kind: 'written' });
   mocks.jevStatus.mockResolvedValue({ kind: 'unconfigured' });
-  mocks.reputationStatus.mockResolvedValue({ kind: 'unconfigured' });
+  mocks.sourceStatus.mockImplementation(async source => source === 'rdap' ? 'enabled' : 'unconfigured');
 });
 
 // Decisive observation: real HTTP responses and the capability Maps must agree. Only the
@@ -443,6 +446,13 @@ describe('Jev classification HTTP routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.activated).toBe(true);
     expect(response.body.jev).toEqual({ kind: 'unconfigured' });
+    expect(response.body.reputation).toEqual({
+      rdap: 'enabled', spamhaus_dbl: 'unconfigured', urlhaus: 'unconfigured', safe_browsing: 'unconfigured',
+    });
+    expect(mocks.sourceStatus).toHaveBeenCalledTimes(4);
+    for (const source of ['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing']) {
+      expect(mocks.sourceStatus).toHaveBeenCalledWith(source);
+    }
     expect(response.body.accounts).toEqual([{
       id: ACCOUNT_ID,
       emailAddress: ACCOUNT.email_address,

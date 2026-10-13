@@ -8,7 +8,7 @@ import { Router } from 'express';
 import {
   requireAuth, getOwnedAccount, listUserAccounts, isLabelStoreAccount, isPluginActivated,
   currentUidFloors, countQueued, listQueuedMessages, listMessagesInQueueState, setMessageAnnotation,
-  jevStatus, reputationStatus, logger,
+  jevStatus, sourceStatus, logger,
 } from '../api.js';
 import {
   PLUGIN_ID, parseCategoriesBody, parseAccountSettingsBody, parseAnnotation, resetTerminal,
@@ -153,12 +153,20 @@ async function nextDue(accountId) {
   return { kind: 'scheduled', dueAt };
 }
 
+const REPUTATION_SOURCES = ['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing'];
+
+// { rdap, spamhaus_dbl, urlhaus, safe_browsing }, each source's status.
+async function sourceStates() {
+  const states = await Promise.all(REPUTATION_SOURCES.map(source => sourceStatus(source)));
+  return Object.fromEntries(REPUTATION_SOURCES.map((source, i) => [source, states[i]]));
+}
+
 router.get('/status', async (req, res) => {
   const { userId } = req.session;
   const [activated, jev, reputation, accounts] = await Promise.all([
     isPluginActivated(userId, PLUGIN_ID),
     jevStatus(),
-    reputationStatus(),
+    sourceStates(),
     listUserAccounts(userId),
   ]);
   const perAccount = await Promise.all(accounts.map(async account => {

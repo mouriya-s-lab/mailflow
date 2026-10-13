@@ -47,6 +47,10 @@ function fakeDatabase() {
     row: (source, subject) => rows.get(`${source}|${subject}`),
     reads: source => statements.filter(s => s.sql.startsWith('SELECT') && s.params[0] === source).length,
     writes: () => statements.filter(s => s.sql.startsWith('INSERT')).length,
+    statementCount: () => statements.length,
+    // The sources of the statements after the first `from`, reads and writes alike.
+    sourcesSince: from => [...new Set(statements.slice(from).map(s => s.params[0]))],
+    writtenSince: from => [...new Set(statements.slice(from).filter(s => s.sql.startsWith('INSERT')).map(s => s.params[0]))],
   };
 }
 
@@ -191,14 +195,13 @@ describe('RDAP registration', () => {
     const rep = reputation({ endpoints: { rdapBootstrap: `${rdap.base}/bootstrap/dns.json` } });
     const domains = ['old.com', 'fresh.com', 'gone.com', 'example.org'];
 
-    const first = await rep.lookupDomains(domains, { deadlineMs: 5000 });
-    expect(Object.fromEntries([...first].map(([d, r]) => [d, r.registration]))).toEqual({
+    const first = await rep.lookupRdap(domains, { deadlineMs: 5000 });
+    expect(Object.fromEntries(first)).toEqual({
       'old.com': { kind: 'known', registeredAt: '1997-04-28T04:00:00.000Z' },
       'fresh.com': { kind: 'known', registeredAt: '2026-10-03T11:22:33.000Z' },
       'gone.com': { kind: 'not_found' },
       'example.org': { kind: 'unknown', reason: 'unsupported_tld' },
     });
-    expect(first.get('old.com').listings).toEqual({ spamhaus_dbl: { kind: 'unconfigured' }, urlhaus: { kind: 'unconfigured' } });
     expect(rdap.requests.map(r => r.url).sort()).toEqual(['/bootstrap/dns.json', '/rdap/domain/fresh.com', '/rdap/domain/gone.com', '/rdap/domain/old.com']);
     expect(rep.database.row('rdap', 'old.com')).toMatchObject({ fetched_at: new Date(START), expires_at: new Date(START + 30 * DAY) });
     expect(rep.database.row('rdap', 'gone.com')).toMatchObject({ fetched_at: new Date(START), expires_at: new Date(START + DAY) });
@@ -207,15 +210,15 @@ describe('RDAP registration', () => {
 
     clock += 10 * MINUTE;
     const requestsBefore = rdap.requests.length;
-    const second = await rep.lookupDomains(['old.com', 'fresh.com', 'gone.com'], { deadlineMs: 5000 });
+    const second = await rep.lookupRdap(['old.com', 'fresh.com', 'gone.com'], { deadlineMs: 5000 });
     expect(rdap.requests.length).toBe(requestsBefore);
-    expect(second.get('old.com').registration).toEqual(first.get('old.com').registration);
-    expect(second.get('gone.com').registration).toEqual({ kind: 'not_found' });
+    expect(second.get('old.com')).toEqual(first.get('old.com'));
+    expect(second.get('gone.com')).toEqual({ kind: 'not_found' });
     expect(rep.database.row('rdap', 'old.com').fetched_at).toEqual(new Date(START));
 
     // not_found is asked again once its day is over; known still comes from the cache.
     clock = START + DAY + MINUTE;
-    await rep.lookupDomains(['old.com', 'gone.com'], { deadlineMs: 5000 });
+    await rep.lookupRdap(['old.com', 'gone.com'], { deadlineMs: 5000 });
     expect(lookedUp.filter(d => d === 'gone.com')).toHaveLength(2);
     expect(lookedUp.filter(d => d === 'old.com')).toHaveLength(1);
   });
@@ -223,8 +226,8 @@ describe('RDAP registration', () => {
   it('reads a 200 without a registration date as unknown, not as a known age', async () => {
     const rdap = await startRdap((name, response) => sendJson(response, { objectClassName: 'domain', events: [{ eventAction: 'last changed', eventDate: '2024-01-01T00:00:00Z' }] }));
     const rep = reputation({ endpoints: { rdapBootstrap: `${rdap.base}/bootstrap/dns.json` } });
-    const result = await rep.lookupDomains(['undated.com'], { deadlineMs: 5000 });
-    expect(result.get('undated.com').registration).toEqual({ kind: 'unknown', reason: 'error' });
+    const result = await rep.lookupRdap(['undated.com'], { deadlineMs: 5000 });
+    expect(result.get('undated.com')).toEqual({ kind: 'unknown', reason: 'error' });
     expect(rep.database.writes()).toBe(0);
     expect(reputationLines('rdap')).toEqual(['[warn] [reputation] rdap lookup failed: no registration date in the response']);
   });
@@ -232,9 +235,9 @@ describe('RDAP registration', () => {
   it('maps 429 to rate_limited and other statuses to error, and stores neither', async () => {
     const rdap = await startRdap((name, response) => sendJson(response, {}, name === 'busy.com' ? 429 : 503));
     const rep = reputation({ endpoints: { rdapBootstrap: `${rdap.base}/bootstrap/dns.json` } });
-    const result = await rep.lookupDomains(['busy.com', 'down.com'], { deadlineMs: 5000 });
-    expect(result.get('busy.com').registration).toEqual({ kind: 'unknown', reason: 'rate_limited' });
-    expect(result.get('down.com').registration).toEqual({ kind: 'unknown', reason: 'error' });
+    const result = await rep.lookupRdap(['busy.com', 'down.com'], { deadlineMs: 5000 });
+    expect(result.get('busy.com')).toEqual({ kind: 'unknown', reason: 'rate_limited' });
+    expect(result.get('down.com')).toEqual({ kind: 'unknown', reason: 'error' });
     expect(rep.database.writes()).toBe(0);
     expect(reputationLines('rdap')).toHaveLength(1);
   });
@@ -250,14 +253,14 @@ describe('RDAP registration', () => {
       : fetch(url, init));
     const rep = reputation({ fetchFn, endpoints: { rdapBootstrap: 'https://bootstrap.test/dns.json' } });
 
-    const down = await rep.lookupDomains(['alpha.com', 'bravo.com', 'charlie.com'], { deadlineMs: 5000 });
-    for (const result of down.values()) expect(result.registration).toEqual({ kind: 'unknown', reason: 'error' });
+    const down = await rep.lookupRdap(['alpha.com', 'bravo.com', 'charlie.com'], { deadlineMs: 5000 });
+    for (const result of down.values()) expect(result).toEqual({ kind: 'unknown', reason: 'error' });
     expect(rep.database.writes()).toBe(0);
     expect(reputationLines('rdap')).toEqual(['[warn] [reputation] rdap lookup failed: endpoint unreachable']);
 
     await new Promise(resolve => rdap.server.listen(port, '127.0.0.1', resolve));
-    const back = await rep.lookupDomains(['alpha.com'], { deadlineMs: 5000 });
-    expect(back.get('alpha.com').registration).toEqual({ kind: 'known', registeredAt: '1997-04-28T04:00:00.000Z' });
+    const back = await rep.lookupRdap(['alpha.com'], { deadlineMs: 5000 });
+    expect(back.get('alpha.com')).toEqual({ kind: 'known', registeredAt: '1997-04-28T04:00:00.000Z' });
     expect(lookedUp).toEqual(['alpha.com']);
     expect(rep.database.row('rdap', 'alpha.com').result).toEqual({ kind: 'known', registeredAt: '1997-04-28T04:00:00.000Z' });
   });
@@ -268,15 +271,15 @@ describe('RDAP registration', () => {
     const rep = reputation({ endpoints: { rdapBootstrap: `${rdap.base}/bootstrap/dns.json` } });
 
     const started = Date.now();
-    const slow = await rep.lookupDomains(['slow.com', 'slower.com'], { deadlineMs: 400 });
+    const slow = await rep.lookupRdap(['slow.com', 'slower.com'], { deadlineMs: 400 });
     expect(Date.now() - started).toBeLessThan(2000);
-    for (const result of slow.values()) expect(result.registration).toEqual({ kind: 'unknown', reason: 'timeout' });
+    for (const result of slow.values()) expect(result).toEqual({ kind: 'unknown', reason: 'timeout' });
     expect(rep.database.writes()).toBe(0);
     expect(reputationLines('rdap')).toEqual(['[warn] [reputation] rdap lookup failed: deadline passed']);
 
     hang = false;
-    const back = await rep.lookupDomains(['slow.com'], { deadlineMs: 5000 });
-    expect(back.get('slow.com').registration).toEqual({ kind: 'known', registeredAt: '2001-02-03T00:00:00.000Z' });
+    const back = await rep.lookupRdap(['slow.com'], { deadlineMs: 5000 });
+    expect(back.get('slow.com')).toEqual({ kind: 'known', registeredAt: '2001-02-03T00:00:00.000Z' });
     expect(lookedUp.filter(d => d === 'slow.com')).toHaveLength(2);
   });
 
@@ -286,31 +289,35 @@ describe('RDAP registration', () => {
     const rdap = await startRdap(() => { inFlight++; most = Math.max(most, inFlight); });
     const rep = reputation({ endpoints: { rdapBootstrap: `${rdap.base}/bootstrap/dns.json` } });
     const domains = ['a1.com', 'a2.com', 'a3.com', 'a4.com', 'a5.com', 'a6.com', 'a7.com'];
-    const result = await rep.lookupDomains(domains, { deadlineMs: 400 });
+    const result = await rep.lookupRdap(domains, { deadlineMs: 400 });
     expect(most).toBe(4);
     expect(lookedUp).toHaveLength(4);
-    for (const domain of domains) expect(result.get(domain).registration).toEqual({ kind: 'unknown', reason: 'timeout' });
+    for (const domain of domains) expect(result.get(domain)).toEqual({ kind: 'unknown', reason: 'timeout' });
   });
 
   it('a failed bootstrap fetch is an error for every domain, never unsupported_tld', async () => {
     const http = await startHttp((record, response) => sendJson(response, {}, 500));
     const rep = reputation({ endpoints: { rdapBootstrap: `${http.base}/bootstrap/dns.json` } });
-    const result = await rep.lookupDomains(['one.com', 'two.org'], { deadlineMs: 5000 });
-    for (const value of result.values()) expect(value.registration).toEqual({ kind: 'unknown', reason: 'error' });
+    const result = await rep.lookupRdap(['one.com', 'two.org'], { deadlineMs: 5000 });
+    for (const value of result.values()) expect(value).toEqual({ kind: 'unknown', reason: 'error' });
     expect(rep.database.writes()).toBe(0);
   });
 });
 
 describe('switch, keys and status', () => {
+  const SOURCES = ['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing'];
+  const statuses = async rep => Object.fromEntries(await Promise.all(SOURCES.map(async source => [source, await rep.sourceStatus(source)])));
+
   it('without keys the optional sources are unconfigured and nothing is logged or asked', async () => {
     const rdap = await startRdap();
     const rep = reputation({ endpoints: { rdapBootstrap: `${rdap.base}/bootstrap/dns.json` } });
-    expect(await rep.status()).toEqual({ rdap: 'enabled', spamhaus_dbl: 'unconfigured', urlhaus: 'unconfigured', safe_browsing: 'unconfigured' });
-    const domains = await rep.lookupDomains(['old.com'], { deadlineMs: 5000 });
-    expect(domains.get('old.com').listings).toEqual({ spamhaus_dbl: { kind: 'unconfigured' }, urlhaus: { kind: 'unconfigured' } });
-    const urls = await rep.lookupUrls(['https://example.com/a']);
-    expect(urls).toEqual(new Map([['https://example.com/a', { safe_browsing: { kind: 'unconfigured' } }]]));
+    expect(await statuses(rep)).toEqual({ rdap: 'enabled', spamhaus_dbl: 'unconfigured', urlhaus: 'unconfigured', safe_browsing: 'unconfigured' });
+    expect(await rep.lookupSpamhausDbl(['old.com'], { deadlineMs: 5000 })).toEqual(new Map([['old.com', { kind: 'unconfigured' }]]));
+    expect(await rep.lookupUrlhaus(['old.com'], { deadlineMs: 5000 })).toEqual(new Map([['old.com', { kind: 'unconfigured' }]]));
+    const urls = await rep.lookupSafeBrowsing(['https://example.com/a']);
+    expect(urls).toEqual(new Map([['https://example.com/a', { kind: 'unconfigured' }]]));
     expect(rep.database.reads('spamhaus_dbl') + rep.database.reads('urlhaus') + rep.database.reads('safe_browsing')).toBe(0);
+    await rep.lookupRdap(['old.com'], { deadlineMs: 5000 });
     expect(rdap.requests.map(r => r.url)).toEqual(['/bootstrap/dns.json', '/rdap/domain/old.com']);
     expect(warn).not.toHaveBeenCalled();
   });
@@ -324,15 +331,15 @@ describe('switch, keys and status', () => {
       fetchFn: (url, init) => { seen.push(url); return fetch(url, init); },
       endpoints: { rdapBootstrap: `${rdap.base}/bootstrap/dns.json` },
     });
-    await rep.lookupDomains(['old.com'], { deadlineMs: 5000 });
+    await rep.lookupRdap(['old.com'], { deadlineMs: 5000 });
     expect(seen).toHaveLength(2);
 
     config.rdapEnabled = false;
-    expect(await rep.status()).toEqual({ rdap: 'disabled', spamhaus_dbl: 'unconfigured', urlhaus: 'unconfigured', safe_browsing: 'unconfigured' });
+    expect(await statuses(rep)).toEqual({ rdap: 'disabled', spamhaus_dbl: 'unconfigured', urlhaus: 'unconfigured', safe_browsing: 'unconfigured' });
     const readsBefore = rep.database.reads('rdap');
-    const result = await rep.lookupDomains(['old.com', 'new.com'], { deadlineMs: 5000 });
-    expect(result.get('old.com').registration).toEqual({ kind: 'unknown', reason: 'disabled' });
-    expect(result.get('new.com').registration).toEqual({ kind: 'unknown', reason: 'disabled' });
+    const result = await rep.lookupRdap(['old.com', 'new.com'], { deadlineMs: 5000 });
+    expect(result.get('old.com')).toEqual({ kind: 'unknown', reason: 'disabled' });
+    expect(result.get('new.com')).toEqual({ kind: 'unknown', reason: 'disabled' });
     expect(seen).toHaveLength(2);
     expect(rep.database.reads('rdap')).toBe(readsBefore);
     expect(warn).not.toHaveBeenCalled();
@@ -340,13 +347,58 @@ describe('switch, keys and status', () => {
 
   it('status reports a source as enabled once its key is set', async () => {
     const rep = reputation({ config: { rdapEnabled: true, spamhausDqsKey: DQS_KEY, urlhausAuthKey: URLHAUS_KEY, safeBrowsingApiKey: SAFE_BROWSING_KEY } });
-    expect(await rep.status()).toEqual({ rdap: 'enabled', spamhaus_dbl: 'enabled', urlhaus: 'enabled', safe_browsing: 'enabled' });
+    expect(await statuses(rep)).toEqual({ rdap: 'enabled', spamhaus_dbl: 'enabled', urlhaus: 'enabled', safe_browsing: 'enabled' });
+    await expect(rep.sourceStatus('whois')).rejects.toThrow('unknown reputation source "whois"');
   });
 
   it('rejects input that is not a registrable domain or an http(s) URL', async () => {
     const rep = reputation();
-    await expect(rep.lookupDomains(['www.example.com'])).rejects.toThrow('domains[0] is not a registrable domain');
-    await expect(rep.lookupUrls(['mailto:someone@example.com'])).rejects.toThrow('urls[0] is not an http(s) URL');
+    for (const lookup of [rep.lookupRdap, rep.lookupSpamhausDbl, rep.lookupUrlhaus]) {
+      await expect(lookup(['www.example.com'])).rejects.toThrow('domains[0] is not a registrable domain');
+    }
+    await expect(rep.lookupSafeBrowsing(['mailto:someone@example.com'])).rejects.toThrow('urls[0] is not an http(s) URL');
+  });
+});
+
+describe('one function per source', () => {
+  it('each lookup asks only its own service and reads and writes only its own cache rows', async () => {
+    const rdap = await startRdap();
+    const resolver = await startDns(() => ({ rcode: 3, soa: { ttl: 900, minimum: 60 } }));
+    const urlhaus = await startHttp((record, response) => sendJson(response, { query_status: 'no_results' }));
+    const safeBrowsing = await startHttp((record, response) => sendJson(response, { fullHashes: [], cacheDuration: '300s' }));
+    const rep = reputation({
+      config: { rdapEnabled: true, spamhausDqsKey: DQS_KEY, urlhausAuthKey: URLHAUS_KEY, safeBrowsingApiKey: SAFE_BROWSING_KEY },
+      endpoints: {
+        rdapBootstrap: `${rdap.base}/bootstrap/dns.json`,
+        dnsServers: [resolver.server],
+        urlhaus: `${urlhaus.base}/v1/host/`,
+        safeBrowsing: `${safeBrowsing.base}/v5/hashes:search`,
+      },
+    });
+    const traffic = () => ({
+      rdap: rdap.requests.length,
+      spamhaus_dbl: resolver.queries.length,
+      urlhaus: urlhaus.requests.length,
+      safe_browsing: safeBrowsing.requests.length,
+    });
+    const lookups = {
+      rdap: () => rep.lookupRdap(['old.com'], { deadlineMs: 5000 }),
+      spamhaus_dbl: () => rep.lookupSpamhausDbl(['old.com'], { deadlineMs: 5000 }),
+      urlhaus: () => rep.lookupUrlhaus(['old.com'], { deadlineMs: 5000 }),
+      safe_browsing: () => rep.lookupSafeBrowsing(['https://old.com/a'], { deadlineMs: 5000 }),
+    };
+
+    for (const [source, lookup] of Object.entries(lookups)) {
+      const before = traffic();
+      const from = rep.database.statementCount();
+      await lookup();
+      const after = traffic();
+      const asked = Object.keys(after).filter(service => after[service] > before[service]);
+      expect({ source, asked }).toEqual({ source, asked: [source] });
+      expect({ source, touched: rep.database.sourcesSince(from) }).toEqual({ source, touched: [source] });
+      expect({ source, written: rep.database.writtenSince(from) }).toEqual({ source, written: [source] });
+    }
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 
@@ -369,7 +421,7 @@ describe('only lookup services are contacted', () => {
     const rep = reputation({ fetchFn });
     const domains = [...new Set(links.map(link => registrableDomain(hostOfUrl(link))))];
     expect(domains).toEqual(['secure-paypa1.com', 'example.co.uk', 'cmbchina.com']);
-    await rep.lookupDomains(domains, { deadlineMs: 5000 });
+    await rep.lookupRdap(domains, { deadlineMs: 5000 });
 
     const hosts = new Set(requested.map(url => new URL(url).host));
     expect(hosts).toEqual(new Set(['data.iana.org', 'rdap.registry.test']));
@@ -406,11 +458,19 @@ describe('Spamhaus DBL and URLhaus', () => {
     return { resolver, urlhaus, rep };
   }
 
+  // Both listings of each domain, asked side by side the way a caller of both sources does.
+  async function listings(rep, domains, deadlineMs) {
+    const [dbl, urlhaus] = await Promise.all([
+      rep.lookupSpamhausDbl(domains, { deadlineMs }), rep.lookupUrlhaus(domains, { deadlineMs }),
+    ]);
+    return Object.fromEntries(domains.map(domain => [domain, { spamhaus_dbl: dbl.get(domain), urlhaus: urlhaus.get(domain) }]));
+  }
+
   it('maps a listing, a miss, a timeout and a server failure, each by its own protocol', async () => {
     const { resolver, urlhaus, rep } = await sources();
-    const result = await rep.lookupDomains(['hit.com', 'miss.com', 'slow.com', 'broken.com'], { deadlineMs: 600 });
+    const result = await listings(rep, ['hit.com', 'miss.com', 'slow.com', 'broken.com'], 600);
 
-    expect(Object.fromEntries([...result].map(([d, r]) => [d, r.listings]))).toEqual({
+    expect(result).toEqual({
       'hit.com': {
         spamhaus_dbl: { kind: 'listed', detail: 'phishing domain' },
         urlhaus: { kind: 'listed', detail: '12 malware URLs seen on this host' },
@@ -448,24 +508,24 @@ describe('Spamhaus DBL and URLhaus', () => {
 
   it('serves cached verdicts until they expire, then asks again', async () => {
     const { resolver, urlhaus, rep } = await sources();
-    await rep.lookupDomains(['hit.com', 'miss.com'], { deadlineMs: 2000 });
+    await listings(rep, ['hit.com', 'miss.com'], 2000);
     expect(resolver.queries).toHaveLength(2);
     expect(urlhaus.requests).toHaveLength(2);
 
     clock = START + 59 * SECOND;
-    await rep.lookupDomains(['hit.com', 'miss.com'], { deadlineMs: 2000 });
+    await listings(rep, ['hit.com', 'miss.com'], 2000);
     expect(resolver.queries).toHaveLength(2);
     expect(urlhaus.requests).toHaveLength(2);
 
     // Past the DBL miss's 60 s; the listing's 300 s and URLhaus's hour still hold.
     clock = START + 61 * SECOND;
-    await rep.lookupDomains(['hit.com', 'miss.com'], { deadlineMs: 2000 });
+    await listings(rep, ['hit.com', 'miss.com'], 2000);
     expect(resolver.queries.map(q => q.name.split('.')[0])).toEqual(expect.arrayContaining(['hit', 'miss']));
     expect(resolver.queries).toHaveLength(3);
     expect(urlhaus.requests).toHaveLength(2);
 
     clock = START + 61 * MINUTE;
-    await rep.lookupDomains(['hit.com', 'miss.com'], { deadlineMs: 2000 });
+    await listings(rep, ['hit.com', 'miss.com'], 2000);
     expect(urlhaus.requests).toHaveLength(4);
   });
 
@@ -479,11 +539,11 @@ describe('Spamhaus DBL and URLhaus', () => {
       config: { rdapEnabled: false, spamhausDqsKey: DQS_KEY, urlhausAuthKey: null, safeBrowsingApiKey: null },
       endpoints: { dnsServers: [resolver.server] },
     });
-    const result = await rep.lookupDomains(['flood.com', 'public.com', 'nosoa.com'], { deadlineMs: 2000 });
-    expect(result.get('flood.com').listings.spamhaus_dbl).toEqual({ kind: 'unknown', reason: 'rate_limited' });
-    expect(result.get('public.com').listings.spamhaus_dbl).toEqual({ kind: 'unknown', reason: 'error' });
+    const result = await rep.lookupSpamhausDbl(['flood.com', 'public.com', 'nosoa.com'], { deadlineMs: 2000 });
+    expect(result.get('flood.com')).toEqual({ kind: 'unknown', reason: 'rate_limited' });
+    expect(result.get('public.com')).toEqual({ kind: 'unknown', reason: 'error' });
     // NXDOMAIN without an SOA: not listed, but with no TTL to keep it for.
-    expect(result.get('nosoa.com').listings.spamhaus_dbl).toEqual({ kind: 'not_listed' });
+    expect(result.get('nosoa.com')).toEqual({ kind: 'not_listed' });
     expect(rep.database.writes()).toBe(0);
   });
 });
@@ -517,12 +577,12 @@ describe('Google Safe Browsing', () => {
   it('sends only 4-byte hash prefixes and matches the full hashes locally', async () => {
     const sb = await startSafeBrowsing();
     const rep = reputation({ config, endpoints: { safeBrowsing: `${sb.base}/v5/hashes:search` } });
-    const result = await rep.lookupUrls([HIT, MISS, CANARY], { deadlineMs: 5000 });
+    const result = await rep.lookupSafeBrowsing([HIT, MISS, CANARY], { deadlineMs: 5000 });
 
     expect(result).toEqual(new Map([
-      [HIT, { safe_browsing: { kind: 'listed', detail: 'SOCIAL_ENGINEERING' } }],
-      [MISS, { safe_browsing: { kind: 'not_listed' } }],
-      [CANARY, { safe_browsing: { kind: 'not_listed' } }],
+      [HIT, { kind: 'listed', detail: 'SOCIAL_ENGINEERING' }],
+      [MISS, { kind: 'not_listed' }],
+      [CANARY, { kind: 'not_listed' }],
     ]));
     expect(sb.requests).toHaveLength(1);
     const [request] = sb.requests;
@@ -550,19 +610,19 @@ describe('Google Safe Browsing', () => {
   it('asks again for a cached listing older than 30 minutes, and for anything past its cacheDuration', async () => {
     const sb = await startSafeBrowsing();
     const rep = reputation({ config, endpoints: { safeBrowsing: `${sb.base}/v5/hashes:search` } });
-    await rep.lookupUrls([HIT, MISS], { deadlineMs: 5000 });
+    await rep.lookupSafeBrowsing([HIT, MISS], { deadlineMs: 5000 });
     expect(sb.requests).toHaveLength(1);
 
     clock = START + 29 * MINUTE;
-    await rep.lookupUrls([HIT, MISS], { deadlineMs: 5000 });
+    await rep.lookupSafeBrowsing([HIT, MISS], { deadlineMs: 5000 });
     expect(sb.requests).toHaveLength(1);
 
     // Within the hour of cacheDuration, but the listing is 31 minutes old: asked again; the
     // miss is still served from the cache.
     clock = START + 31 * MINUTE;
-    const again = await rep.lookupUrls([HIT, MISS], { deadlineMs: 5000 });
+    const again = await rep.lookupSafeBrowsing([HIT, MISS], { deadlineMs: 5000 });
     expect(sb.requests).toHaveLength(2);
-    expect(again.get(HIT).safe_browsing).toEqual({ kind: 'listed', detail: 'SOCIAL_ENGINEERING' });
+    expect(again.get(HIT)).toEqual({ kind: 'listed', detail: 'SOCIAL_ENGINEERING' });
     const prefixesOf = request => new URL(request.url, sb.base).searchParams.getAll('hashPrefixes');
     expect(new Set(prefixesOf(sb.requests[1]))).toEqual(new Set(urlExpressions(HIT).expressions.map(e => expressionHash(e).subarray(0, 4).toString('base64'))));
     expect(rep.database.row('safe_browsing', 'login.phish-example.com/account/verify?id=1').fetched_at).toEqual(new Date(START + 31 * MINUTE));
@@ -570,20 +630,20 @@ describe('Google Safe Browsing', () => {
     // A refetch that fails does not fall back to the old listing.
     sb.setMode('fail');
     clock = START + 62 * MINUTE;
-    const failed = await rep.lookupUrls([HIT, MISS], { deadlineMs: 5000 });
-    expect(failed.get(HIT).safe_browsing).toEqual({ kind: 'unknown', reason: 'error' });
-    expect(failed.get(MISS).safe_browsing).toEqual({ kind: 'unknown', reason: 'error' });
+    const failed = await rep.lookupSafeBrowsing([HIT, MISS], { deadlineMs: 5000 });
+    expect(failed.get(HIT)).toEqual({ kind: 'unknown', reason: 'error' });
+    expect(failed.get(MISS)).toEqual({ kind: 'unknown', reason: 'error' });
   });
 
   it('a request past the deadline is unknown { timeout } and an HTTP 500 unknown { error }, neither stored', async () => {
     const sb = await startSafeBrowsing();
     const rep = reputation({ config, endpoints: { safeBrowsing: `${sb.base}/v5/hashes:search` } });
     sb.setMode('hang');
-    const slow = await rep.lookupUrls([HIT], { deadlineMs: 300 });
-    expect(slow.get(HIT).safe_browsing).toEqual({ kind: 'unknown', reason: 'timeout' });
+    const slow = await rep.lookupSafeBrowsing([HIT], { deadlineMs: 300 });
+    expect(slow.get(HIT)).toEqual({ kind: 'unknown', reason: 'timeout' });
     sb.setMode('fail');
-    const failed = await rep.lookupUrls([MISS], { deadlineMs: 5000 });
-    expect(failed.get(MISS).safe_browsing).toEqual({ kind: 'unknown', reason: 'error' });
+    const failed = await rep.lookupSafeBrowsing([MISS], { deadlineMs: 5000 });
+    expect(failed.get(MISS)).toEqual({ kind: 'unknown', reason: 'error' });
     expect(rep.database.writes()).toBe(0);
     // One line per source per minute: the HTTP 500 right after the timeout is counted, not logged.
     expect(reputationLines('safe_browsing')).toEqual(['[warn] [reputation] safe_browsing lookup failed: deadline passed']);
@@ -594,9 +654,9 @@ describe('Google Safe Browsing', () => {
     const rep = reputation({ config, endpoints: { safeBrowsing: `${sb.base}/v5/hashes:search` } });
     const a = 'https://Login.Phish-Example.com/account/verify?id=1';
     const b = 'https://login.phish-example.com/account/./verify?id=1#frag';
-    const result = await rep.lookupUrls([a, b], { deadlineMs: 5000 });
+    const result = await rep.lookupSafeBrowsing([a, b], { deadlineMs: 5000 });
     expect(result.get(a)).toEqual(result.get(b));
-    expect(result.get(a).safe_browsing.kind).toBe('listed');
+    expect(result.get(a).kind).toBe('listed');
     expect(rep.database.row('safe_browsing', 'login.phish-example.com/account/verify?id=1').expires_at).toEqual(new Date(START + 300 * SECOND));
   });
 });

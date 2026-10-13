@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../src/services/logger.js', () => ({ logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } }));
-vi.mock('../reputation/index.js', () => ({ lookupDomains: vi.fn() }));
+vi.mock('../reputation/index.js', () => ({ lookupRdap: vi.fn(), lookupSpamhausDbl: vi.fn(), lookupUrlhaus: vi.fn() }));
 
 import { logger } from '../../src/services/logger.js';
-import { lookupDomains } from '../reputation/index.js';
+import { lookupRdap, lookupSpamhausDbl, lookupUrlhaus } from '../reputation/index.js';
 import { LINK_LOOKUP_DEADLINE_MS, linkEvidenceFor, linkFlags } from './index.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -20,9 +20,18 @@ const NOT_LISTED = { kind: 'not_listed' };
 const UNCONFIGURED = { kind: 'unconfigured' };
 const reputation = (registration, listings = { spamhaus_dbl: UNCONFIGURED, urlhaus: UNCONFIGURED }) => ({ registration, listings });
 const checked = domains => ({ kind: 'checked', checkedAt: CHECKED_AT, mismatch: false, domains });
+const domainLookups = [lookupRdap, lookupSpamhausDbl, lookupUrlhaus];
+function answerReputation(domains) {
+  lookupRdap.mockResolvedValue(new Map([...domains].map(([domain, value]) => [domain, value.registration])));
+  lookupSpamhausDbl.mockResolvedValue(new Map([...domains].map(([domain, value]) => [domain, value.listings.spamhaus_dbl])));
+  lookupUrlhaus.mockResolvedValue(new Map([...domains].map(([domain, value]) => [domain, value.listings.urlhaus])));
+}
 
 beforeEach(() => {
-  lookupDomains.mockReset();
+  for (const lookup of domainLookups) {
+    lookup.mockReset();
+    lookup.mockResolvedValue(new Map());
+  }
   logger.warn.mockReset();
 });
 
@@ -34,14 +43,16 @@ describe('linkEvidenceFor', () => {
   it('sees nothing when the body is not stored yet, and looks nothing up', async () => {
     await expect(linkEvidenceFor({ body_html: null, body_text: null }, { lookUpReputation: true }))
       .resolves.toEqual({ kind: 'body_unavailable' });
-    expect(lookupDomains).not.toHaveBeenCalled();
+    for (const lookup of domainLookups) expect(lookup).not.toHaveBeenCalled();
   });
 
   it('looks up each destination domain once, with the 5 s deadline', async () => {
-    lookupDomains.mockResolvedValue(new Map([['cmb-verify-login.xyz', reputation({ kind: 'not_found' })]]));
+    answerReputation(new Map([['cmb-verify-login.xyz', reputation({ kind: 'not_found' })]]));
     const evidence = await linkEvidenceFor({ body_html: PHISH_HTML, body_text: null }, { lookUpReputation: true });
-    expect(lookupDomains).toHaveBeenCalledTimes(1);
-    expect(lookupDomains).toHaveBeenCalledWith(['cmb-verify-login.xyz'], { deadlineMs: LINK_LOOKUP_DEADLINE_MS });
+    for (const lookup of domainLookups) {
+      expect(lookup).toHaveBeenCalledTimes(1);
+      expect(lookup).toHaveBeenCalledWith(['cmb-verify-login.xyz'], { deadlineMs: LINK_LOOKUP_DEADLINE_MS });
+    }
     expect(evidence).toMatchObject({
       kind: 'checked',
       mismatch: true,
@@ -50,7 +61,7 @@ describe('linkEvidenceFor', () => {
   });
 
   it('does not count a link whose text is not an address as a mismatch', async () => {
-    lookupDomains.mockResolvedValue(new Map([['cmbchina.com', reputation({ kind: 'known', registeredAt: '1998-05-01T00:00:00.000Z' })]]));
+    answerReputation(new Map([['cmbchina.com', reputation({ kind: 'known', registeredAt: '1998-05-01T00:00:00.000Z' })]]));
     const evidence = await linkEvidenceFor({ body_html: NOTICE_HTML, body_text: null }, { lookUpReputation: true });
     expect(evidence.mismatch).toBe(false);
     expect(Object.keys(evidence.domains)).toEqual(['cmbchina.com']);
@@ -59,18 +70,18 @@ describe('linkEvidenceFor', () => {
   it('has nothing to look up for a body without links', async () => {
     const evidence = await linkEvidenceFor({ body_html: null, body_text: 'see https://example.com' }, { lookUpReputation: true });
     expect(evidence).toMatchObject({ kind: 'checked', mismatch: false, domains: {} });
-    expect(lookupDomains).not.toHaveBeenCalled();
+    for (const lookup of domainLookups) expect(lookup).not.toHaveBeenCalled();
   });
 
   it('only reads the links when the lookup is switched off', async () => {
     await expect(linkEvidenceFor({ body_html: PHISH_HTML, body_text: null }, { lookUpReputation: false }))
       .resolves.toEqual({ kind: 'lookup_disabled', mismatch: true });
-    expect(lookupDomains).not.toHaveBeenCalled();
+    for (const lookup of domainLookups) expect(lookup).not.toHaveBeenCalled();
   });
 
   it('makes every source unknown when the lookup never answers, at the deadline', async () => {
     vi.useFakeTimers();
-    lookupDomains.mockReturnValue(new Promise(() => {}));
+    lookupRdap.mockReturnValue(new Promise(() => {}));
     const pending = linkEvidenceFor({ body_html: PHISH_HTML, body_text: null }, { lookUpReputation: true });
     let settled = false;
     pending.then(() => { settled = true; });
@@ -87,13 +98,16 @@ describe('linkEvidenceFor', () => {
   });
 
   it('makes every source unknown when the lookup fails, and handles a rejection after the deadline', async () => {
-    lookupDomains.mockRejectedValueOnce(new Error('could not decrypt the stored key'));
+    lookupRdap.mockRejectedValueOnce(new Error('could not decrypt the stored key'));
     const failed = await linkEvidenceFor({ body_html: PHISH_HTML, body_text: null }, { lookUpReputation: true });
-    expect(failed.domains['cmb-verify-login.xyz'].registration).toEqual({ kind: 'unknown', reason: 'error' });
+    expect(failed.domains['cmb-verify-login.xyz']).toEqual({
+      registration: { kind: 'unknown', reason: 'error' },
+      listings: { spamhaus_dbl: { kind: 'unknown', reason: 'error' }, urlhaus: { kind: 'unknown', reason: 'error' } },
+    });
 
     vi.useFakeTimers();
     let reject;
-    lookupDomains.mockReturnValueOnce(new Promise((_resolve, r) => { reject = r; }));
+    lookupRdap.mockReturnValueOnce(new Promise((_resolve, r) => { reject = r; }));
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);
     try {
@@ -107,6 +121,31 @@ describe('linkEvidenceFor', () => {
     } finally {
       process.off('unhandledRejection', unhandled);
     }
+  });
+
+  it('makes every source for every domain unknown when only URLhaus rejects, and warns', async () => {
+    vi.useFakeTimers();
+    // Move beyond the warning throttle shared by earlier failed lookups.
+    vi.setSystemTime(Date.now() + 120_000);
+    const domains = ['cmb-verify-login.xyz', 'cmbchina.com'];
+    answerReputation(new Map(domains.map(domain => [domain, reputation(
+      { kind: 'known', registeredAt: '1998-05-01T00:00:00.000Z' },
+      { spamhaus_dbl: NOT_LISTED, urlhaus: NOT_LISTED },
+    )])));
+    lookupUrlhaus.mockRejectedValueOnce(new Error('URLhaus lookup failed'));
+
+    const evidence = await linkEvidenceFor({ body_html: PHISH_HTML + NOTICE_HTML, body_text: null }, { lookUpReputation: true });
+
+    expect(evidence.domains).toEqual(Object.fromEntries(domains.map(domain => [domain, {
+      registration: { kind: 'unknown', reason: 'error' },
+      listings: { spamhaus_dbl: { kind: 'unknown', reason: 'error' }, urlhaus: { kind: 'unknown', reason: 'error' } },
+    }])));
+    for (const lookup of domainLookups) {
+      expect(lookup).toHaveBeenCalledTimes(1);
+      expect(lookup).toHaveBeenCalledWith(domains, { deadlineMs: LINK_LOOKUP_DEADLINE_MS });
+    }
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('URLhaus lookup failed'));
   });
 });
 

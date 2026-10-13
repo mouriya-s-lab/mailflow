@@ -16,7 +16,11 @@ vi.mock('../api.js', () => ({
   getMessageSignals: vi.fn(),
   getMessageBodyTexts: vi.fn(),
   ensureMessageBodies: vi.fn(),
-  lookupDomainReputation: vi.fn(),
+  lookupRdap: vi.fn(),
+  lookupSpamhausDbl: vi.fn(),
+  lookupUrlhaus: vi.fn(),
+  lookupSafeBrowsing: vi.fn(),
+  sourceStatus: vi.fn(),
   jevDecide: vi.fn(),
   recordJevSpamVerdict: vi.fn(),
   requestSpamRetrain: vi.fn(),
@@ -79,6 +83,15 @@ const reputationOf = domains => new Map(domains.map(d => [d, {
   registration: { kind: 'known', registeredAt: '2001-01-01T00:00:00.000Z' },
   listings: { spamhaus_dbl: { kind: 'unconfigured' }, urlhaus: { kind: 'unconfigured' } },
 }]));
+const domainLookups = [api.lookupRdap, api.lookupSpamhausDbl, api.lookupUrlhaus];
+function mockReputation(answerFor) {
+  api.lookupRdap.mockImplementation(async domains =>
+    new Map([...answerFor(domains)].map(([domain, value]) => [domain, value.registration])));
+  api.lookupSpamhausDbl.mockImplementation(async domains =>
+    new Map([...answerFor(domains)].map(([domain, value]) => [domain, value.listings.spamhaus_dbl])));
+  api.lookupUrlhaus.mockImplementation(async domains =>
+    new Map([...answerFor(domains)].map(([domain, value]) => [domain, value.listings.urlhaus])));
+}
 const answers = ({ choice = 'money-and-orders', confidence = 0.95, probability } = {}) => ({
   kind: 'ok', model: 'typesafe/jev', inputTokens: 100,
   answers: {
@@ -98,7 +111,7 @@ const patchFor = id => patches().find(p => p.id === id)?.patch;
 beforeEach(() => {
   vi.clearAllMocks();
   // clearAllMocks keeps queued once-implementations; drop them so no test inherits another's.
-  for (const fn of [api.listQueuedMessages, api.listMessagesInQueueState, api.jevDecide, api.countQueued, api.markMessages, api.setMessageAnnotation]) fn.mockReset();
+  for (const fn of [api.listQueuedMessages, api.listMessagesInQueueState, api.jevDecide, api.countQueued, api.markMessages, api.setMessageAnnotation, ...domainLookups]) fn.mockReset();
   store.data.clear();
   store.configs.clear();
   api.isPluginActivated.mockResolvedValue(true);
@@ -112,7 +125,7 @@ beforeEach(() => {
   api.getMessageSignals.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, signalsFor([])])));
   api.getMessageBodyTexts.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, 'Statement body'])));
   api.ensureMessageBodies.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, { kind: 'stored' }])));
-  api.lookupDomainReputation.mockImplementation(async domains => reputationOf(domains));
+  mockReputation(reputationOf);
   api.jevDecide.mockImplementation(answering());
   api.recordJevSpamVerdict.mockResolvedValue({ kind: 'recorded' });
   api.requestSpamRetrain.mockResolvedValue({ kind: 'retrained', records: 1 });
@@ -524,7 +537,7 @@ describe('the state sent to Jev (row 12)', () => {
     // The visible text of a long HTML-only body, with an astral character straddling 8000.
     const body = `${'x'.repeat(7999)}😀${'tail'.repeat(1000)}`;
     api.getMessageBodyTexts.mockResolvedValue(new Map([[r.id, body]]));
-    api.lookupDomainReputation.mockImplementation(async domains => new Map(domains.map(d => [d, {
+    mockReputation(domains => new Map(domains.map(d => [d, {
       registration: d === 'bank-secure.top' ? { kind: 'known', registeredAt: '2026-10-05T00:00:00.000Z' } : { kind: 'unknown', reason: 'timeout' },
       listings: { spamhaus_dbl: { kind: 'unconfigured' }, urlhaus: { kind: 'listed', detail: 'malware_download' } },
     }])));
@@ -532,7 +545,10 @@ describe('the state sent to Jev (row 12)', () => {
 
     await runTick({ mgr: mgr(), account });
 
-    expect(api.lookupDomainReputation).toHaveBeenCalledWith(['bank-secure.top', 'bank.example'], expect.objectContaining({ deadlineMs: expect.any(Number) }));
+    for (const lookup of domainLookups) {
+      expect(lookup).toHaveBeenCalledTimes(1);
+      expect(lookup).toHaveBeenCalledWith(['bank-secure.top', 'bank.example'], expect.objectContaining({ deadlineMs: expect.any(Number) }));
+    }
     const [request] = api.jevDecide.mock.calls[0];
     const state = JSON.parse(request.state);
     for (const [key, value] of Object.entries(signals)) expect(state[key]).toEqual(value);
