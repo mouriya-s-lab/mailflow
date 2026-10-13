@@ -1,4 +1,20 @@
 {
+  "messageTags": {
+    "show": "Pokazuj tagi wiadomości",
+    "showDescription": "Pokazuj istotne tagi reputacji na liście i stan czterech źródeł w szczegółach. Przeglądanie nie uruchamia zapytań o reputację.",
+    "sources": "Źródła reputacji",
+    "listed": "Na liście {{source}}",
+    "newDomain": "{{domain}} zarejestrowana {{ageDays}} dni temu",
+    "unknown": "{{source}}: wynik nieznany",
+    "inactive": "Wtyczka nie jest włączona",
+    "unconfigured": "Źródło nieskonfigurowane lub wyłączone",
+    "unchecked": "Nie sprawdzono",
+    "complete": "Sprawdzono {{checkedAt}} · {{subjects}} obiektów · {{listed}} na liście · {{unknown}} nieznanych",
+    "pluginFailed": "Niedostępne: błąd wtyczki",
+    "deadline": "Niedostępne: przekroczono limit czasu",
+    "bodyUnavailable": "Niedostępne: nie można pobrać treści wiadomości",
+    "loadFailed": "Nie można wczytać tagów: {{message}}"
+  },
   "common": {
     "cancel": "Anuluj",
     "save": "Zapisz",

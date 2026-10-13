@@ -1,4 +1,20 @@
 {
+  "messageTags": {
+    "show": "Nachrichten-Tags anzeigen",
+    "showDescription": "Auffällige Reputations-Tags in der Liste und den Status aller vier Quellen in den Nachrichtendetails anzeigen. Beim Lesen werden keine Reputationsabfragen gestartet.",
+    "sources": "Reputationsquellen",
+    "listed": "Von {{source}} gelistet",
+    "newDomain": "{{domain}} vor {{ageDays}} Tagen registriert",
+    "unknown": "{{source}}: Abfrageergebnis unbekannt",
+    "inactive": "Plugin nicht aktiviert",
+    "unconfigured": "Quelle nicht konfiguriert oder deaktiviert",
+    "unchecked": "Nicht geprüft",
+    "complete": "Geprüft {{checkedAt}} · {{subjects}} Prüfobjekte · {{listed}} gelistet · {{unknown}} unbekannt",
+    "pluginFailed": "Nicht verfügbar: Plugin fehlgeschlagen",
+    "deadline": "Nicht verfügbar: Zeitlimit überschritten",
+    "bodyUnavailable": "Nicht verfügbar: Nachrichtentext konnte nicht abgerufen werden",
+    "loadFailed": "Nachrichten-Tags konnten nicht geladen werden: {{message}}"
+  },
   "common": {
     "cancel": "Abbrechen",
     "save": "Speichern",

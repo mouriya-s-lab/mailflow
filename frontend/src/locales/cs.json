@@ -1,4 +1,20 @@
 {
+  "messageTags": {
+    "show": "Zobrazovat štítky zpráv",
+    "showDescription": "V seznamu zobrazovat důležité reputační štítky a v detailu zprávy stav všech čtyř zdrojů. Prohlížení nespouští reputační dotazy.",
+    "sources": "Zdroje reputace",
+    "listed": "Na seznamu {{source}}",
+    "newDomain": "{{domain}} registrována před {{ageDays}} dny",
+    "unknown": "{{source}}: výsledek dotazu neznámý",
+    "inactive": "Plugin není povolen",
+    "unconfigured": "Zdroj není nakonfigurován nebo je vypnutý",
+    "unchecked": "Nezkontrolováno",
+    "complete": "Zkontrolováno {{checkedAt}} · {{subjects}} objektů · {{listed}} na seznamu · {{unknown}} neznámých",
+    "pluginFailed": "Nedostupné: chyba pluginu",
+    "deadline": "Nedostupné: překročen časový limit",
+    "bodyUnavailable": "Nedostupné: nelze načíst tělo zprávy",
+    "loadFailed": "Nelze načíst štítky zpráv: {{message}}"
+  },
   "common": {
     "cancel": "Zrušit",
     "save": "Uložit",

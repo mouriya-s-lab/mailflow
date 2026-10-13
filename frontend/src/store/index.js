@@ -127,6 +127,9 @@ export const useStore = create((set, get) => ({
         senderFaviconsLoaded: false,
         senderFavicons: false,
         senderFaviconsSaving: false,
+        showMessageTags: true,
+        messageTagsPreferencesLoaded: false,
+        messageTagLookup: { kind: 'ready', tags: {} },
       } : {}),
     }));
   },
@@ -145,6 +148,24 @@ export const useStore = create((set, get) => ({
       return { enabledPlugins: [...next] };
     });
   },
+
+  showMessageTags: true,
+  messageTagsPreferencesLoaded: false,
+  setShowMessageTags: value => {
+    set({ showMessageTags: value, messageTagLookup: { kind: 'ready', tags: {} } });
+    schedulePrefSave({ showMessageTags: value });
+  },
+  visibleMessageTagIds: {},
+  messageTagLookup: { kind: 'ready', tags: {} },
+  retainMessageTagId: id => set(state => ({
+    visibleMessageTagIds: { ...state.visibleMessageTagIds, [id]: (state.visibleMessageTagIds[id] || 0) + 1 },
+  })),
+  releaseMessageTagId: id => set(state => {
+    const next = { ...state.visibleMessageTagIds };
+    if (next[id] > 1) next[id] -= 1;
+    else delete next[id];
+    return { visibleMessageTagIds: next };
+  }),
 
   // Todoist integration status (persisted across page loads via localStorage)
   todoistConnected: localStorage.getItem('mailflow_todoist_connected') === '1',
@@ -1141,6 +1162,7 @@ export const useStore = create((set, get) => ({
       // Per-user plugin activation. Absent = nothing activated (new users start with GTD off);
       // existing GTD users were grandfathered into ['gtd'] by migration 0042.
       set({ enabledPlugins: Array.isArray(prefs.enabledPlugins) ? prefs.enabledPlugins : [] });
+      set({ showMessageTags: prefs.showMessageTags !== false, messageTagsPreferencesLoaded: true });
       if (prefs.theme) {
         localStorage.setItem('mailflow_theme', prefs.theme);
         set({ theme: prefs.theme });

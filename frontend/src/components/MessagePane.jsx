@@ -21,6 +21,7 @@ import { folderMatchesQuery, favoriteMoveTargets, recentMoveTargets } from '../u
 import FolderPathLabel from './FolderPathLabel.jsx';
 import SpamBadge from './SpamBadge.jsx';
 import SpamExplainModal from './SpamExplainModal.jsx';
+import MessageTags from './MessageTags.jsx';
 import { classifyAttachmentRisk } from '../utils/attachmentRisk.js';
 import { downloadEml } from '../utils/downloadEml.js';
 import { buildPrintDocument, openPrintWindow, printInWindow } from '../utils/printMessage.js';
@@ -2066,6 +2067,7 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
               </span>
               <SpamBadge message={message} onClick={(m) => setSpamExplainMessageId(m.id)} />
             </div>
+            <MessageTags messageId={message.id} detail />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px' }}>

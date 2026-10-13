@@ -15,6 +15,7 @@ import AiResultBox from './AiResultBox.jsx';
 import { useAiActions } from '../hooks/useAiActions.js';
 import { BUILTIN_SUMMARIZE } from '../aiActions.js';
 
+import MessageTags from './MessageTags.jsx';
 // One message inside a conversation.
 //
 // Collapsed it is a header row and nothing else: no body request, no frame, no document.
@@ -225,6 +226,7 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
         )}
         <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 'auto', flex: '0 0 auto' }}>{when}</span>
       </button>
+      <MessageTags messageId={message.id} detail style={{ padding: '0 12px 10px' }} />
 
       {expanded && (
         <div style={{ padding: '0 12px 12px' }}>
