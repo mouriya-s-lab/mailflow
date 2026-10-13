@@ -59,10 +59,11 @@ Everything a plugin may do, grouped:
 - **Realtime:** `broadcast` (scoped to one user)
 - **Summarize:** `summarizeMessage`, `summarizeAvailable` (fails closed when the AI provider is off)
 - **Jev decisions (fork-only):** `jevDecide`, `jevStatus` (async; use the Jev settings an admin saved; typed answers or a typed error; see `backend/fork-features/README.md`)
-- **Link reputation (fork-only):** `lookupRdap`, `lookupSpamhausDbl`, `lookupUrlhaus`, `lookupSafeBrowsing`, `sourceStatus` (async; one function per source, each asking only its own service: RDAP registration dates and the Spamhaus DBL and URLhaus verdicts for registrable domains, Safe Browsing verdicts for link URLs, and each source's status; a failed lookup is `unknown`; see `backend/fork-features/README.md`)
+- **Link reputation (fork-only):** `lookupRdap`, `lookupSpamhausDbl`, `lookupUrlhaus`, `lookupSafeBrowsing`, `sourceStatus` (async; one function per source, each asking only its own service; a failed lookup is `unknown`), and `reputationUrlSubject(url)` (pure; the K6 canonical URL's SHA-256 digest and link host, without retaining its path or query); see `backend/fork-features/README.md`
 - **Anti-spam (fork-only):** `recordJevSpamVerdict`, `requestSpamRetrain`, `ensureSpamVerdict` (Jev verdicts as training records, a per-user retrain, a message's verdict classified on demand; typed `kind` results; see `backend/fork-features/README.md`)
-- **Message signals (fork-only):** `getMessageSignals(accountId, ids, { deadlineMs })` (async; sender, recipients, trusted authentication, links, attachments, mailing-list marks and language of the account's messages), `getMessageBodyTexts(accountId, ids)` (the body as text: `body_text`, or the visible text of `body_html`); see `backend/fork-features/README.md`
+- **Message signals (fork-only):** `getMessageSignals(accountId, ids, { deadlineMs })` (async; sender, recipients, trusted authentication, links, attachments, mailing-list marks and language), `getMessageBodyTexts(accountId, ids)` (the stored body as text), `getMessageLinks(accountId, ids)` (stored HTML links only; no header fetch or IMAP); see `backend/fork-features/README.md`
 - **Message bodies (fork-only):** `ensureMessageBodies(accountId, ids, { deadlineMs })` (async; fetches and stores the body of each of the account's messages that has none yet, never overwriting a stored one; per message `stored`, `fetched`, `empty` or `unavailable { reason }`, and a provider refusal stops the batch); see `backend/fork-features/README.md`
+- **Message tags (fork-only):** `ensureMessageTags(accountId, ids, { deadlineMs })` synchronously asks activated, configured tag sources; `getMessageTags(accountId, ids)` only reads their snapshots. Both scope messages to the account and explicitly distinguish inactive, unconfigured, unchecked (read only), complete and unavailable states; see `backend/fork-features/README.md`
 - **Per-plugin storage:** `storage.*` (the `plugin_data` table — KV + blobs, owner-scoped, cascade-cleaned)
 - **Per-account plugin config:** `getAccountConfig`, `setAccountConfig` (the `plugin_account_config` table)
 - **Per-message annotations:** `getMessageAnnotations`, `setMessageAnnotation` (namespaced `messages.plugin_annotations`; the write resolves to `{ kind: 'written' }` or `{ kind: 'message_missing' }`)
@@ -76,16 +77,39 @@ capability to `api.js`. That's a small, deliberate core change; the boundary sta
 
 ### Manifest + registration
 
-A plugin exports a manifest (see `gtd/index.js`): `{ id, name, version, tier, router?, hooks?, sync? }`.
+A plugin exports a manifest (see `gtd/index.js`): `{ id, name, version, tier, router?, hooks?, sync?, tagSource? }`.
 Core mounts the router and fires the hooks through the registry — core never calls a plugin directly.
 `hooks` are the plugin's halves of generic core events (e.g. `inboxIngest`, `afterLabelCopy`,
 `onSentMessage`, `validateAccountSettings`, `enrichAccount`, …); `sync` is an optional periodic tick.
+`tagSource` is `{ source, ensure(accountId, ids, { deadlineMs }), read(accountId, ids) }`.
+Its functions return a `Map` covering the requested ids with typed tag states; registry registration
+rejects duplicate source ownership or malformed declarations.
 
 ### Data
 
 No plugin-specific columns/tables in core. Plugin data lives in generic stores: `plugin_data`
 (KV/blobs), `plugin_account_config` (per-account config), `messages.plugin_annotations` (per-message,
 namespaced by plugin id). All cascade-clean with their owner.
+
+### Bundled reputation tags
+
+`reputation-tags/` exports four independent manifests: `tag-rdap`, `tag-spamhaus`, `tag-urlhaus`
+and `tag-safebrowsing`. They share only implementation, not activation, message namespaces, UID
+floors, backfill records or single-flight turns (`pluginId:accountId`). Activation is per user;
+there are no per-account settings. The account config contains only server-maintained UID floors.
+
+Each signed-in user's plugin router (`/api/<pluginId>`) provides `GET /status` and
+`POST`/`DELETE /accounts/:id/backfill`. Starting an already running backfill, or stopping one
+that is not running, returns 409; another user's account is 404. Status reads no external source.
+Stopping prevents another batch from being marked; previously queued messages still finish.
+
+The interval tick and `inboxIngest` wake-up use the existing Jev budgets and retry policy. A first
+activated tick establishes new-mail floors, including when a source has no key; unconfigured or
+disabled sources write no message annotation. A tag snapshot contains `checkedAt` and source-native
+subjects. Unknown answers are saved immediately and kept in retry until success or five attempts;
+body unavailability leaves the queue untouched. Safe Browsing stores only a canonical URL digest,
+host and verdict, never the original URL. Details and storage layout are in
+`backend/fork-features/README.md`.
 
 ---
 

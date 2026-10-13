@@ -21,6 +21,14 @@ import { hostOfUrl, registrableDomain } from '../domains/index.js';
 import { queryA } from './dnsQuery.js';
 import { expressionHash, urlExpressions } from './safeBrowsing.js';
 
+// The same canonical subject Safe Browsing caches, but safe to persist in a message snapshot:
+// no URL path or query survives in this identity.
+export function reputationUrlSubject(url) {
+  const host = hostOfUrl(url);
+  if (!host) throw new TypeError('url is not an http(s) URL');
+  return { urlDigest: expressionHash(urlExpressions(url).canonical).toString('hex'), host };
+}
+
 // The services' official endpoints; createReputation accepts others only so tests can stand in.
 export const REPUTATION_ENDPOINTS = Object.freeze({
   rdapBootstrap: 'https://data.iana.org/rdap/dns.json',
