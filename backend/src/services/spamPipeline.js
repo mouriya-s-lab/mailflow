@@ -116,10 +116,8 @@ export async function classifyAndTagMessage(messageId, opts = {}) {
   });
   const tokens = tokenize(msg, language);
 
-  // The links and what the domain lookup services say about where they go, gathered once before
-  // the rules (at most LINK_LOOKUP_DEADLINE_MS). New mail is ingested with its body; a message whose
-  // body is not stored (ingested before that, or its body parts came back empty) has no link
-  // evidence and the link rules stay silent.
+  // Request plugin-owned link tags before scoring, within LINK_LOOKUP_DEADLINE_MS. A missing
+  // stored body provides no mismatch evidence and leaves the link rules silent.
   const linkEvidence = await linkEvidenceFor(row, { lookUpReputation: true });
   const linkFlagValues = linkFlags(linkEvidence);
   const flagFeatures = {
@@ -201,7 +199,7 @@ export async function classifyAndTagMessage(messageId, opts = {}) {
     // (backfill). Lets the "Why?" view and a future deliberate catch-up pass tell a
     // deferred decision apart from one that was never eligible.
     autoMoveDeferred: wouldAutoMove && deferAutoMove,
-    // The link evidence the link rules saw, per destination domain and source, and their flags.
+    // Current link identities, unchanged source snapshots, and the flags the rules saw.
     links: { ...linkEvidence, flags: linkFlagValues },
   };
 

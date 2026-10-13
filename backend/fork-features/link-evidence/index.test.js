@@ -1,218 +1,114 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../src/services/logger.js', () => ({ logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } }));
-vi.mock('../reputation/index.js', () => ({ lookupRdap: vi.fn(), lookupSpamhausDbl: vi.fn(), lookupUrlhaus: vi.fn() }));
+vi.mock('../message-tags/index.js', async importOriginal => ({ ...(await importOriginal()), ensureMessageTags: vi.fn() }));
 
-import { logger } from '../../src/services/logger.js';
-import { lookupRdap, lookupSpamhausDbl, lookupUrlhaus } from '../reputation/index.js';
-import { LINK_LOOKUP_DEADLINE_MS, linkEvidenceFor, linkFlags } from './index.js';
+import { ensureMessageTags } from '../message-tags/index.js';
+import { reputationUrlSubject } from '../reputation/index.js';
+import { linkEvidenceFor, linkFlags } from './index.js';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const CHECKED_AT = '2026-10-12T00:00:00.000Z';
-const registeredDaysBefore = days => new Date(Date.parse(CHECKED_AT) - days * DAY_MS).toISOString();
-
-const PHISH_HTML = '<p>Your account is locked.</p>'
-  + '<a href="https://cmb-verify-login.xyz/login">www.cmbchina.com</a>'
-  + '<a href="https://www.cmb-verify-login.xyz/help">Help</a>';
-const NOTICE_HTML = '<p>Your statement is ready.</p><a href="https://www.cmbchina.com/statement">查看账单</a>';
-
-const NOT_LISTED = { kind: 'not_listed' };
-const UNCONFIGURED = { kind: 'unconfigured' };
-const reputation = (registration, listings = { spamhaus_dbl: UNCONFIGURED, urlhaus: UNCONFIGURED }) => ({ registration, listings });
-const checked = domains => ({ kind: 'checked', checkedAt: CHECKED_AT, mismatch: false, domains });
-const domainLookups = [lookupRdap, lookupSpamhausDbl, lookupUrlhaus];
-function answerReputation(domains) {
-  lookupRdap.mockResolvedValue(new Map([...domains].map(([domain, value]) => [domain, value.registration])));
-  lookupSpamhausDbl.mockResolvedValue(new Map([...domains].map(([domain, value]) => [domain, value.listings.spamhaus_dbl])));
-  lookupUrlhaus.mockResolvedValue(new Map([...domains].map(([domain, value]) => [domain, value.listings.urlhaus])));
-}
-
-beforeEach(() => {
-  for (const lookup of domainLookups) {
-    lookup.mockReset();
-    lookup.mockResolvedValue(new Map());
-  }
-  logger.warn.mockReset();
+const DAY_MS = 24 * 60 * 60 * 1000;
+const domain = 'cmb-verify-login.xyz';
+const url = `https://${domain}/login`;
+const digest = reputationUrlSubject(url).urlDigest;
+const complete = subjects => ({ kind: 'complete', checkedAt: CHECKED_AT, subjects });
+const inactive = { kind: 'inactive' };
+const unconfigured = { kind: 'unconfigured' };
+const unknown = { kind: 'unknown', reason: 'timeout' };
+const notListed = { kind: 'not_listed' };
+const hit = { kind: 'listed', detail: 'phishing' };
+const known = days => ({ kind: 'known', registeredAt: new Date(Date.parse(CHECKED_AT) - days * DAY_MS).toISOString() });
+const evidence = overrides => ({
+  kind: 'checked', mismatch: false, links: { domains: [domain], urlDigests: [digest] },
+  tags: { rdap: inactive, spamhaus_dbl: inactive, urlhaus: inactive, safe_browsing: inactive, ...overrides },
 });
+const flags = overrides => linkFlags(evidence(overrides));
+const message = {
+  id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', account_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  body_html: `<a href="${url}">www.cmbchina.com</a><a href="${url}">help</a>`, body_text: null,
+};
 
-afterEach(() => {
-  vi.useRealTimers();
-});
+beforeEach(() => ensureMessageTags.mockReset());
 
 describe('linkEvidenceFor', () => {
-  it('sees nothing when the body is not stored yet, and looks nothing up', async () => {
-    await expect(linkEvidenceFor({ body_html: null, body_text: null }, { lookUpReputation: true }))
-      .resolves.toEqual({ kind: 'body_unavailable' });
-    for (const lookup of domainLookups) expect(lookup).not.toHaveBeenCalled();
+  it('aligns current link identities with unchanged plugin snapshots and retains mismatch', async () => {
+    const tags = evidence({ rdap: complete({ [domain]: known(2), 'other.example': known(1) }) }).tags;
+    ensureMessageTags.mockResolvedValue(new Map([[message.id, tags]]));
+    const result = await linkEvidenceFor(message, { lookUpReputation: true });
+    expect(result).toEqual({ kind: 'checked', mismatch: true, links: { domains: [domain], urlDigests: [digest] }, tags });
+    expect(result.tags).toBe(tags);
+    expect(linkFlags(result).link_domain_new).toBe(1);
   });
 
-  it('looks up each destination domain once, with the 5 s deadline', async () => {
-    answerReputation(new Map([['cmb-verify-login.xyz', reputation({ kind: 'not_found' })]]));
-    const evidence = await linkEvidenceFor({ body_html: PHISH_HTML, body_text: null }, { lookUpReputation: true });
-    for (const lookup of domainLookups) {
-      expect(lookup).toHaveBeenCalledTimes(1);
-      expect(lookup).toHaveBeenCalledWith(['cmb-verify-login.xyz'], { deadlineMs: LINK_LOOKUP_DEADLINE_MS });
-    }
-    expect(evidence).toMatchObject({
-      kind: 'checked',
-      mismatch: true,
-      domains: { 'cmb-verify-login.xyz': { registration: { kind: 'not_found' } } },
-    });
+  it('cannot observe anything without a stored body', async () => {
+    const result = await linkEvidenceFor({ ...message, body_html: null }, { lookUpReputation: true });
+    expect(linkFlags(result)).toEqual({ link_text_domain_mismatch: null, link_domain_new: null, link_domain_listed: null, link_url_unsafe: null });
+    expect(ensureMessageTags).not.toHaveBeenCalled();
   });
 
-  it('does not count a link whose text is not an address as a mismatch', async () => {
-    answerReputation(new Map([['cmbchina.com', reputation({ kind: 'known', registeredAt: '1998-05-01T00:00:00.000Z' })]]));
-    const evidence = await linkEvidenceFor({ body_html: NOTICE_HTML, body_text: null }, { lookUpReputation: true });
-    expect(evidence.mismatch).toBe(false);
-    expect(Object.keys(evidence.domains)).toEqual(['cmbchina.com']);
-  });
-
-  it('has nothing to look up for a body without links', async () => {
-    const evidence = await linkEvidenceFor({ body_html: null, body_text: 'see https://example.com' }, { lookUpReputation: true });
-    expect(evidence).toMatchObject({ kind: 'checked', mismatch: false, domains: {} });
-    for (const lookup of domainLookups) expect(lookup).not.toHaveBeenCalled();
-  });
-
-  it('only reads the links when the lookup is switched off', async () => {
-    await expect(linkEvidenceFor({ body_html: PHISH_HTML, body_text: null }, { lookUpReputation: false }))
-      .resolves.toEqual({ kind: 'lookup_disabled', mismatch: true });
-    for (const lookup of domainLookups) expect(lookup).not.toHaveBeenCalled();
-  });
-
-  it('makes every source unknown when the lookup never answers, at the deadline', async () => {
-    vi.useFakeTimers();
-    lookupRdap.mockReturnValue(new Promise(() => {}));
-    const pending = linkEvidenceFor({ body_html: PHISH_HTML, body_text: null }, { lookUpReputation: true });
-    let settled = false;
-    pending.then(() => { settled = true; });
-    await vi.advanceTimersByTimeAsync(LINK_LOOKUP_DEADLINE_MS - 1);
-    expect(settled).toBe(false);
-    await vi.advanceTimersByTimeAsync(1);
-    const evidence = await pending;
-    expect(evidence.domains['cmb-verify-login.xyz']).toEqual({
-      registration: { kind: 'unknown', reason: 'timeout' },
-      listings: { spamhaus_dbl: { kind: 'unknown', reason: 'timeout' }, urlhaus: { kind: 'unknown', reason: 'timeout' } },
-    });
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.warn.mock.calls[0][0]).not.toContain('cmb-verify-login');
-  });
-
-  it('makes every source unknown when the lookup fails, and handles a rejection after the deadline', async () => {
-    lookupRdap.mockRejectedValueOnce(new Error('could not decrypt the stored key'));
-    const failed = await linkEvidenceFor({ body_html: PHISH_HTML, body_text: null }, { lookUpReputation: true });
-    expect(failed.domains['cmb-verify-login.xyz']).toEqual({
-      registration: { kind: 'unknown', reason: 'error' },
-      listings: { spamhaus_dbl: { kind: 'unknown', reason: 'error' }, urlhaus: { kind: 'unknown', reason: 'error' } },
-    });
-
-    vi.useFakeTimers();
-    let reject;
-    lookupRdap.mockReturnValueOnce(new Promise((_resolve, r) => { reject = r; }));
-    const unhandled = vi.fn();
-    process.on('unhandledRejection', unhandled);
-    try {
-      const pending = linkEvidenceFor({ body_html: PHISH_HTML, body_text: null }, { lookUpReputation: true });
-      await vi.advanceTimersByTimeAsync(LINK_LOOKUP_DEADLINE_MS);
-      expect((await pending).domains['cmb-verify-login.xyz'].registration.reason).toBe('timeout');
-      reject(new Error('late failure'));
-      vi.useRealTimers();
-      await new Promise(resolve => setTimeout(resolve, 10));
-      expect(unhandled).not.toHaveBeenCalled();
-    } finally {
-      process.off('unhandledRejection', unhandled);
-    }
-  });
-
-  it('makes every source for every domain unknown when only URLhaus rejects, and warns', async () => {
-    vi.useFakeTimers();
-    // Move beyond the warning throttle shared by earlier failed lookups.
-    vi.setSystemTime(Date.now() + 120_000);
-    const domains = ['cmb-verify-login.xyz', 'cmbchina.com'];
-    answerReputation(new Map(domains.map(domain => [domain, reputation(
-      { kind: 'known', registeredAt: '1998-05-01T00:00:00.000Z' },
-      { spamhaus_dbl: NOT_LISTED, urlhaus: NOT_LISTED },
-    )])));
-    lookupUrlhaus.mockRejectedValueOnce(new Error('URLhaus lookup failed'));
-
-    const evidence = await linkEvidenceFor({ body_html: PHISH_HTML + NOTICE_HTML, body_text: null }, { lookUpReputation: true });
-
-    expect(evidence.domains).toEqual(Object.fromEntries(domains.map(domain => [domain, {
-      registration: { kind: 'unknown', reason: 'error' },
-      listings: { spamhaus_dbl: { kind: 'unknown', reason: 'error' }, urlhaus: { kind: 'unknown', reason: 'error' } },
-    }])));
-    for (const lookup of domainLookups) {
-      expect(lookup).toHaveBeenCalledTimes(1);
-      expect(lookup).toHaveBeenCalledWith(domains, { deadlineMs: LINK_LOOKUP_DEADLINE_MS });
-    }
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('URLhaus lookup failed'));
+  it('only observes mismatch with anti-spam off', async () => {
+    const result = await linkEvidenceFor(message, { lookUpReputation: false });
+    expect(linkFlags(result)).toEqual({ link_text_domain_mismatch: 1, link_domain_new: null, link_domain_listed: null, link_url_unsafe: null });
+    expect(ensureMessageTags).not.toHaveBeenCalled();
   });
 });
 
-describe('linkFlags', () => {
-  it('cannot tell anything without a body', () => {
-    expect(linkFlags({ kind: 'body_unavailable' }))
-      .toEqual({ link_text_domain_mismatch: null, link_domain_new: null, link_domain_listed: null });
+describe('tag-derived flags', () => {
+  for (const state of [inactive, unconfigured, ...['plugin_failed', 'deadline', 'body_unavailable'].map(reason => ({ kind: 'unavailable', reason }))]) {
+    it(`keeps ${state.kind}/${state.reason ?? ''} neutral, not clean`, () => {
+      expect(flags(Object.fromEntries(['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing'].map(source => [source, state]))))
+        .toEqual({ link_text_domain_mismatch: 0, link_domain_new: null, link_domain_listed: null, link_url_unsafe: null });
+    });
+  }
+
+  it('uses the RDAP snapshot time and the strict 30-day boundary', () => {
+    for (const [days, expected] of [[2, 1], [30 - 1 / 1440, 1], [30, 0], [4000, 0], [-1, null]]) {
+      expect(flags({ rdap: complete({ [domain]: known(days) }) }).link_domain_new).toBe(expected);
+    }
+    expect(flags({ rdap: complete({ [domain]: { kind: 'not_found' } }) }).link_domain_new).toBe(0);
+    expect(flags({ rdap: complete({ [domain]: unknown }) }).link_domain_new).toBeNull();
+    expect(flags({ rdap: complete({ [domain]: { kind: 'known', registeredAt: 'bad' } }) }).link_domain_new).toBeNull();
   });
 
-  it('has only the mismatch when no lookup was made', () => {
-    expect(linkFlags({ kind: 'lookup_disabled', mismatch: true }))
-      .toEqual({ link_text_domain_mismatch: 1, link_domain_new: null, link_domain_listed: null });
+  it('does not invent answers for subjects absent from a complete snapshot', () => {
+    expect(flags({ rdap: complete({}), spamhaus_dbl: complete({}), urlhaus: complete({}), safe_browsing: complete({}) }))
+      .toEqual({ link_text_domain_mismatch: 0, link_domain_new: null, link_domain_listed: null, link_url_unsafe: null });
   });
 
-  it('says no for a body without links', () => {
-    expect(linkFlags(checked({})))
-      .toEqual({ link_text_domain_mismatch: 0, link_domain_new: 0, link_domain_listed: 0 });
+  it('ignores listed subjects that are not among the current links', () => {
+    expect(flags({
+      rdap: complete({ [domain]: known(4000), 'other.example': known(1) }),
+      spamhaus_dbl: complete({ [domain]: notListed, 'other.example': hit }),
+      safe_browsing: complete({ [digest]: { host: domain, verdict: notListed }, other: { host: 'other.example', verdict: hit } }),
+    })).toEqual({ link_text_domain_mismatch: 0, link_domain_new: 0, link_domain_listed: 0, link_url_unsafe: 0 });
   });
 
-  describe('link_domain_new', () => {
-    const newFlag = (...registrations) => linkFlags(checked(Object.fromEntries(
-      registrations.map((registration, i) => [`d${i}.example`, reputation(registration)]),
-    ))).link_domain_new;
-    const known = days => ({ kind: 'known', registeredAt: registeredDaysBefore(days) });
-
-    it('is 1 for a domain registered less than 30 days before the check', () => {
-      expect(newFlag(known(3))).toBe(1);
-      expect(newFlag(known(30 - 1 / (24 * 60)))).toBe(1);
-    });
-
-    it('is 0 from 30 days on and for not_found', () => {
-      expect(newFlag(known(30))).toBe(0);
-      expect(newFlag(known(4000))).toBe(0);
-      expect(newFlag({ kind: 'not_found' })).toBe(0);
-    });
-
-    it('is null when a registration is unknown and none is new', () => {
-      expect(newFlag({ kind: 'unknown', reason: 'timeout' })).toBeNull();
-      expect(newFlag(known(4000), { kind: 'unknown', reason: 'disabled' })).toBeNull();
-      expect(newFlag({ kind: 'known', registeredAt: 'not a date' })).toBeNull();
-      expect(newFlag(known(-1))).toBeNull();
-    });
-
-    it('is 1 when one domain is new even if another is unknown', () => {
-      expect(newFlag({ kind: 'unknown', reason: 'rate_limited' }, known(2))).toBe(1);
-    });
+  it('lets any domain listing win over missing or failed answers', () => {
+    for (const source of ['spamhaus_dbl', 'urlhaus']) {
+      expect(flags({ spamhaus_dbl: complete({}), urlhaus: { kind: 'unavailable', reason: 'deadline' }, [source]: complete({ [domain]: hit }) }).link_domain_listed).toBe(1);
+    }
   });
 
-  describe('link_domain_listed', () => {
-    const listedFlag = (...listings) => linkFlags(checked(Object.fromEntries(
-      listings.map((l, i) => [`d${i}.example`, reputation({ kind: 'not_found' }, l)]),
-    ))).link_domain_listed;
+  it('does not let an absent source invalidate an answered source, but unknowns do', () => {
+    for (const state of [inactive, unconfigured]) {
+      expect(flags({ spamhaus_dbl: complete({ [domain]: notListed }), urlhaus: state }).link_domain_listed).toBe(0);
+    }
+    for (const state of [complete({}), complete({ [domain]: unknown }), { kind: 'unavailable', reason: 'plugin_failed' }]) {
+      expect(flags({ spamhaus_dbl: complete({ [domain]: notListed }), urlhaus: state }).link_domain_listed).toBeNull();
+    }
+  });
 
-    it('is 1 when any source lists any domain', () => {
-      expect(listedFlag(
-        { spamhaus_dbl: NOT_LISTED, urlhaus: NOT_LISTED },
-        { spamhaus_dbl: { kind: 'unknown', reason: 'timeout' }, urlhaus: { kind: 'listed', detail: '3 malware URLs seen on this host' } },
-      )).toBe(1);
-    });
+  it('uses URL verdicts, with a listing winning over an unknown URL', () => {
+    const result = evidence({ safe_browsing: complete({ [digest]: { host: domain, verdict: hit }, second: { host: domain, verdict: unknown } }) });
+    result.links.urlDigests.push('second');
+    expect(linkFlags(result).link_url_unsafe).toBe(1);
+    expect(flags({ safe_browsing: complete({ [digest]: { host: domain, verdict: notListed } }) }).link_url_unsafe).toBe(0);
+    expect(flags({ safe_browsing: complete({ [digest]: { host: domain, verdict: unknown } }) }).link_url_unsafe).toBeNull();
+  });
 
-    it('is 0 when the configured sources say not_listed', () => {
-      expect(listedFlag({ spamhaus_dbl: NOT_LISTED, urlhaus: UNCONFIGURED })).toBe(0);
-    });
-
-    it('is null when a source is unknown, or when no source is configured', () => {
-      expect(listedFlag({ spamhaus_dbl: NOT_LISTED, urlhaus: { kind: 'unknown', reason: 'error' } })).toBeNull();
-      expect(listedFlag({ spamhaus_dbl: UNCONFIGURED, urlhaus: UNCONFIGURED })).toBeNull();
-    });
+  it('accepts empty complete snapshots only for a message with no link subjects', () => {
+    const result = evidence(Object.fromEntries(['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing'].map(source => [source, complete({})])));
+    result.links = { domains: [], urlDigests: [] };
+    expect(linkFlags(result)).toEqual({ link_text_domain_mismatch: 0, link_domain_new: 0, link_domain_listed: 0, link_url_unsafe: 0 });
   });
 });
