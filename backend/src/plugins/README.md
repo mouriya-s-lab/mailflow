@@ -110,6 +110,8 @@ subjects. Unknown answers are saved immediately and kept in retry until success 
 body unavailability leaves the queue untouched. Safe Browsing stores only a canonical URL digest,
 host and verdict, never the original URL. Details and storage layout are in
 `backend/fork-features/README.md`.
+The hook's last-tick activation-and-configuration gate is an in-memory read, so merely registering
+the plugins does not enable the core's label-sibling read/star fan-out for inactive accounts.
 
 ---
 

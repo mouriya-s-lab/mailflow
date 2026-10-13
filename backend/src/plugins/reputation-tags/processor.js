@@ -7,7 +7,12 @@ import {
   REVISION, TICK_BUDGET_MS, TICK_MAX_MESSAGES, MIN_MESSAGE_BUDGET_MS, NEW_MAIL_MARK_LIMIT,
   BACKFILL_BATCH, QUEUE_READ_LIMIT, refreshFloors, parseAnnotation, parseResult, bodyGate, failedAttempt,
 } from './model.js';
-import { currentTurn, exclusive, loadFloors, saveFloors, loadBackfill, saveBackfill, recordProcessed } from './records.js';
+import { turnKey, currentTurn, exclusive, loadFloors, saveFloors, loadBackfill, saveBackfill, recordProcessed } from './records.js';
+
+// A last-tick activation copy keeps inboxIngest free of I/O, as in Jev. The interval tick reads
+// activation itself, so a stale gate changes only when a wake-up happens, never which mail runs.
+const newMailAccounts = new Set();
+export const newMailDrainActive = (pluginId, accountId) => newMailAccounts.has(turnKey(pluginId, accountId));
 
 export async function read(plugin, accountId, ids) {
   const annotations = await getMessageAnnotations(accountId, ids, plugin.id);
@@ -20,12 +25,18 @@ export function runTick(plugin, { mgr, account }) {
   const startedAt = Date.now();
   return exclusive(plugin.id, account.id, async () => {
     try {
-      if (!mgr.isConnected(account.id) || !(await isPluginActivated(account.user_id, plugin.id))) return;
+      if (!mgr.isConnected(account.id)) return;
+      const activated = await isPluginActivated(account.user_id, plugin.id);
+      const configured = await sourceStatus(plugin.source) === 'enabled';
+      const key = turnKey(plugin.id, account.id);
+      if (activated && configured) newMailAccounts.add(key);
+      else newMailAccounts.delete(key);
+      if (!activated) return;
       // Record floors even without a key: configuring a source later must pick up mail received
       // since the first activated tick, not redefine all of it as history.
       const refreshed = refreshFloors(await loadFloors(plugin.id, account.id), await currentUidFloors({ accountId: account.id }));
       if (refreshed.changed) await saveFloors(plugin.id, account.id, refreshed.floors);
-      if (await sourceStatus(plugin.source) !== 'enabled') return;
+      if (!configured) return;
       await markMessages({ accountId: account.id, pluginId: plugin.id, scope: { kind: 'above_uid_floor', floors: refreshed.floors }, revision: REVISION, origin: 'new_mail', limit: NEW_MAIL_MARK_LIMIT });
       await advanceBackfill(plugin, account);
       const queued = await listQueuedMessages({ accountId: account.id, pluginId: plugin.id, now: new Date(), limit: QUEUE_READ_LIMIT });

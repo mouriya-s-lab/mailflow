@@ -1,6 +1,6 @@
 import { lookupRdap, lookupSpamhausDbl, lookupUrlhaus, lookupSafeBrowsing } from '../api.js';
 import { TICK_BUDGET_MS } from './model.js';
-import { runTick, requestDrain, ensure, read } from './processor.js';
+import { runTick, requestDrain, newMailDrainActive, ensure, read } from './processor.js';
 import { createRoutes } from './routes.js';
 
 const definitions = [
@@ -16,8 +16,8 @@ export const reputationTagPlugins = definitions.map(plugin => ({
   version: '1.0.0',
   tier: 1,
   router: { base: `/api/${plugin.id}`, handler: createRoutes(plugin) },
-  // The hook only wakes a tick; activation and source configuration are read by the tick itself.
-  hooks: { inboxIngest: { handler: context => requestDrain(plugin, context), isActive: () => true } },
+  // The hook only wakes a tick; its last-tick activation gate does no I/O in the sync loop.
+  hooks: { inboxIngest: { handler: context => requestDrain(plugin, context), isActive: ({ account }) => newMailDrainActive(plugin.id, account?.id) } },
   sync: { intervalMs: TICK_BUDGET_MS, isActive: () => true, tick: context => runTick(plugin, context) },
   tagSource: {
     source: plugin.source,
