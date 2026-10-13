@@ -15,7 +15,15 @@
 //     router?:  { base: '/api/gtd', handler, json?: { limit } }, // Express router to mount
 //     hooks?:   { [hookName]: handler },     // event/collect handlers — see below
 //     isActive?: (ctx) => boolean,          // gate ALL of this plugin's handlers per call
+//     tagSource?: { source, ensure, read }, // one reputation tag source — see below
 //   }
+//
+// `tagSource` marks a plugin as the one that owns one reputation source and stores its result in
+// its own namespace of a message's plugin_annotations: `source` names it, `ensure(accountId, ids,
+// { deadlineMs })` looks a missing result up and returns a Map of a TagState per id, and
+// `read(accountId, ids)` answers from what is stored without contacting anything. Two plugins may
+// not claim the same source; the tag module (fork-features/message-tags) dispatches through this
+// registry and never reads a plugin's namespace itself.
 //
 // A hook entry is either a bare handler function `async (ctx) => value | void`, or an object
 // `{ handler, isActive }` whose per-hook `isActive(ctx)` gates just THAT hook (in addition to
@@ -59,6 +67,21 @@ export function createPluginRegistry() {
     for (const [hookName, entry] of Object.entries(manifest.hooks || {})) {
       const ok = typeof entry === 'function' || (entry && typeof entry.handler === 'function');
       if (!ok) throw new Error(`plugin "${id}" hook "${hookName}" must be a function or { handler }`);
+    }
+    const tag = manifest.tagSource;
+    if (tag !== undefined) {
+      if (!tag || typeof tag !== 'object') throw new Error(`plugin "${id}" tagSource must be an object`);
+      if (typeof tag.source !== 'string' || !tag.source) {
+        throw new Error(`plugin "${id}" tagSource.source must be a non-empty string`);
+      }
+      if (typeof tag.ensure !== 'function' || typeof tag.read !== 'function') {
+        throw new Error(`plugin "${id}" tagSource needs ensure and read functions`);
+      }
+      for (const other of plugins.values()) {
+        if (other.tagSource?.source === tag.source) {
+          throw new Error(`tag source "${tag.source}" is already owned by plugin "${other.id}"`);
+        }
+      }
     }
     plugins.set(id, manifest);
     return manifest;

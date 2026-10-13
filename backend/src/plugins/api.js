@@ -98,9 +98,12 @@ export const moveMessagesVerified = (args) => _moveMessagesVerified(getMailEngin
 // language of the account's messages (fork-only, see fork-features/signals). An id that is not a
 // message of the account is absent from the Map. getMessageBodyTexts(accountId, ids) → Map<id,
 // string>: the body as text (body_text, or the visible text of body_html), same scoping.
+// getMessageLinks(accountId, ids) → Map<id, Link[]>: the links of the stored HTML body only, so it
+// reads no headers and starts no IMAP work, same scoping.
 export {
   getAccountMessageSignals as getMessageSignals,
   getAccountMessageBodyTexts as getMessageBodyTexts,
+  getAccountMessageLinks as getMessageLinks,
 } from '../../fork-features/signals/index.js';
 
 // ensureMessageBodies(accountId, ids, { deadlineMs }) → Map<id, BodyOutcome>: makes sure each of
@@ -110,6 +113,17 @@ export {
 // 'provider_refusing' (stops the batch), 'imap_error', 'message_missing' or 'deadline'
 // (fork-only, see fork-features/message-bodies).
 export const ensureMessageBodies = (accountId, ids, options) => _ensureMessageBodies(getMailEngine(), accountId, ids, options);
+
+// ── Message tags ──────────────────────────────────────────────────────────────
+// The reputation tag plugins (tag-rdap, tag-spamhaus, tag-urlhaus, tag-safebrowsing) each own one
+// source and store their result in their own namespace of a message's annotations; this is the
+// only way to read them. ensureMessageTags(accountId, ids, { deadlineMs }) asks the plugins and
+// waits; getMessageTags(accountId, ids) answers from what is stored. A TagSource is
+// 'rdap' | 'spamhaus_dbl' | 'urlhaus' | 'safe_browsing'; a TagState is `inactive`,
+// `unconfigured`, `unchecked`, `complete { checkedAt, subjects }` or
+// `unavailable { reason: 'deadline' | 'plugin_failed' }` (fork-only, see
+// fork-features/message-tags). An id that is not a message of the account is absent from the Map.
+export { ensureMessageTags, getMessageTags, TAG_SOURCES } from '../../fork-features/message-tags/index.js';
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-

@@ -26,6 +26,21 @@ describe('plugin registry — registration & validation', () => {
     r.register(base);
     expect(() => r.register(base)).toThrow(/already registered/);
   });
+
+  it('accepts one tag source per plugin and rejects a malformed or repeated one', () => {
+    const r = createPluginRegistry();
+    const tagSource = { source: 'rdap', ensure: async () => new Map(), read: async () => new Map() };
+    r.register({ ...base, tagSource });
+    expect(r.get('p1').tagSource).toBe(tagSource);
+
+    expect(() => r.register({ ...base, id: 'p2', tagSource: 'rdap' })).toThrow(/tagSource must be an object/);
+    expect(() => r.register({ ...base, id: 'p2', tagSource: { ...tagSource, source: '' } })).toThrow(/source must be a non-empty string/);
+    expect(() => r.register({ ...base, id: 'p2', tagSource: { source: 'urlhaus', ensure: async () => new Map() } })).toThrow(/needs ensure and read/);
+
+    const second = createPluginRegistry();
+    second.register({ ...base, id: 'a', tagSource });
+    expect(() => second.register({ ...base, id: 'b', tagSource: { ...tagSource } })).toThrow(/already owned by plugin "a"/);
+  });
 });
 
 describe('plugin registry — runHook (fire-and-forget)', () => {
