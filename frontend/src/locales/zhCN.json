@@ -1969,7 +1969,9 @@
       "jevUnconfigured": "Jev 尚未配置，因此不会分类任何邮件。管理员可在「设置 → 外部服务」中设置 Jev API 密钥。",
       "jevConfigured": "Jev 已配置：模型 {{model}}，地址 {{baseUrl}}",
       "reputation": "链接信誉来源",
-      "sourceEnabled": "已开启",
+      "pluginActivated": "插件已启用",
+      "pluginInactive": "插件未启用",
+      "sourceConfigured": "已配置",
       "sourceUnconfigured": "未设置密钥",
       "sourceDisabled": "已关闭"
     },

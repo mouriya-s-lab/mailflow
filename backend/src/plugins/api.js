@@ -123,7 +123,7 @@ export const ensureMessageBodies = (accountId, ids, options) => _ensureMessageBo
 // `unconfigured`, `unchecked`, `complete { checkedAt, subjects }` or
 // `unavailable { reason: 'deadline' | 'plugin_failed' }` (fork-only, see
 // fork-features/message-tags). An id that is not a message of the account is absent from the Map.
-export { ensureMessageTags, getMessageTags, TAG_SOURCES } from '../../fork-features/message-tags/index.js';
+export { ensureMessageTags, getMessageTags, TAG_SOURCES, tagSourcePlugins } from '../../fork-features/message-tags/index.js';
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-

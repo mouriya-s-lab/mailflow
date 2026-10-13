@@ -1988,7 +1988,9 @@
       "jevUnconfigured": "Jev není nastaven, proto se žádná pošta neklasifikuje. Správce může nastavit klíč API Jev v Nastavení → Externí služby.",
       "jevConfigured": "Jev je nastaven: model {{model}} na adrese {{baseUrl}}",
       "reputation": "Zdroje reputace odkazů",
-      "sourceEnabled": "zapnuto",
+      "pluginActivated": "plugin zapnutý",
+      "pluginInactive": "plugin vypnutý",
+      "sourceConfigured": "nastaveno",
       "sourceUnconfigured": "bez klíče",
       "sourceDisabled": "vypnuto"
     },

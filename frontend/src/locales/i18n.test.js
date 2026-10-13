@@ -565,6 +565,7 @@ const SAME_VALUE_ALLOWED = {
   'admin.externalServices.reputation.keyPh':            [['de', 'en'], ['es', 'ptBR']],
   // Jev classification plugin: "Message-ID" is the email header's name, the same in every language.
   'jevClassify.incidents.messageId':                    'any',
+  'jevClassify.service.sourceConfigured':              [['es', 'ptBR']], // "configurada" in both languages
 };
 
 // Locale-specific plural forms are allowed per locale. A locale may add forms

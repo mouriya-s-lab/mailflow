@@ -1969,7 +1969,9 @@
       "jevUnconfigured": "Jev ist nicht konfiguriert, daher werden keine E-Mails klassifiziert. Ein Administrator kann den Jev-API-Schlüssel unter Einstellungen → Externe Dienste hinterlegen.",
       "jevConfigured": "Jev ist konfiguriert: Modell {{model}} unter {{baseUrl}}",
       "reputation": "Quellen für die Link-Reputation",
-      "sourceEnabled": "ein",
+      "pluginActivated": "Plugin aktiviert",
+      "pluginInactive": "Plugin deaktiviert",
+      "sourceConfigured": "konfiguriert",
       "sourceUnconfigured": "kein Schlüssel",
       "sourceDisabled": "aus"
     },

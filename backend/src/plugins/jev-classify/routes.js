@@ -8,7 +8,7 @@ import { Router } from 'express';
 import {
   requireAuth, getOwnedAccount, listUserAccounts, isLabelStoreAccount, isPluginActivated,
   currentUidFloors, countQueued, listQueuedMessages, listMessagesInQueueState, setMessageAnnotation,
-  jevStatus, sourceStatus, logger,
+  jevStatus, sourceStatus, tagSourcePlugins, logger,
 } from '../api.js';
 import {
   PLUGIN_ID, parseCategoriesBody, parseAccountSettingsBody, parseAnnotation, resetTerminal,
@@ -153,12 +153,15 @@ async function nextDue(accountId) {
   return { kind: 'scheduled', dueAt };
 }
 
-const REPUTATION_SOURCES = ['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing'];
-
-// { rdap, spamhaus_dbl, urlhaus, safe_browsing }, each source's status.
-async function sourceStates() {
-  const states = await Promise.all(REPUTATION_SOURCES.map(source => sourceStatus(source)));
-  return Object.fromEntries(REPUTATION_SOURCES.map((source, i) => [source, states[i]]));
+// Activation belongs to the registry's plugin; configuration belongs to the outside source.
+async function sourceStates(userId) {
+  const entries = await Promise.all(Object.entries(tagSourcePlugins()).map(async ([source, pluginId]) => {
+    const [activated, configuration] = await Promise.all([
+      isPluginActivated(userId, pluginId), sourceStatus(source),
+    ]);
+    return [source, { pluginId, activated, configuration }];
+  }));
+  return Object.fromEntries(entries);
 }
 
 router.get('/status', async (req, res) => {
@@ -166,7 +169,7 @@ router.get('/status', async (req, res) => {
   const [activated, jev, reputation, accounts] = await Promise.all([
     isPluginActivated(userId, PLUGIN_ID),
     jevStatus(),
-    sourceStates(),
+    sourceStates(userId),
     listUserAccounts(userId),
   ]);
   const perAccount = await Promise.all(accounts.map(async account => {

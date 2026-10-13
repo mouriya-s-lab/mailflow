@@ -15,14 +15,14 @@
 import {
   logger, isPluginActivated, markMessages, currentUidFloors, listQueuedMessages, countQueued,
   listMessagesInQueueState, setMessageAnnotation, getMessageSignals, getMessageBodyTexts,
-  ensureMessageBodies, lookupRdap, lookupSpamhausDbl, lookupUrlhaus, jevDecide, recordJevSpamVerdict,
+  ensureMessageBodies, ensureMessageTags, jevDecide, recordJevSpamVerdict,
   requestSpamRetrain, ensureSpamVerdict, moveMessagesVerified, isLabelStoreAccount, applyLabel,
   ensureLabelFolders,
 } from '../api.js';
 import {
   PLUGIN_ID, refreshFloors, parseAnnotation, normalize, promote, questionsDue, executable,
   classifyJevError, failDecisions, applyAnswers, trainingOutcome, failTraining, failAction,
-  actionForMove, deriveQueue, buildJevRequest, linkDomains, bodyGate,
+  actionForMove, deriveQueue, buildJevRequest, bodyGate,
 } from './model.js';
 import {
   loadAccountConfig, updateAccountConfig, loadCategories, updateBackfill, appendIncident,
@@ -251,6 +251,7 @@ async function processMessage(ctx, { row, annotation, lines: start }, { bodyOutc
           ctx.jevUnconfigured = true;
           return { kind: 'not_run' };
         }
+        if (decision.kind === 'not_run') return { kind: 'not_run' };
         lines = promote(decision.lines);
         decidedAt = decision.decidedAt;
         break;
@@ -284,27 +285,24 @@ async function processMessage(ctx, { row, annotation, lines: start }, { bodyOutc
   }
 }
 
-// Map<domain, { registration, listings: { spamhaus_dbl, urlhaus } }> from the three domain sources,
-// asked side by side under one deadline; rejects when any of them does.
-async function lookUpLinkDomains(domains, options) {
-  const [registration, dbl, urlhaus] = await Promise.all([
-    lookupRdap(domains, options), lookupSpamhausDbl(domains, options), lookupUrlhaus(domains, options),
-  ]);
-  return new Map(domains.map(domain => [domain, {
-    registration: registration.get(domain),
-    listings: { spamhaus_dbl: dbl.get(domain), urlhaus: urlhaus.get(domain) },
-  }]));
-}
 
-// The Jev decisions asked this attempt: { kind: 'unconfigured' } | { kind: 'applied', lines, decidedAt }.
+// The Jev decisions asked this attempt: 'not_run' | 'unconfigured' | 'applied' with lines and decidedAt.
 async function decide(ctx, row, signals, bodyText, asked, revision, lines) {
   const now = new Date();
   let reputation;
   try {
-    reputation = await lookUpLinkDomains(linkDomains(signals), { deadlineMs: remaining(ctx) });
+    const tags = await ensureMessageTags(ctx.account.id, [row.id], { deadlineMs: remaining(ctx) });
+    reputation = tags.get(row.id);
+    // The row disappeared while asking its tag sources; do not decide a stale queued row.
+    if (!reputation) return { kind: 'not_run' };
   } catch (err) {
     logger.warn(`jev-classify: link reputation failed for message ${row.id}: ${err.message}`);
     return { kind: 'applied', lines: failDecisions(lines, asked, { kind: 'retry', errorKind: 'reputation_error' }, now), decidedAt: null };
+  }
+  // A source that has not answered within the budget leaves the entire annotation untouched,
+  // including any normalization and attempt counters, just like a body deadline.
+  if (Object.values(reputation).some(state => state.kind === 'unavailable' && state.reason === 'deadline')) {
+    return { kind: 'not_run' };
   }
   const request = buildJevRequest({ signals, reputation, bodyText, categories: ctx.categories.categories, asked });
   const result = await jevDecide(request, { deadlineMs: remaining(ctx) });

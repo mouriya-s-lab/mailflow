@@ -10,6 +10,8 @@
 // are the facts; `queue` is derived from them by deriveQueue every time they are written, so the
 // two never disagree. Every segment is a tagged union on `kind`.
 
+import { reputationUrlSubject } from '../api.js';
+
 export const PLUGIN_ID = 'jev-classify';
 export const MAX_ATTEMPTS = 5;
 export const DEFAULT_ROUTING_MIN_CONFIDENCE = 0.8;
@@ -596,19 +598,27 @@ export function firstChars(text, count) {
 // The registrable domains the links of a message go to.
 export const linkDomains = signals => [...new Set(signals.links.map(link => link.hrefDomain).filter(Boolean))];
 
-// { state, questions } for jevDecide. state = the K5 signals, a reputation summary per link
-// domain (registration and the kind of each listing) and the first BODY_CHARS of the body text.
-// Attachments go only as their names and types (inside the signals), never their content.
+// Keep each source's TagState while narrowing a complete snapshot to the current subject.
+// A changed body may name a subject absent from an older snapshot; it stays complete, not clean.
+function subjectTag(state, subject) {
+  return state.kind === 'complete'
+    ? { ...state, subjects: Object.hasOwn(state.subjects, subject) ? { [subject]: state.subjects[subject] } : {} }
+    : state;
+}
+
+// { state, questions } for jevDecide. Existing K5 signals remain intact; new URL tag evidence
+// uses only host and the canonical digest, never a second copy of the original URL.
 export function buildJevRequest({ signals, reputation, bodyText, categories, asked }) {
   const domains = {};
   for (const domain of linkDomains(signals)) {
-    const verdict = reputation.get(domain);
-    if (!verdict) throw new Error('jev-classify: no reputation answer for a link domain');
-    domains[domain] = {
-      registration: verdict.registration,
-      spamhaus_dbl: verdict.listings.spamhaus_dbl.kind,
-      urlhaus: verdict.listings.urlhaus.kind,
-    };
+    domains[domain] = Object.fromEntries(
+      ['rdap', 'spamhaus_dbl', 'urlhaus'].map(source => [source, subjectTag(reputation[source], domain)]),
+    );
+  }
+  const urls = {};
+  for (const link of signals.links) {
+    const { urlDigest, host } = reputationUrlSubject(link.href);
+    urls[urlDigest] = { host, safe_browsing: subjectTag(reputation.safe_browsing, urlDigest) };
   }
   const questions = {};
   if (asked.category) {
@@ -620,7 +630,7 @@ export function buildJevRequest({ signals, reputation, bodyText, categories, ask
   }
   if (asked.spam) questions.spam = { kind: 'noul', instructions: SPAM_INSTRUCTIONS };
   return {
-    state: JSON.stringify({ ...signals, linkDomains: domains, bodyText: firstChars(bodyText, BODY_CHARS) }),
+    state: JSON.stringify({ ...signals, linkDomains: domains, linkUrls: urls, bodyText: firstChars(bodyText, BODY_CHARS) }),
     questions,
   };
 }

@@ -1969,7 +1969,9 @@
       "jevUnconfigured": "Jev не настроен, поэтому почта не классифицируется. Администратор может задать API-ключ Jev в разделе Настройки → Внешние сервисы.",
       "jevConfigured": "Jev настроен: модель {{model}} по адресу {{baseUrl}}",
       "reputation": "Источники данных о репутации ссылок",
-      "sourceEnabled": "включён",
+      "pluginActivated": "плагин включён",
+      "pluginInactive": "плагин выключен",
+      "sourceConfigured": "настроен",
       "sourceUnconfigured": "нет ключа",
       "sourceDisabled": "выключен"
     },

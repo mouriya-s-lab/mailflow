@@ -1969,7 +1969,9 @@
       "jevUnconfigured": "Jev non è configurato, quindi la posta non viene classificata. Un amministratore può impostare la chiave API di Jev in Impostazioni → Servizi esterni.",
       "jevConfigured": "Jev è configurato: modello {{model}} su {{baseUrl}}",
       "reputation": "Fonti di reputazione dei link",
-      "sourceEnabled": "attiva",
+      "pluginActivated": "plugin attivato",
+      "pluginInactive": "plugin disattivato",
+      "sourceConfigured": "configurata",
       "sourceUnconfigured": "nessuna chiave",
       "sourceDisabled": "disattivata"
     },
