@@ -14,9 +14,22 @@ import { turnKey, currentTurn, exclusive, loadFloors, saveFloors, loadBackfill, 
 const newMailAccounts = new Set();
 export const newMailDrainActive = (pluginId, accountId) => newMailAccounts.has(turnKey(pluginId, accountId));
 
-export async function read(plugin, accountId, ids) {
+async function availability(plugin, accountId) {
+  if (!(await isPluginActivatedForAccount(plugin.id, accountId))) return { kind: 'inactive' };
+  if (await sourceStatus(plugin.source) !== 'enabled') return { kind: 'unconfigured' };
+  return { kind: 'ready' };
+}
+
+const unavailableStates = (ids, state) => new Map(ids.map(id => [id, state]));
+
+async function readAvailable(plugin, accountId, ids) {
   const annotations = await getMessageAnnotations(accountId, ids, plugin.id);
   return new Map(ids.map(id => [id, parseAnnotation(plugin.source, annotations[id])?.result ?? { kind: 'unchecked' }]));
+}
+
+export async function read(plugin, accountId, ids) {
+  const state = await availability(plugin, accountId);
+  return state.kind === 'ready' ? readAvailable(plugin, accountId, ids) : unavailableStates(ids, state);
 }
 
 export function runTick(plugin, { mgr, account }) {
@@ -79,9 +92,9 @@ async function advanceBackfill(plugin, account) {
 export function ensure(plugin, accountId, ids, { deadlineMs }) {
   const deadlineAt = Date.now() + deadlineMs;
   return exclusive(plugin.id, accountId, async () => {
-    const states = await read(plugin, accountId, ids);
-    if (!(await isPluginActivatedForAccount(plugin.id, accountId))) return new Map(ids.map(id => [id, { kind: 'inactive' }]));
-    if (await sourceStatus(plugin.source) !== 'enabled') return new Map(ids.map(id => [id, { kind: 'unconfigured' }]));
+    const state = await availability(plugin, accountId);
+    if (state.kind !== 'ready') return unavailableStates(ids, state);
+    const states = await readAvailable(plugin, accountId, ids);
     const missing = ids.filter(id => states.get(id).kind !== 'complete');
     const annotations = await getMessageAnnotations(accountId, missing, plugin.id);
     const bodies = missing.length && deadlineAt > Date.now()

@@ -239,9 +239,12 @@ remain exclusively in the administrator's external-service settings.
   in one annotation write. Five attempts use the existing 2, 4, 8 and 16 minute backoff; success
   replaces the unknown snapshot and completes the queue, exhaustion preserves the last unknown
   snapshot and completes it. A source switched off during a lookup writes nothing.
-- **Synchronous consumers.** The manifest's `tagSource.ensure` returns existing complete
-  snapshots without querying, including unknown snapshots currently in backoff. A missing
-  snapshot is checked and stored within the caller's deadline. A body failure returns
+- **Synchronous consumers.** Both `tagSource.read` and `tagSource.ensure` first check current
+  activation and source configuration: inactive or unconfigured sources answer that state without
+  reading annotations, so retained snapshots cannot contribute chips after deactivation. When
+  available, `tagSource.ensure` returns existing complete snapshots without querying, including
+  unknown snapshots currently in backoff. A missing snapshot is checked and stored within the
+  caller's deadline. A body failure returns
   `unavailable { body_unavailable }`, an exhausted caller deadline `unavailable { deadline }`.
   `tagSource.read` never queries a service. Consumers use `ensureMessageTags`/`getMessageTags`,
   not another plugin's private annotation. HTTP summary likewise only reads stored snapshots.

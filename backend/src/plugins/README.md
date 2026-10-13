@@ -112,6 +112,9 @@ host and verdict, never the original URL. Details and storage layout are in
 `backend/fork-features/README.md`.
 The hook's last-tick activation-and-configuration gate is an in-memory read, so merely registering
 the plugins does not enable the core's label-sibling read/star fan-out for inactive accounts.
+Both read and ensure check current activation and source configuration before reading annotations:
+inactive or unconfigured sources hide existing snapshots without deleting them, so disabled sources
+cannot contribute summary chips.
 
 ---
 
