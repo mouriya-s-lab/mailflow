@@ -1,11 +1,12 @@
-// Domain and URL reputation from outside lookup services (contract K6 in mouriya-s-lab/mailflow#5):
-// RDAP registration dates, Spamhaus DBL and URLhaus listings for registrable domains, and Google
-// Safe Browsing for link URLs. Only the lookup services are contacted, never a link itself.
+// Domain and URL reputation from outside lookup services (contract K6 in mouriya-s-lab/mailflow#5,
+// split per source by T1 in #42): RDAP registration dates, Spamhaus DBL and URLhaus listings for
+// registrable domains, and Google Safe Browsing for link URLs, each behind its own function. Only
+// the lookup services are contacted, never a link itself.
 //
 // Every failure of an outside service is a value, `unknown { reason }`, and a logger.warn limited
 // to one line per source per minute; nothing here reads a failure as "not listed". A source
-// without its key is `unconfigured` and is reported by status(), not logged per request. The RDAP
-// switch and the keys come from the admin setting (fork-features/service-config) on every call.
+// without its key is `unconfigured` and is reported by sourceStatus(), not logged per request. The
+// RDAP switch and the keys come from the admin setting (fork-features/service-config) on every call.
 //
 // Answers are kept in fork_reputation_cache, a copy of what the service said: each row expires
 // after the source's own lifetime and is fetched again after that. Failed lookups are never stored.
@@ -474,31 +475,49 @@ export function createReputation({
     return Date.now() + deadlineMs;
   }
 
-  async function lookupDomains(domains, options) {
-    const deadlineAt = deadlineOf(options);
+  // Registrable domains as registrableDomain returns them, without duplicates.
+  function domainSubjects(domains) {
     if (!Array.isArray(domains)) throw new TypeError('domains must be an array');
     domains.forEach((domain, i) => {
       if (registrableDomain(domain) !== domain) throw new TypeError(`domains[${i}] is not a registrable domain`);
     });
-    const subjects = [...new Set(domains)];
-    const config = await getConfigFn();
-    const everyDomain = result => new Map(subjects.map(domain => [domain, result]));
-    const [registration, dbl, urlhaus] = subjects.length === 0 ? [] : await Promise.all([
-      config.rdapEnabled ? cachedLookup('rdap', subjects, deadlineAt, rdapLookup) : everyDomain(unknown('disabled')),
-      config.spamhausDqsKey
-        ? cachedLookup('spamhaus_dbl', subjects, deadlineAt, dblLookup(config.spamhausDqsKey))
-        : everyDomain(UNCONFIGURED),
-      config.urlhausAuthKey
-        ? cachedLookup('urlhaus', subjects, deadlineAt, urlhausLookup(config.urlhausAuthKey))
-        : everyDomain(UNCONFIGURED),
-    ]);
-    return new Map(subjects.map(domain => [domain, {
-      registration: registration.get(domain),
-      listings: { spamhaus_dbl: dbl.get(domain), urlhaus: urlhaus.get(domain) },
-    }]));
+    return [...new Set(domains)];
   }
 
-  async function lookupUrls(urls, options) {
+  const everySubject = (subjects, result) => new Map(subjects.map(subject => [subject, result]));
+
+  // Map<domain, Registration>; `unknown { disabled }` for every domain while RDAP is switched off.
+  async function lookupRdap(domains, options) {
+    const deadlineAt = deadlineOf(options);
+    const subjects = domainSubjects(domains);
+    const config = await getConfigFn();
+    if (!config.rdapEnabled) return everySubject(subjects, unknown('disabled'));
+    if (subjects.length === 0) return new Map();
+    return cachedLookup('rdap', subjects, deadlineAt, rdapLookup);
+  }
+
+  // Map<domain, SourceVerdict>; `unconfigured` for every domain without the DQS key.
+  async function lookupSpamhausDbl(domains, options) {
+    const deadlineAt = deadlineOf(options);
+    const subjects = domainSubjects(domains);
+    const config = await getConfigFn();
+    if (!config.spamhausDqsKey) return everySubject(subjects, UNCONFIGURED);
+    if (subjects.length === 0) return new Map();
+    return cachedLookup('spamhaus_dbl', subjects, deadlineAt, dblLookup(config.spamhausDqsKey));
+  }
+
+  // Map<domain, SourceVerdict>; `unconfigured` for every domain without the Auth-Key.
+  async function lookupUrlhaus(domains, options) {
+    const deadlineAt = deadlineOf(options);
+    const subjects = domainSubjects(domains);
+    const config = await getConfigFn();
+    if (!config.urlhausAuthKey) return everySubject(subjects, UNCONFIGURED);
+    if (subjects.length === 0) return new Map();
+    return cachedLookup('urlhaus', subjects, deadlineAt, urlhausLookup(config.urlhausAuthKey));
+  }
+
+  // Map<url, SourceVerdict> for absolute http(s) URLs: a verdict on that URL, not on its domain.
+  async function lookupSafeBrowsing(urls, options) {
     const deadlineAt = deadlineOf(options);
     if (!Array.isArray(urls)) throw new TypeError('urls must be an array');
     const canonicalOf = new Map();
@@ -510,31 +529,34 @@ export function createReputation({
       expressionsOf.set(canonical, expressions);
     });
     const config = await getConfigFn();
-    if (!config.safeBrowsingApiKey || expressionsOf.size === 0) {
-      return new Map([...canonicalOf.keys()].map(url => [url, { safe_browsing: UNCONFIGURED }]));
-    }
+    if (!config.safeBrowsingApiKey) return everySubject([...canonicalOf.keys()], UNCONFIGURED);
+    if (expressionsOf.size === 0) return new Map();
     const verdicts = await cachedLookup('safe_browsing', [...expressionsOf.keys()], deadlineAt,
       safeBrowsingLookup(config.safeBrowsingApiKey, expressionsOf),
       row => row.result.kind !== 'listed' || now() - row.fetchedAt <= SAFE_BROWSING_LISTED_FRESH_MS);
-    return new Map([...canonicalOf].map(([url, canonical]) => [url, { safe_browsing: verdicts.get(canonical) }]));
+    return new Map([...canonicalOf].map(([url, canonical]) => [url, verdicts.get(canonical)]));
   }
 
-  async function status() {
+  // 'enabled', 'unconfigured' (no key) or, for RDAP only, 'disabled'. Reads the settings and nothing else.
+  async function sourceStatus(source) {
     const config = await getConfigFn();
     const keyed = key => (key ? 'enabled' : 'unconfigured');
-    return {
-      rdap: config.rdapEnabled ? 'enabled' : 'disabled',
-      spamhaus_dbl: keyed(config.spamhausDqsKey),
-      urlhaus: keyed(config.urlhausAuthKey),
-      safe_browsing: keyed(config.safeBrowsingApiKey),
-    };
+    switch (source) {
+      case 'rdap': return config.rdapEnabled ? 'enabled' : 'disabled';
+      case 'spamhaus_dbl': return keyed(config.spamhausDqsKey);
+      case 'urlhaus': return keyed(config.urlhausAuthKey);
+      case 'safe_browsing': return keyed(config.safeBrowsingApiKey);
+      default: throw new TypeError(`unknown reputation source ${JSON.stringify(source)}`);
+    }
   }
 
-  return { lookupDomains, lookupUrls, status };
+  return { lookupRdap, lookupSpamhausDbl, lookupUrlhaus, lookupSafeBrowsing, sourceStatus };
 }
 
 const reputation = createReputation();
 
-export const lookupDomains = reputation.lookupDomains;
-export const lookupUrls = reputation.lookupUrls;
-export const status = reputation.status;
+export const lookupRdap = reputation.lookupRdap;
+export const lookupSpamhausDbl = reputation.lookupSpamhausDbl;
+export const lookupUrlhaus = reputation.lookupUrlhaus;
+export const lookupSafeBrowsing = reputation.lookupSafeBrowsing;
+export const sourceStatus = reputation.sourceStatus;

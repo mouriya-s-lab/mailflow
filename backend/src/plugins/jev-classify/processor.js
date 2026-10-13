@@ -15,8 +15,9 @@
 import {
   logger, isPluginActivated, markMessages, currentUidFloors, listQueuedMessages, countQueued,
   listMessagesInQueueState, setMessageAnnotation, getMessageSignals, getMessageBodyTexts,
-  ensureMessageBodies, lookupDomainReputation, jevDecide, recordJevSpamVerdict, requestSpamRetrain,
-  ensureSpamVerdict, moveMessagesVerified, isLabelStoreAccount, applyLabel, ensureLabelFolders,
+  ensureMessageBodies, lookupRdap, lookupSpamhausDbl, lookupUrlhaus, jevDecide, recordJevSpamVerdict,
+  requestSpamRetrain, ensureSpamVerdict, moveMessagesVerified, isLabelStoreAccount, applyLabel,
+  ensureLabelFolders,
 } from '../api.js';
 import {
   PLUGIN_ID, refreshFloors, parseAnnotation, normalize, promote, questionsDue, executable,
@@ -283,12 +284,24 @@ async function processMessage(ctx, { row, annotation, lines: start }, { bodyOutc
   }
 }
 
+// Map<domain, { registration, listings: { spamhaus_dbl, urlhaus } }> from the three domain sources,
+// asked side by side under one deadline; rejects when any of them does.
+async function lookUpLinkDomains(domains, options) {
+  const [registration, dbl, urlhaus] = await Promise.all([
+    lookupRdap(domains, options), lookupSpamhausDbl(domains, options), lookupUrlhaus(domains, options),
+  ]);
+  return new Map(domains.map(domain => [domain, {
+    registration: registration.get(domain),
+    listings: { spamhaus_dbl: dbl.get(domain), urlhaus: urlhaus.get(domain) },
+  }]));
+}
+
 // The Jev decisions asked this attempt: { kind: 'unconfigured' } | { kind: 'applied', lines, decidedAt }.
 async function decide(ctx, row, signals, bodyText, asked, revision, lines) {
   const now = new Date();
   let reputation;
   try {
-    reputation = await lookupDomainReputation(linkDomains(signals), { deadlineMs: remaining(ctx) });
+    reputation = await lookUpLinkDomains(linkDomains(signals), { deadlineMs: remaining(ctx) });
   } catch (err) {
     logger.warn(`jev-classify: link reputation failed for message ${row.id}: ${err.message}`);
     return { kind: 'applied', lines: failDecisions(lines, asked, { kind: 'retry', errorKind: 'reputation_error' }, now), decidedAt: null };
