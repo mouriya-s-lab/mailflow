@@ -2076,5 +2076,26 @@
       "noMessageId": "(brak Message-ID)",
       "clear": "Wyczyść listę"
     }
+  },
+  "reputationTags": {
+    "description": "Sprawdź konfigurację źródła i uzupełnij tagi reputacji starszych wiadomości na każdym koncie.",
+    "configured": "Skonfigurowane",
+    "unconfigured": "Nieskonfigurowane — poproś administratora o wpisanie klucza w Administracja → Usługi zewnętrzne.",
+    "disabled": "Wyłączone — poproś administratora o włączenie RDAP w Administracja → Usługi zewnętrzne.",
+    "idle": "Nie rozpoczęto uzupełniania",
+    "running": "W toku · rozpoczęto {{time}}",
+    "completed": "Zakończono · koniec {{time}}",
+    "stopped": "Zatrzymano · zatrzymanie {{time}}",
+    "counts": "Oznaczone: {{marked}} · Przetworzone: {{processed}} · Błędy: {{failed}}",
+    "start": "Rozpocznij uzupełnianie",
+    "stop": "Zatrzymaj uzupełnianie",
+    "stopHint": "Zatrzymanie blokuje nowe partie. Wiadomości już w kolejce będą przetwarzane, więc licznik może nadal rosnąć.",
+    "refresh": "Odśwież stan",
+    "refreshFailed": "Nie udało się odświeżyć stanu: {{error}}",
+    "startConflict": "Uzupełnianie już trwa. Stan został odświeżony.",
+    "stopConflict": "Uzupełnianie nie trwa. Stan został odświeżony.",
+    "accountNotFound": "Nie znaleziono konta lub nie masz już do niego dostępu.",
+    "actionFailed": "Akcja uzupełniania nie powiodła się: {{error}}",
+    "noAccounts": "Brak kont pocztowych do uzupełnienia."
   }
 }

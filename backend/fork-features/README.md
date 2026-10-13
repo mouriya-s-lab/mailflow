@@ -262,6 +262,8 @@ remain exclusively in the administrator's external-service settings.
   ticks and synchronous ensures hold the same plugin/account turn, so progress and stop cannot
   overwrite one another.
 
+Settings → Categories shows each activated plugin's source configuration and per-account backfill status, `marked`/`processed`/`failed` counters, Start and Stop controls through the shared `frontend/src/plugins/reputation-tags/` settings component.
+
 | Path | What |
 |---|---|
 | `backend/src/plugins/reputation-tags/index.js` | Four manifests with independent source, hook, tick and authenticated router |

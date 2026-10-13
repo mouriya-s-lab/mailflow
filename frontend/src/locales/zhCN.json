@@ -2057,5 +2057,26 @@
       "noMessageId": "（无 Message-ID）",
       "clear": "清除列表"
     }
+  },
+  "reputationTags": {
+    "description": "查看来源配置，并为各账户的历史邮件回填信誉标签。",
+    "configured": "已配置",
+    "unconfigured": "未配置 — 请管理员在管理 → 外部服务中填写 key。",
+    "disabled": "已关闭 — 请管理员在管理 → 外部服务中启用 RDAP。",
+    "idle": "尚未开始回填",
+    "running": "回填中 · 开始于 {{time}}",
+    "completed": "已完成 · 完成于 {{time}}",
+    "stopped": "已停止 · 停止于 {{time}}",
+    "counts": "已标记：{{marked}} · 已处理：{{processed}} · 失败：{{failed}}",
+    "start": "开始回填",
+    "stop": "停止回填",
+    "stopHint": "停止会阻止新的批次入队。已排队的邮件仍会处理，因此停止后已处理计数可能继续增加。",
+    "refresh": "刷新状态",
+    "refreshFailed": "刷新状态失败：{{error}}",
+    "startConflict": "已有回填正在运行，已刷新状态。",
+    "stopConflict": "没有正在运行的回填，已刷新状态。",
+    "accountNotFound": "账户不存在或已无法访问。",
+    "actionFailed": "回填操作失败：{{error}}",
+    "noAccounts": "没有可回填的邮件账户。"
   }
 }

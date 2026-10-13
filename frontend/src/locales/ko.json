@@ -2057,5 +2057,26 @@
       "noMessageId": "(Message-ID 없음)",
       "clear": "목록 비우기"
     }
+  },
+  "reputationTags": {
+    "description": "출처 설정을 확인하고 각 계정의 이전 메일에 평판 태그를 채웁니다.",
+    "configured": "설정됨",
+    "unconfigured": "설정되지 않음 — 관리자에게 관리 → 외부 서비스에서 키를 입력하도록 요청하세요.",
+    "disabled": "비활성화됨 — 관리자에게 관리 → 외부 서비스에서 RDAP를 활성화하도록 요청하세요.",
+    "idle": "아직 과거 메일 처리를 시작하지 않음",
+    "running": "처리 중 · 시작 {{time}}",
+    "completed": "완료 · 종료 {{time}}",
+    "stopped": "중지됨 · 중지 {{time}}",
+    "counts": "표시됨: {{marked}} · 처리됨: {{processed}} · 실패: {{failed}}",
+    "start": "과거 메일 처리 시작",
+    "stop": "과거 메일 처리 중지",
+    "stopHint": "중지하면 새 일괄 작업을 추가하지 않습니다. 이미 대기 중인 메일은 계속 처리되므로 처리 수가 증가할 수 있습니다.",
+    "refresh": "상태 새로고침",
+    "refreshFailed": "상태 새로고침 실패: {{error}}",
+    "startConflict": "이미 과거 메일을 처리 중입니다. 상태를 새로고침했습니다.",
+    "stopConflict": "진행 중인 과거 메일 처리가 없습니다. 상태를 새로고침했습니다.",
+    "accountNotFound": "계정을 찾을 수 없거나 더 이상 접근할 수 없습니다.",
+    "actionFailed": "과거 메일 처리 작업 실패: {{error}}",
+    "noAccounts": "처리할 메일 계정이 없습니다."
   }
 }

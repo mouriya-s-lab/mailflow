@@ -2057,5 +2057,26 @@
       "noMessageId": "(sans Message-ID)",
       "clear": "Vider la liste"
     }
+  },
+  "reputationTags": {
+    "description": "Vérifiez la configuration de la source et ajoutez les étiquettes de réputation aux anciens messages de chaque compte.",
+    "configured": "Configurée",
+    "unconfigured": "Non configurée — demandez à un administrateur de saisir la clé dans Administration → Services externes.",
+    "disabled": "Désactivée — demandez à un administrateur d’activer RDAP dans Administration → Services externes.",
+    "idle": "Aucun rattrapage lancé",
+    "running": "En cours · lancé {{time}}",
+    "completed": "Terminé · fin {{time}}",
+    "stopped": "Arrêté · arrêt {{time}}",
+    "counts": "Marqués : {{marked}} · Traités : {{processed}} · Échecs : {{failed}}",
+    "start": "Lancer le rattrapage",
+    "stop": "Arrêter le rattrapage",
+    "stopHint": "L’arrêt empêche de nouveaux lots. Les messages déjà en file continuent d’être traités ; le compteur peut encore augmenter.",
+    "refresh": "Actualiser l’état",
+    "refreshFailed": "Échec de l’actualisation : {{error}}",
+    "startConflict": "Un rattrapage est déjà en cours. L’état a été actualisé.",
+    "stopConflict": "Aucun rattrapage n’est en cours. L’état a été actualisé.",
+    "accountNotFound": "Compte introuvable ou devenu inaccessible.",
+    "actionFailed": "Échec de l’action de rattrapage : {{error}}",
+    "noAccounts": "Aucun compte de messagerie à traiter."
   }
 }

@@ -2057,5 +2057,26 @@
       "noMessageId": "(no Message-ID)",
       "clear": "Clear list"
     }
+  },
+  "reputationTags": {
+    "description": "Check the source configuration and backfill reputation tags for historical mail in each account.",
+    "configured": "Configured",
+    "unconfigured": "Not configured — ask an administrator to enter the key in Administration → External services.",
+    "disabled": "Disabled — ask an administrator to enable RDAP in Administration → External services.",
+    "idle": "No backfill started",
+    "running": "Running · started {{time}}",
+    "completed": "Completed · finished {{time}}",
+    "stopped": "Stopped · stopped {{time}}",
+    "counts": "Marked: {{marked}} · Processed: {{processed}} · Failed: {{failed}}",
+    "start": "Start backfill",
+    "stop": "Stop backfill",
+    "stopHint": "Stopping prevents new batches. Mail already queued still finishes, so the processed count can increase after stopping.",
+    "refresh": "Refresh status",
+    "refreshFailed": "Status refresh failed: {{error}}",
+    "startConflict": "A backfill is already running. Status has been refreshed.",
+    "stopConflict": "No backfill is running. Status has been refreshed.",
+    "accountNotFound": "Account not found or no longer accessible.",
+    "actionFailed": "Backfill action failed: {{error}}",
+    "noAccounts": "No mail accounts to backfill."
   }
 }

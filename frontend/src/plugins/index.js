@@ -3,3 +3,4 @@
 // slot contributions exist by first paint. Mirrors the backend's loadBundledPlugins.
 import './gtd/index.jsx';
 import './jev-classify/index.jsx';
+import './reputation-tags/index.jsx';
