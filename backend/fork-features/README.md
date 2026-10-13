@@ -255,8 +255,9 @@ remain exclusively in the administrator's external-service settings.
   remain. The authenticated `/api/<pluginId>` router exposes `GET /status` and
   `POST`/`DELETE /accounts/:id/backfill` (409 for duplicate start or stop without a running
   run, 404 for another user's account). Stop prevents new marking batches; already queued work
-  still finishes. These commands, ticks and synchronous ensures hold the same plugin/account
-  turn, so progress and stop cannot overwrite one another.
+  still finishes and increments `processed` without changing the `stopped` state. These commands,
+  ticks and synchronous ensures hold the same plugin/account turn, so progress and stop cannot
+  overwrite one another.
 
 | Path | What |
 |---|---|

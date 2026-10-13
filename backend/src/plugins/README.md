@@ -101,7 +101,8 @@ there are no per-account settings. The account config contains only server-maint
 Each signed-in user's plugin router (`/api/<pluginId>`) provides `GET /status` and
 `POST`/`DELETE /accounts/:id/backfill`. Starting an already running backfill, or stopping one
 that is not running, returns 409; another user's account is 404. Status reads no external source.
-Stopping prevents another batch from being marked; previously queued messages still finish.
+Stopping prevents another batch from being marked; previously queued messages still finish and
+increment `processed`, while the backfill state remains `stopped`.
 
 The interval tick and `inboxIngest` wake-up use the existing Jev budgets and retry policy. A first
 activated tick establishes new-mail floors, including when a source has no key; unconfigured or

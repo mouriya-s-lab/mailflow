@@ -31,7 +31,7 @@ export const saveBackfill = (pluginId, accountId, userId, value) =>
 export async function recordProcessed(pluginId, accountId) {
   const stored = await storage.getValue(pluginId, backfillKey(accountId));
   const run = parseBackfill(stored?.value);
-  if (run.kind === 'running') {
+  if (run.kind !== 'idle') {
     await saveBackfill(pluginId, accountId, stored.owner_id, { ...run, processed: run.processed + 1 });
   }
 }
