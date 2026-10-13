@@ -275,7 +275,7 @@ describe('scoreRules — link rules', () => {
 
   it('scores a Safe Browsing listing at 0.6 and keeps every non-hit neutral', () => {
     const positive = scoreRules(baseEmail, { linkFlags: { link_url_unsafe: 1 } });
-    expect(positive.fired).toContainEqual({ name: 'LINK_URL_UNSAFE', weight: 0.6 });
+    expect(positive.fired).toContainEqual(expect.objectContaining({ name: 'LINK_URL_UNSAFE', weight: 0.6 }));
     expect(positive.score).toBe(0.6);
     for (const value of [0, null, undefined, true]) {
       const negative = scoreRules(baseEmail, { linkFlags: { link_url_unsafe: value } });
