@@ -238,6 +238,53 @@ describe.skipIf(!process.env.MAILFLOW_TEST_DATABASE_URL)('stored plugin results 
     expect(ids(notChecked)).not.toContain(IDS.uncertain);
   });
 
+  it.each(['jev_done', 'jev_retry', 'rdap_registration', 'rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing'])(
+    'keeps a PostgreSQL-normalized leap second unrecognized in %s',
+    async variant => {
+      const badTime = '2026-10-14T12:00:60.000Z';
+      const messageId = id(40);
+      let pluginId;
+      let stored;
+      let read;
+      if (variant.startsWith('jev_')) {
+        pluginId = 'jev-classify';
+        stored = structuredClone(variant === 'jev_done' ? jevDone(0.9, 'recorded') : jevRetry);
+        stored.spam.decision[variant === 'jev_done' ? 'decidedAt' : 'dueAt'] = badTime;
+        read = jevResults;
+      } else {
+        const source = variant === 'rdap_registration' ? 'rdap' : variant;
+        pluginId = SOURCE_PLUGINS[source];
+        stored = variant === 'rdap_registration'
+          ? reputation({ 'leap.example': { kind: 'known', registeredAt: badTime } })
+          : reputation({});
+        if (variant !== 'rdap_registration') stored.result.checkedAt = badTime;
+        read = source === 'rdap' ? rdapResults : input => listingResults(source, input);
+      }
+      await addMessage({ id: messageId, accountId: ACCOUNT, uid: 40, pluginAnnotations: annotation(pluginId, stored) });
+      const page = await read({ facet: 'all', limit: '200' });
+      expect(page.messages.find(message => message.id === messageId).facets).toEqual(['not_checked', 'unrecognized']);
+      const checked = await read({ facet: 'checked', limit: '200' });
+      expect(ids(checked)).not.toContain(messageId);
+    },
+  );
+
+  it.each([
+    ['0.100000000000000000001', 'ham'],
+    ['0.899999999999999999999', 'spam'],
+  ])('compares stored probability %s at the owner JavaScript precision', async (probabilityJson, outcome) => {
+    const messageId = id(41);
+    await addMessage({ id: messageId, accountId: ACCOUNT, uid: 41 });
+    // Bind the JSON number text so JSON.stringify does not round the input before PostgreSQL.
+    await client.query(
+      `UPDATE messages SET plugin_annotations = jsonb_build_object('jev-classify',
+         jsonb_set($1::jsonb, '{spam,decision,probability}', $2::text::jsonb)) WHERE id = $3`,
+      [JSON.stringify(jevDone(0.5, 'below_threshold')), probabilityJson, messageId],
+    );
+    const page = await jevResults({ facet: outcome, limit: '200' });
+    expect(ids(page)).toContain(messageId);
+    expect(ids(await jevResults({ facet: 'uncertain', limit: '200' }))).not.toContain(messageId);
+  });
+
   it('counts live physical rows, not Message-ID values, and enforces user/account ownership', async () => {
     const all = await jevResults({ facet: 'all', limit: '200' });
     expect(all.kind).toBe('ok');

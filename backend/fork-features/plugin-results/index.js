@@ -13,15 +13,17 @@ const SOURCES = ['rdap', 'spamhaus_dbl', 'urlhaus', 'safe_browsing'];
 const stringAt = value => `(jsonb_typeof(${value}) = 'string')`;
 const numberAt = value => `(CASE WHEN jsonb_typeof(${value}) = 'number' THEN (${value} #>> '{}')::numeric END)`;
 const countAt = value => `(${numberAt(value)} BETWEEN 0 AND 9007199254740991 AND ${numberAt(value)} = trunc(${numberAt(value)}))`;
-// Producers write ISO timestamps. A damaged or unrecognized saved value must not abort a whole
-// account scan or silently become a negative answer. pg_input_is_valid keeps casts bounded.
-const timeAt = value => `(CASE WHEN ${stringAt(value)} AND (${value} #>> '{}') ~ '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$'
+// Producers write ISO timestamps. Reject PostgreSQL's leap-second normalization because the
+// owner JavaScript parser rejects seconds=60; malformed values must not abort an account scan.
+const timeAt = value => `(CASE WHEN ${stringAt(value)} AND (${value} #>> '{}') ~ '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:[0-5]\\d(\\.\\d{1,3})?Z$'
   AND pg_input_is_valid(${value} #>> '{}', 'timestamp with time zone')
   THEN (${value} #>> '{}')::timestamptz END)`;
 const UNKNOWN_REASONS = "('timeout','rate_limited','error')";
 
 function jevProjection() {
-  const probability = numberAt("d -> 'probability'");
+  const storedProbability = numberAt("d -> 'probability'");
+  // The JSON page is decoded as JavaScript numbers before the owner applies labelFor.
+  const probability = `(CASE WHEN ${storedProbability} BETWEEN 0 AND 1 THEN (${storedProbability})::double precision END)`;
   const decisionDone = `(${probability} BETWEEN 0 AND 1 AND ${stringAt("d -> 'model'")} AND ${timeAt("d -> 'decidedAt'")} IS NOT NULL)`;
   const retry = `(${countAt("d -> 'attempts'")} AND ${stringAt("d -> 'errorKind'")} AND length(d ->> 'errorKind') > 0 AND ${timeAt("d -> 'dueAt'")} IS NOT NULL)`;
   return `
