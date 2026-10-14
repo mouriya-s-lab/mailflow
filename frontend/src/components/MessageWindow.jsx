@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/index.js';
 import FloatingWindow from './FloatingWindow.jsx';
 import MessagePane from './MessagePane.jsx';
+import { resolvePresentedMessage } from '../../fork-features/plugin-results/messagePresentation.js';
 
 // One detached message window (#219): a FloatingWindow frame wrapping a MessagePane
 // instance bound to a specific message id (independent of the main list selection).
@@ -13,10 +14,9 @@ export default function MessageWindow({ win, zIndex }) {
   const setMessageWindowMinimized = useStore(s => s.setMessageWindowMinimized);
   const updateMessageWindowRect = useStore(s => s.updateMessageWindowRect);
 
-  // Resolve the title + accent from whatever copy of the message the store has.
-  const message = useStore(s =>
-    (s.searchQuery.trim() ? s.searchResults : s.messages).find(m => m.id === win.messageId)
-    ?? Object.values(s.threadMessages).flat().find(m => m.id === win.messageId));
+  const message = useStore(s => resolvePresentedMessage(
+    win.messageId, 'single', s.searchQuery.trim() ? s.searchResults : s.messages, s.threadMessages,
+  ));
   const accentColor = message?.account_color || undefined;
   const title = message?.subject?.trim() || t('common.noSubject');
 

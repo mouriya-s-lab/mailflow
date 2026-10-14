@@ -2119,7 +2119,7 @@
     "revision": "결과 버전 {{revision}}",
     "noRevision": "결과 버전을 사용할 수 없음",
     "checkedAt": "{{time}}에 검사함",
-    "decidedAt": "{{time}}에 평가함",
+    "decidedAt": "평가 시각",
     "model": "모델",
     "probability": "스팸 확률",
     "training": "기록된 학습 결과",

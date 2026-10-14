@@ -2138,7 +2138,7 @@
     "revision": "Verze výsledku {{revision}}",
     "noRevision": "Verze výsledku není k dispozici",
     "checkedAt": "Zkontrolováno {{time}}",
-    "decidedAt": "Posouzeno {{time}}",
+    "decidedAt": "Čas posouzení",
     "model": "Model",
     "probability": "Pravděpodobnost spamu",
     "training": "Zaznamenaný výsledek trénování",

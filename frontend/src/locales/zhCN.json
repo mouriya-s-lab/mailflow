@@ -2119,7 +2119,7 @@
     "revision": "结果版本 {{revision}}",
     "noRevision": "结果版本不可用",
     "checkedAt": "检查于 {{time}}",
-    "decidedAt": "判定于 {{time}}",
+    "decidedAt": "判定时间",
     "model": "模型",
     "probability": "垃圾邮件概率",
     "training": "已记录的训练结果",

@@ -2119,7 +2119,7 @@
     "revision": "Result version {{revision}}",
     "noRevision": "Result version unavailable",
     "checkedAt": "Checked at {{time}}",
-    "decidedAt": "Assessed at {{time}}",
+    "decidedAt": "Assessment time",
     "model": "Model",
     "probability": "Spam probability",
     "training": "Recorded training outcome",

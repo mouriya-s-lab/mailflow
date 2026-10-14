@@ -2138,7 +2138,7 @@
     "revision": "Wersja wyniku {{revision}}",
     "noRevision": "Wersja wyniku niedostępna",
     "checkedAt": "Sprawdzono o {{time}}",
-    "decidedAt": "Oceniono o {{time}}",
+    "decidedAt": "Czas oceny",
     "model": "Model",
     "probability": "Prawdopodobieństwo spamu",
     "training": "Zapisany wynik trenowania",

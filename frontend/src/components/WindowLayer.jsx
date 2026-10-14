@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/index.js';
 import MessageWindow from './MessageWindow.jsx';
+import { resolvePresentedMessage } from '../../fork-features/plugin-results/messagePresentation.js';
 
 // Renders all detached message windows (#219): open ones as floating frames, minimized
 // ones as pills in a bottom-left dock so several minimized windows lay out side by side
@@ -27,8 +28,7 @@ export default function WindowLayer() {
 
   const resolveTitle = (messageId) => {
     const list = searchQuery.trim() ? searchResults : messages;
-    const msg = list.find(m => m.id === messageId)
-      ?? Object.values(threadMessages).flat().find(m => m.id === messageId);
+    const msg = resolvePresentedMessage(messageId, 'single', list, threadMessages);
     return {
       title: msg?.subject?.trim() || t('common.noSubject'),
       accent: msg?.account_color || 'var(--accent)',

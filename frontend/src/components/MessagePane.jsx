@@ -23,6 +23,7 @@ import SpamBadge from './SpamBadge.jsx';
 import SpamExplainModal from './SpamExplainModal.jsx';
 import MessageTags from './MessageTags.jsx';
 import JevSpamDetails from '../../fork-features/plugin-results/JevSpamDetails.jsx';
+import { resolvePresentedMessage } from '../../fork-features/plugin-results/messagePresentation.js';
 import { classifyAttachmentRisk } from '../utils/attachmentRisk.js';
 import { downloadEml } from '../utils/downloadEml.js';
 import { buildPrintDocument, openPrintWindow, printInWindow } from '../utils/printMessage.js';
@@ -106,6 +107,7 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
   const { t } = useTranslation();
   const {
     messages, searchResults, searchQuery, selectedMessageId: globalSelectedId, setSelectedMessage,
+    selectedMessagePresentation,
     updateMessage, removeMessage, decrementUnread, incrementUnread, openCompose, accounts, addNotification,
     imageWhitelist, addToImageWhitelist, blockRemoteImages, threadMessages,
     replyDefault, shortcuts, recentFolders, favoriteFolders, todoistConnected,
@@ -195,8 +197,9 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
   }, [selectedMessageId]);
 
   const allMessages = searchQuery.trim() ? searchResults : messages;
-  const message = allMessages.find(m => m.id === selectedMessageId)
-    ?? Object.values(threadMessages).flat().find(m => m.id === selectedMessageId);
+  const message = resolvePresentedMessage(
+    selectedMessageId, windowMode ? 'single' : selectedMessagePresentation, allMessages, threadMessages,
+  );
 
   useEffect(() => {
     setResolvedSubject(null);

@@ -2119,7 +2119,7 @@
     "revision": "Versão do resultado {{revision}}",
     "noRevision": "Versão do resultado indisponível",
     "checkedAt": "Verificado em {{time}}",
-    "decidedAt": "Avaliado em {{time}}",
+    "decidedAt": "Data da avaliação",
     "model": "Modelo",
     "probability": "Probabilidade de spam",
     "training": "Resultado de treinamento registrado",

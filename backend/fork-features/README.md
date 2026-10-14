@@ -336,9 +336,11 @@ classification, training, backfill, activation or configuration write.
   conversation cards and detached windows. The existing four-source live summaries stay
   activation-gated. Open mail uses the selected row UUID, never a Message-ID fallback;
   an ephemeral single-message presentation prevents conversation deduplication from
-  selecting another copy. The next ordinary selection restores automatic presentation;
-  no conversation preference is changed. Ordinary mark-as-read behavior remains separate
-  from result inspection.
+  selecting another copy. Its existing `__dl_<UUID>` point-lookup record takes precedence
+  over a grouped row's thread-level subject/sender in the pane, detached frame and
+  minimized title; no additional fetch or cache is created. The next ordinary selection
+  restores automatic presentation; no conversation preference is changed. Ordinary
+  mark-as-read behavior remains separate from result inspection.
 
 | Path | What |
 |---|---|
@@ -347,6 +349,7 @@ classification, training, backfill, activation or configuration write.
 | `frontend/fork-features/plugin-results/` | Shared panel, saved observations, Jev reading detail and exact-row navigation |
 | `frontend/src/components/AdminPanel.jsx` | Plugin metadata-driven result entry, independent from activation |
 | `frontend/src/components/ReadingPane.jsx`, `frontend/src/store/index.js` | Transient exact-row presentation, reset by ordinary selection |
+| `frontend/src/components/MessagePane.jsx`, `MessageWindow.jsx`, `WindowLayer.jsx` | Shared `resolvePresentedMessage` precedence for an existing exact UUID snapshot; ordinary grouped rows keep their semantics |
 
 
 ## Anti-spam training records and verdict requests
