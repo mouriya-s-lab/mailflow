@@ -271,6 +271,9 @@ describe.skipIf(!process.env.MAILFLOW_TEST_DATABASE_URL)('stored plugin results 
   it.each([
     ['0.100000000000000000001', 'ham'],
     ['0.899999999999999999999', 'spam'],
+    ['1e-1000', 'ham'],
+    ['1e-324', 'ham'],
+    ['5e-324', 'ham'],
   ])('compares stored probability %s at the owner JavaScript precision', async (probabilityJson, outcome) => {
     const messageId = id(41);
     await addMessage({ id: messageId, accountId: ACCOUNT, uid: 41 });
@@ -282,6 +285,7 @@ describe.skipIf(!process.env.MAILFLOW_TEST_DATABASE_URL)('stored plugin results 
     );
     const page = await jevResults({ facet: outcome, limit: '200' });
     expect(ids(page)).toContain(messageId);
+    expect(page.messages.find(message => message.id === messageId).annotation.spam.decision.probability).toBe(JSON.parse(probabilityJson));
     expect(ids(await jevResults({ facet: 'uncertain', limit: '200' }))).not.toContain(messageId);
   });
 

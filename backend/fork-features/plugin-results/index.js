@@ -22,8 +22,11 @@ const UNKNOWN_REASONS = "('timeout','rate_limited','error')";
 
 function jevProjection() {
   const storedProbability = numberAt("d -> 'probability'");
-  // The JSON page is decoded as JavaScript numbers before the owner applies labelFor.
-  const probability = `(CASE WHEN ${storedProbability} BETWEEN 0 AND 1 THEN (${storedProbability})::double precision END)`;
+  // Match the JSON-decoded JavaScript number, including underflow to zero. Within [0,1],
+  // underflow is the only float8 conversion failure; out-of-domain numbers stay unrecognized.
+  const probability = `(CASE WHEN ${storedProbability} BETWEEN 0 AND 1 THEN
+    CASE WHEN pg_input_is_valid((${storedProbability})::text, 'double precision')
+      THEN (${storedProbability})::double precision ELSE 0::double precision END END)`;
   const decisionDone = `(${probability} BETWEEN 0 AND 1 AND ${stringAt("d -> 'model'")} AND ${timeAt("d -> 'decidedAt'")} IS NOT NULL)`;
   const retry = `(${countAt("d -> 'attempts'")} AND ${stringAt("d -> 'errorKind'")} AND length(d ->> 'errorKind') > 0 AND ${timeAt("d -> 'dueAt'")} IS NOT NULL)`;
   return `
