@@ -276,8 +276,8 @@ export default function PluginResultsPanel({ pluginId, pluginName, onClose }) {
 
   const accountOptions = queryReady ? accounts : [];
   const countByFacet = useMemo(
-    () => new Map((queryReady ? counts : []).map(item => [item.facet, item.count])),
-    [counts, queryReady],
+    () => new Map((queryReady && !loading && !error ? counts : []).map(item => [item.facet, item.count])),
+    [counts, error, loading, queryReady],
   );
   const facetOptions = useMemo(() => {
     const facets = Array.from(new Set((queryReady ? counts : []).map(item => item.facet).filter(item => item !== 'all')));

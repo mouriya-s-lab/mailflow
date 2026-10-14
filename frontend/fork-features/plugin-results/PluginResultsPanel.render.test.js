@@ -197,6 +197,12 @@ describe('PluginResultsPanel', () => {
     assert.equal(requests[1].url.searchParams.get('accountId'), accountB.id);
     assert.equal(requests[1].url.searchParams.get('facet'), 'all');
     assert.equal(requests[1].url.searchParams.get('cursor'), null, 'changing account starts at the first page');
+    const pendingFacetOptions = rootHost.querySelector('[data-testid="plugin-results-facet"]').options;
+    assert.equal(
+      Array.from(pendingFacetOptions).some(option => /\(\d+\)/.test(option.textContent)),
+      false,
+      'a pending account scope must not present the previous account counts',
+    );
 
     await chooseFacet('unknown');
     assert.equal(requests.length, 3);
