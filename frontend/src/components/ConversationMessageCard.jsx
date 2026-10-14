@@ -16,6 +16,7 @@ import { useAiActions } from '../hooks/useAiActions.js';
 import { BUILTIN_SUMMARIZE } from '../aiActions.js';
 
 import MessageTags from './MessageTags.jsx';
+import JevSpamDetails from '../../fork-features/plugin-results/JevSpamDetails.jsx';
 // One message inside a conversation.
 //
 // Collapsed it is a header row and nothing else: no body request, no frame, no document.
@@ -230,6 +231,7 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
 
       {expanded && (
         <div style={{ padding: '0 12px 12px' }}>
+          <JevSpamDetails key={message.id} messageId={message.id} />
           {loading && (
             <div style={{ padding: '12px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div className="skeleton-line" style={{ height: 13, width: '62%', borderRadius: 4 }} />

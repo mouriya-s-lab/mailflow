@@ -19,9 +19,11 @@ import {
   updateBackfill, loadIncidents, clearIncidents, loadStats,
 } from './records.js';
 import { jevCallCount, noteNewMailDrain, requeueDisabledSpam } from './processor.js';
+import { registerStoredResultRoutes } from './results.js';
 
 const router = Router();
 router.use(requireAuth);
+registerStoredResultRoutes(router);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE = 200;

@@ -634,3 +634,25 @@ export function buildJevRequest({ signals, reputation, bodyText, categories, ask
     questions,
   };
 }
+
+// This is an inspection DTO, not a queue normalization: observing it must never open work.
+export function storedSpamObservation(raw, facets) {
+  const revision = isCount(raw?.revision) ? raw.revision : null;
+  if (facets.includes('unrecognized')) return { kind: 'unrecognized', revision };
+  if (raw?.spam == null) return { kind: 'none', revision };
+  const decision = parseSpamDecision(raw.spam.decision);
+  let training;
+  try {
+    training = parseTraining(raw.spam.training);
+  } catch (error) {
+    if (!(error instanceof Corrupt)) throw error;
+    training = { kind: 'unrecognized' };
+  }
+  return {
+    kind: 'jev_spam', revision,
+    decision: decision.kind === 'done'
+      ? { ...decision, outcome: labelFor(decision.probability) ?? 'uncertain' }
+      : decision,
+    training,
+  };
+}

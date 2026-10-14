@@ -17,6 +17,7 @@ import MessagePane from './MessagePane.jsx';
 export default function ReadingPane() {
   const conversationMode = useStore(s => s.conversationMode);
   const selectedMessageId = useStore(s => s.selectedMessageId);
+  const selectedMessagePresentation = useStore(s => s.selectedMessagePresentation);
   const messages = useStore(s => s.messages);
   const searchResults = useStore(s => s.searchResults);
   const selectedFolder = useStore(s => s.selectedFolder);
@@ -40,7 +41,7 @@ export default function ReadingPane() {
 
   // A message with no thread of its own is just a message, and a search deliberately shows
   // the one matched message rather than its conversation.
-  const pane = !shouldUseConversationPane({ mode, searchQuery, message: selected }) ? <MessagePane /> : (
+  const pane = selectedMessagePresentation === 'single' || !shouldUseConversationPane({ mode, searchQuery, message: selected }) ? <MessagePane /> : (
 
     <ConversationPane
       threadId={selected.thread_id}

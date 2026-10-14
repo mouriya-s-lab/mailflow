@@ -82,7 +82,6 @@ Storage follows the AI provider's `ai_config`: one `system_settings` row per ser
 | `backend/src/index.js` | Mounts the `/api/admin/fork` router before the generic admin router |
 | `frontend/src/components/AdminPanel.jsx` | Admin-only `external-services` tab in the Administration group, its render line and two search entries |
 | `frontend/src/locales/*.json` | `admin.tabs.externalServices` and `admin.externalServices.*` strings |
-| `frontend/src/locales/i18n.test.js` | `SAME_VALUE_ALLOWED` entries for the `admin.externalServices.*` strings that are product names or the same word across languages |
 
 ## Jev client
 
@@ -275,7 +274,7 @@ Settings → Categories shows each activated plugin's source configuration and p
 
 ## Message tags
 
-The four tag plugins write their findings into their own namespace of a message's annotations, and nothing outside a plugin parses that namespace. `fork-features/message-tags` is the one way to read them: `ensureMessageTags(accountId, ids, { deadlineMs })` returns, for every requested message, a state for each of the four sources — `inactive` (that plugin is not activated for the user), `unconfigured` (its source has no key, or is switched off), `complete { checkedAt, subjects }` (the snapshot the plugin stored, in the source's own types), `unchecked` (nothing stored yet; the read path only) or `unavailable { reason }` with `reason` `plugin_failed`, `deadline` or `body_unavailable` — and asks a plugin to look a missing snapshot up, waiting up to the caller's deadline. `getMessageTags(accountId, ids)` answers from what is stored and contacts nothing. A plugin that throws, answers outside this contract, or leaves a requested message out is that source's `plugin_failed`: logged, and never passed on to a consumer. `POST /api/message-tags/summary { ids }` answers the caller's own messages with the chips worth showing and a per-source summary that carries no domain and no URL. The plugin API exports `ensureMessageTags`, `getMessageTags`, `tagSourcePlugins` and the read-only `getMessageLinks`.
+The four tag plugins write their findings into their own namespace of a message's annotations. Owners parse their private state; the fixed stored-result queries below additionally validate a small public read projection for counting and filtering. For live mail consumers, `fork-features/message-tags` dispatches through each owner's `tagSource`: `ensureMessageTags(accountId, ids, { deadlineMs })` returns, for every requested message, a state for each of the four sources — `inactive` (that plugin is not activated for the user), `unconfigured` (its source has no key, or is switched off), `complete { checkedAt, subjects }` (the snapshot the plugin stored, in the source's own types), `unchecked` (nothing stored yet; the read path only) or `unavailable { reason }` with `reason` `plugin_failed`, `deadline` or `body_unavailable` — and asks a plugin to look a missing snapshot up, waiting up to the caller's deadline. `getMessageTags(accountId, ids)` answers from what is stored and contacts nothing. A plugin that throws, answers outside this contract, or leaves a requested message out is that source's `plugin_failed`: logged, and never passed on to a consumer. `POST /api/message-tags/summary { ids }` answers the caller's own messages with the chips worth showing and a per-source summary that carries no domain and no URL. The plugin API exports `ensureMessageTags`, `getMessageTags`, `tagSourcePlugins` and the read-only `getMessageLinks`.
 
 | Path | What |
 |---|---|
@@ -288,6 +287,67 @@ The four tag plugins write their findings into their own namespace of a message'
 ### Tags in the mail list
 
 Every message row and every open message shows what the tag plugins found for it, and a single user preference `showMessageTags` (Settings, stored in `users.preferences`) turns the whole thing off. The list shows the findings worth noticing — a domain a lookup source lists, a domain registered in the last 30 days, or a source that could not answer — and the message view additionally lists the state of all four sources, including the ones the user has not activated, because "not checked" and "not enabled" are different facts. Core owns this rendering: it reads `POST /api/message-tags/summary` for the message ids currently on screen (one request per set of visible ids, the way the reply-draft indicators work) and never looks a source up itself, so scrolling and opening messages cost no outside queries. With the preference off, nothing is requested and nothing is drawn.
+
+## Inspecting stored plugin results
+
+Settings → Plugins offers **View stored results** on Jev and each of the four reputation
+plugins, even when the plugin is disabled. The panel filters by account and result type,
+shows counts and a cursor-paged mail list, expands the saved observation and opens that
+exact physical mail record. It reads existing results only: no lookup, body ensure,
+classification, training, backfill, activation or configuration write.
+
+- **Counting unit and lifetime.** One live `messages` row owned by the signed-in user
+  (`is_deleted = false`), across all folders including Sent, Drafts and Trash. Folder/label
+  copies count separately, even with the same RFC Message-ID; multiple matching subjects
+  in one row count once per facet. Moving, copying or deleting rows can change the totals.
+  These are current stored-record counts, not cumulative decisions, request totals or queue
+  completion counters. No saved assessment does not imply the mail was never processed.
+- **Jev.** `checked` means a valid saved `spam.decision.kind = 'done'`. The owner's existing
+  thresholds produce `spam` (≥ 0.9), `ham` (≤ 0.1) or `uncertain`; pending, retry, failed and
+  disabled spam decisions remain separate. Details show probability, model, decision time
+  and the saved training outcome, not the current training database total. Category actions
+  and queue completion are not spam judgments.
+- **Reputation.** A valid complete snapshot counts as checked, including empty subjects
+  and unknown answers. RDAP distinguishes registered, new domain, not found, unknown and
+  no links; new domain uses the shared 30-day window at the snapshot's `checkedAt`, not
+  today's date. Listing sources distinguish listed, not listed, unknown and no links:
+  any listed subject is a match, but `not_listed` requires a nonempty set with every
+  subject not listed. Facets overlap and cannot be added together. Unrecognized public
+  result formats are explicit `unrecognized` and `not_checked`, never treated as safe.
+- **Saved versus live.** Current activation and service configuration are displayed
+  separately from the saved annotation revision and observation time. Inspection retains
+  old results when a plugin is inactive or unconfigured; it neither asserts that they
+  are current nor makes them eligible for live chips or classification consumers.
+- **HTTP.** Each of the five authenticated owner routers exposes `GET /results` with
+  optional `accountId`, `facet`, `cursor` and `limit` (1–200, default 50), and
+  `GET /results/:messageId`. The page is `{ observedAt, plugin, accounts, counts,
+  messages, nextCursor }`; detail is `{ observedAt, plugin, message }`. Messages contain
+  whitelisted metadata, facets and an owner-produced observation, never the raw annotation.
+  Missing/foreign accounts or mail records are 404; invalid ids, facets and cursors are 400.
+  A cursor is bound to plugin, account scope and facet; sorting is mail date descending,
+  null dates last, then physical UUID descending.
+- **Query boundary.** `readJevSpamResults`/`readJevSpamMessage` bind the Jev namespace;
+  `readReputationResults`/`readReputationMessage` resolve a source's owning plugin through
+  `tagSourcePlugins()`. Fixed Jev, RDAP and listing SQL projections validate only the
+  public result fields. One SQL statement gives counts and a page from the same snapshot;
+  only page annotations reach the owner DTO parser. Each later page is a fresh read.
+  There is no summary table/cache, schema migration or persisted derived facet.
+- **Reading mail.** Jev's saved spam detail appears in the normal reading pane, expanded
+  conversation cards and detached windows. The existing four-source live summaries stay
+  activation-gated. Open mail uses the selected row UUID, never a Message-ID fallback;
+  an ephemeral single-message presentation prevents conversation deduplication from
+  selecting another copy. The next ordinary selection restores automatic presentation;
+  no conversation preference is changed. Ordinary mark-as-read behavior remains separate
+  from result inspection.
+
+| Path | What |
+|---|---|
+| `backend/fork-features/plugin-results/` | Fixed ownership-scoped SQL projections, facets, cursor parsing and PostgreSQL contract tests |
+| `backend/src/plugins/jev-classify/results.js`, `reputation-tags/results.js` | Owner-authenticated endpoints and whitelisted observation DTOs |
+| `frontend/fork-features/plugin-results/` | Shared panel, saved observations, Jev reading detail and exact-row navigation |
+| `frontend/src/components/AdminPanel.jsx` | Plugin metadata-driven result entry, independent from activation |
+| `frontend/src/components/ReadingPane.jsx`, `frontend/src/store/index.js` | Transient exact-row presentation, reset by ordinary selection |
+
 
 ## Anti-spam training records and verdict requests
 
@@ -346,7 +406,6 @@ A user's anti-spam model is split by language: each language the user's training
 | `backend/src/services/spamPipeline.js` | Classifies with the partition of the message's language; `spam_details.partition` |
 | `backend/src/routes/spam.js` | Status lists partitions; decay read/written in preferences; explain names the partition |
 | `frontend/src/components/SpamSettings.jsx`, `frontend/src/components/SpamExplainModal.jsx`, `frontend/src/locales/*.json` | Partition table in the settings, partition line in "Why?", their strings |
-| `frontend/src/locales/i18n.test.js` | `SAME_VALUE_ALLOWED` entry for `spam.statLanguage` ("Idioma" in es and ptBR) |
 | `backend/src/services/spam*.test.js`, `backend/src/routes/spam.test.js`, `backend/src/routes/mail.spam.test.js` | Follow the per-language contract; tokenizer, partition choice and per-user isolation cases |
 
 ## Plugin work queue and verified move
@@ -522,6 +581,5 @@ The plugin `jev-classify` (`backend/src/plugins/jev-classify/`) asks Jev to clas
 | `backend/src/plugins/loadPlugins.js` | Registers `jevClassifyPlugin` after GTD |
 | `frontend/src/plugins/index.js` | Imports `./jev-classify/index.jsx` after GTD |
 | `frontend/src/locales/*.json` | `jevClassify.*` strings |
-| `frontend/src/locales/i18n.test.js` | `SAME_VALUE_ALLOWED` entry for `jevClassify.incidents.messageId` (the header name) |
 
 An account whose plugin is active for `inboxIngest` also counts as keeping label siblings in `routes/mail.js` (`accountMaintainsLabelSiblings`), so marking such an account's message read or starred also updates its other copies with the same Message-ID in that account.

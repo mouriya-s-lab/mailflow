@@ -22,6 +22,7 @@ import FolderPathLabel from './FolderPathLabel.jsx';
 import SpamBadge from './SpamBadge.jsx';
 import SpamExplainModal from './SpamExplainModal.jsx';
 import MessageTags from './MessageTags.jsx';
+import JevSpamDetails from '../../fork-features/plugin-results/JevSpamDetails.jsx';
 import { classifyAttachmentRisk } from '../utils/attachmentRisk.js';
 import { downloadEml } from '../utils/downloadEml.js';
 import { buildPrintDocument, openPrintWindow, printInWindow } from '../utils/printMessage.js';
@@ -2068,6 +2069,7 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
               <SpamBadge message={message} onClick={(m) => setSpamExplainMessageId(m.id)} />
             </div>
             <MessageTags messageId={message.id} detail />
+            <JevSpamDetails key={message.id} messageId={message.id} />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px' }}>

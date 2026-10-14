@@ -133,3 +133,23 @@ export function parseBackfill(value) {
   }
   return corrupt('backfill');
 }
+
+// The SQL reader knows only the public result projection; source-native details remain here.
+export function storedReputationObservation(source, raw, facets) {
+  const revision = count(raw?.revision) ? raw.revision : null;
+  if (facets.includes('unrecognized')) return { kind: 'unrecognized', revision };
+  if (raw?.result == null) return { kind: 'none', revision };
+  const result = parseResult(source, raw.result);
+  if (source === 'rdap') {
+    return {
+      kind: 'rdap', revision, checkedAt: result.checkedAt,
+      subjects: Object.entries(result.subjects).map(([domain, registration]) => ({ domain, registration })),
+    };
+  }
+  return {
+    kind: 'listing', revision, source, checkedAt: result.checkedAt,
+    subjects: Object.entries(result.subjects).map(([subject, entry]) => source === 'safe_browsing'
+      ? { kind: 'url_digest', urlDigest: subject, host: entry.host, verdict: entry.verdict }
+      : { kind: 'domain', domain: subject, verdict: entry }),
+  };
+}

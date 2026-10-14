@@ -2,12 +2,14 @@ import { Router } from 'express';
 import { requireAuth, getOwnedAccount, listUserAccounts, isPluginActivated, sourceStatus, countQueued } from '../api.js';
 import { REVISION } from './model.js';
 import { exclusive, loadBackfill, saveBackfill } from './records.js';
+import { registerStoredResultRoutes } from './results.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createRoutes(plugin) {
   const router = Router();
   router.use(requireAuth);
+  registerStoredResultRoutes(router, plugin);
   async function ownedAccount(req, res) {
     if (!UUID_RE.test(req.params.id)) {
       res.status(400).json({ error: 'Invalid request', fields: { id: 'must be an account id' } });

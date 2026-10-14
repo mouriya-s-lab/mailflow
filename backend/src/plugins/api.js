@@ -116,14 +116,20 @@ export const ensureMessageBodies = (accountId, ids, options) => _ensureMessageBo
 
 // ── Message tags ──────────────────────────────────────────────────────────────
 // The reputation tag plugins (tag-rdap, tag-spamhaus, tag-urlhaus, tag-safebrowsing) each own one
-// source and store their result in their own namespace of a message's annotations; this is the
-// only way to read them. ensureMessageTags(accountId, ids, { deadlineMs }) asks the plugins and
-// waits; getMessageTags(accountId, ids) answers from what is stored. A TagSource is
+// source and store their result in their own namespace of a message's annotations. Live consumers
+// read only through this API; the separate stored-result inspection capability cannot supply tags.
+// ensureMessageTags asks and waits; getMessageTags only reads stored results. A TagSource is
 // 'rdap' | 'spamhaus_dbl' | 'urlhaus' | 'safe_browsing'; a TagState is `inactive`,
 // `unconfigured`, `unchecked`, `complete { checkedAt, subjects }` or
 // `unavailable { reason: 'deadline' | 'plugin_failed' }` (fork-only, see
 // fork-features/message-tags). An id that is not a message of the account is absent from the Map.
-export { ensureMessageTags, getMessageTags, TAG_SOURCES, tagSourcePlugins } from '../../fork-features/message-tags/index.js';
+export { ensureMessageTags, getMessageTags, TAG_SOURCES, tagSourcePlugins, NEW_DOMAIN_MAX_AGE_MS } from '../../fork-features/message-tags/index.js';
+
+// Stored inspection reads current, owned mail rows without activation/configuration gates.
+// Fixed projections do SQL aggregation and paging; owners parse their page into public DTOs.
+export {
+  readJevSpamResults, readJevSpamMessage, readReputationResults, readReputationMessage,
+} from '../../fork-features/plugin-results/index.js';
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
