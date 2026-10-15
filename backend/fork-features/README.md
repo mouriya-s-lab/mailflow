@@ -296,6 +296,7 @@ Settings → Categories shows each activated plugin's source configuration and p
 | `backend/src/plugins/reputation-tags/records.js` | Per-plugin/account turns, UID floors and owned backfill records |
 | `backend/src/plugins/reputation-tags/processor.js` | New-mail marking, batched backfill, source lookup, snapshot read/ensure |
 | `backend/src/plugins/reputation-tags/routes.js` | Status and account backfill start/stop |
+| `backend/migrations/9006_fork_reputation_queue_indexes.sql` | Per-source partial indexes for queue counts by account/origin/state and pending/retry reads; adds indexes only |
 | `backend/src/plugins/loadPlugins.js` | Registers the four manifests after Jev |
 
 ## Message tags
@@ -472,7 +473,7 @@ The queue is the plugin's own namespace in `messages.plugin_annotations`. Of tha
 - `listMessagesInQueueState({ accountId, pluginId, state, afterId, limit })` returns the rows whose queue is in `state`, by id, after `afterId` (`null` for the first page); at most 200, in the shape `listQueuedMessages` returns. A plugin pages through its `terminal` rows this way to retry them.
 - `setMessageAnnotation` resolves to `{ kind: 'written' }`, or `{ kind: 'message_missing' }` when the row is gone: deleted, or replaced under a new id by a move. GTD's gist cache counts only written gists.
 
-The queries are correct without any index; an index for a plugin's queue belongs to that plugin (the Jev classification plugin's are in `9005_fork_jev_classify_queue_indexes.sql`).
+Queue indexes belong to each plugin: Jev uses `9005_fork_jev_classify_queue_indexes.sql`, and the four reputation plugins use `9006_fork_reputation_queue_indexes.sql`. Reputation counts index account, origin and state; ready reads index only pending/retry rows. These indexes keep status polling and background queue reads from repeatedly scanning every message of an account. Both migrations build concurrently and rebuild on retry so an interrupted build's invalid index is replaced rather than skipped.
 
 ### Verified move
 
