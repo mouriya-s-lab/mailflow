@@ -281,8 +281,10 @@ remain exclusively in the administrator's external-service settings.
   `marked`/`processed`/`failed` counters. A running tick marks the next 50 `not_at_revision` rows
   after the pending batch is worked off, and completes only when no further rows or retries
   remain. The authenticated `/api/<pluginId>` router exposes `GET /status` and
-  `POST`/`DELETE /accounts/:id/backfill` (409 for duplicate start or stop without a running
-  run, 404 for another user's account). Stop prevents new marking batches; already queued work
+  `POST`/`DELETE /accounts/:id/backfill` (409 for duplicate start, ineligible start or stop without a running
+  run, 404 for another user's account). A new run requires an enabled IMAP account, current plugin
+  activation and an enabled source; an eligibility refusal includes `reason` and writes nothing.
+  Stop prevents new marking batches; already queued work
   still finishes and increments `processed` without changing the `stopped` state. These commands,
   ticks and synchronous ensures hold the same plugin/account turn, so progress and stop cannot
   overwrite one another.
@@ -296,8 +298,49 @@ Settings → Categories shows each activated plugin's source configuration and p
 | `backend/src/plugins/reputation-tags/records.js` | Per-plugin/account turns, UID floors and owned backfill records |
 | `backend/src/plugins/reputation-tags/processor.js` | New-mail marking, batched backfill, source lookup, snapshot read/ensure |
 | `backend/src/plugins/reputation-tags/routes.js` | Status and account backfill start/stop |
+| `backend/src/plugins/reputation-tags/backfill.js` | Owner-scoped eligibility, inspection and serialized start shared by single-account and bulk entry points |
 | `backend/migrations/9006_fork_reputation_queue_indexes.sql` | Per-source partial indexes for queue counts by account/origin/state and pending/retry reads; adds indexes only |
 | `backend/src/plugins/loadPlugins.js` | Registers the four manifests after Jev |
+
+## Backfill across accounts and activated plugins
+
+Settings → Plugins shows **Backfill enabled plugins** before the activation list.
+Jev and all four reputation plugins remain discoverable while inactive, with each
+owned account's eligibility and existing run state. GTD is explicitly unsupported.
+**Start all eligible backfills** sends one `POST /api/plugins/backfill` without
+client-selected account or plugin ids. It does not turn anything on or change configuration.
+Jev additionally requires its per-account `enabled` setting and the administrator's Jev key.
+
+The coordinator reads the current user's owned account list and current activation from their
+database sources, bypassing the hot-path activation cache and propagating source-read failures.
+For every activated manifest with a `backfill` capability, it requests a start for every owned
+account. Each owner rechecks ownership and eligibility and serializes the start with its
+existing run writes. A duplicate returns the existing run without resetting counters.
+Disabled accounts, non-IMAP accounts, disabled account modules and unconfigured or disabled
+services are explicit skips. Temporarily disconnected enabled accounts can start and wait
+for their existing connected-account tick.
+
+The response is `{ results: [{ pluginId, pluginName, accountId, emailAddress, outcome }] }`.
+Each outcome is `started { backfill }`, `already_running { backfill }`, `skipped { reason }`
+or `failed { error: 'start_failed' }`. One failed target does not cancel other starts.
+HTTP 200 reports the start commands' conclusions, not completed mail processing.
+There is no batch table, coordinator run, automatic retry or rollback.
+
+`GET /api/plugins/backfill` returns registered plugins with activation/capability metadata and
+owner-produced account snapshots. An individual inspection failure remains visible as
+`failed { error: 'status_failed' }`. The panel reads again after commands, activation changes
+and manual refresh; polling waits 15 seconds after each read settles so slow responses can
+still become visible. Leaving the page stops reads, not background processing.
+**Open plugin settings** leads to the existing per-account configuration and Stop controls
+under Settings → Categories.
+
+| Path | What |
+|---|---|
+| `backend/fork-features/plugin-backfill/` | Stateless capability discovery, owner dispatch, result aggregation and authenticated HTTP router |
+| `backend/src/routes/plugins.js`, `backend/src/plugins/registry.js` | Router seam and manifest capability validation |
+| `backend/src/plugins/activation.js` | Fresh error-propagating reads for explicit commands; existing cached hot-path behavior remains unchanged |
+| `frontend/fork-features/plugin-backfill/` | One-command UI, per-target outcomes and live owner progress |
+| `frontend/src/components/AdminPanel.jsx`, `frontend/src/locales/*.json` | Plugins-page mount and translated controls |
 
 ## Message tags
 
@@ -601,7 +644,7 @@ The plugin `jev-classify` (`backend/src/plugins/jev-classify/`) asks Jev to clas
 - **One attempt** asks Jev once, only the questions still open (category as `choice` over the user's `id → description`, spam as `noul`). Before asking, the tick has the body of every message it will ask about stored with `ensureMessageBodies`; a message is asked only when its body is `stored`, `fetched` or `empty` on the server (then the state has its headers alone), so Jev never receives a state whose body could not be had. The state sent is the message signals, per-link tag evidence from `ensureMessageTags` and the first 8000 characters of the body text; attachments go only as names and types. `linkDomains[domain]` holds RDAP, Spamhaus DBL and URLhaus TagStates; `linkUrls[digest]` holds the host and Safe Browsing TagState without duplicating the URL (the existing signals still contain `href`). Complete snapshots retain `checkedAt` and only the matching subject, or empty subjects when current links are absent from the snapshot; inactive, unconfigured and plugin-failed states remain explicit. Then training: probability ≥ 0.9 is recorded as spam, ≤ 0.1 as ham, anything between is `below_threshold`. Then the action, for INBOX mail only: a message outside INBOX is `skipped not_in_inbox`; anti-spam's verdict is asked with `ensureSpamVerdict`, and spam (or a user's spam mark) is skipped; then a confidence under `routingMinConfidence` and a category without a folder are skipped; otherwise the message is moved with `moveMessagesVerified` or labelled with `applyLabel`. With `createFolders` the target folder is created and synced once first. Everything the attempt changed is written back with one annotation write. A row deleted or replaced during the attempt drops its result; the replacement carries the marked annotation and is worked again.
 - **Failures.** An unconfigured Jev changes nothing and stops the tick's Jev questions. A body that could not be had (`unavailable` with `provider_refusing`, `imap_error` or `message_missing`) is not asked about: its asked decisions retry as `body_unavailable`. A message whose body fetch or tag source returns `unavailable { deadline }` stays queued as it is, spending no attempt and receiving no annotation write or Jev question; a thrown tag dispatcher call retries as `reputation_error`. A timeout, network failure, rate limit or 5xx retries the asked decisions; an invalid request or response or a 4xx fails them for good, with a warning. A segment gets 5 attempts, waiting 2, 4, 8 and 16 minutes between them. A move the server made but MailFlow could not locate (`moved_unlocated`) fails the action for good and is added to the account's incident list (`account:<accountId>:incidents`), which stays until the user clears it.
 - **The tick** runs every 60 seconds for every connected account, one at a time per account; new INBOX mail also schedules one at once. It reads activation and configuration each time, marks new mail, and while a backfill runs (`account:<accountId>:backfill`) marks the next 50 messages not at the current revision once the previous batch is worked off. A backfill completes when nothing is left to mark and none of its messages waits for a retry. Then it works through at most 50 queued messages, new mail first, starting none once less than 5 seconds of its 60-second budget is left; the time left is the deadline for the body fetch, the signal read, the reputation lookup and Jev. Training records, moves and labels have no deadline. A tick that recorded training asks for one retrain of the user. A disabled account is not marked or worked, keeps its queue, and its backfill stays running.
-- **HTTP** (`/api/jev-classify`, signed-in user only, own data only; an invalid body is a 400 with `fields` and writes nothing): `GET`/`PUT /categories`; `GET /accounts` (configuration, new-mail floors, processable folders, whether the account is label-store); `PUT /accounts/:id` (switching `trainSpam` on also puts back in the queue every message whose spam line was switched off, as soon as the account's running tick is over; the response does not wait for it, and the next tick decides them); `POST`/`DELETE /accounts/:id/backfill` (start, 409 when running; stop, 409 when not running; messages already marked are still worked); `GET /status`; `POST /accounts/:id/retry-failed` (every `terminal_failed` segment back to its start, a segment skipped because its decision failed back to waiting on it); `DELETE /accounts/:id/incidents`. An account of another user is a 404.
+- **HTTP** (`/api/jev-classify`, signed-in user only, own data only; an invalid body is a 400 with `fields` and writes nothing): `GET`/`PUT /categories`; `GET /accounts` (configuration, new-mail floors, processable folders, whether the account is label-store); `PUT /accounts/:id` (switching `trainSpam` on also puts back in the queue every message whose spam line was switched off, as soon as the account's running tick is over; the response does not wait for it, and the next tick decides them); `POST`/`DELETE /accounts/:id/backfill` (start, 409 when running or ineligible, with `reason` for eligibility refusals; a new run requires an enabled IMAP account, current plugin activation, the account's module enabled and configured Jev; stop, 409 when not running; messages already marked are still worked); `GET /status`; `POST /accounts/:id/retry-failed` (every `terminal_failed` segment back to its start, a segment skipped because its decision failed back to waiting on it); `DELETE /accounts/:id/incidents`. An account of another user is a 404.
 - **Status** returns `{ activated, jev, reputation, accounts }`, with `jev` the Jev service's status and `reputation` `{ rdap, spamhaus_dbl, urlhaus, safe_browsing }`, each entry `{ pluginId, activated, configuration }`: the registered owning plugin's activation and the source's `sourceStatus` independently, and per account: `state` (`enabled`, or `paused` when the plugin is not activated or the account is disabled), queue counts per origin, `nextDue` (`none`, `due_now` or `scheduled` with the earliest retry time), `terminalFailed`, the backfill run, `lastDecidedAt` (`account:<accountId>:stats`), the Jev requests this process sent for the account, and the incidents.
 - **Settings page** (`frontend/src/plugins/jev-classify/`): once the plugin is activated, Settings → Categories shows a Jev classification block after GTD's, and the Plugins tab links to it. It shows whether Jev is configured (a notice when it is not), the state of each link reputation source, and an editor for the categories: name and description per row, 2–24 rows, checked against the server's rules before anything is sent, so a too short or too long list, an empty name or an empty description is shown at its field and not saved. A new row gets its id from its name (ASCII letters and digits, `-` between words, `-2`, `-3`… when taken); a saved row keeps its id. Per account it edits the six settings and saves them with one `PUT`: the target of each category is chosen from that account's processable folders (labels on Gmail) without INBOX in any case, a stored target the account no longer offers blocks the save until another is chosen, and routes of deleted categories are dropped. Below them it shows the account's run state (`enabled`/`paused`), the backfill run with Start and Stop, the queue per origin, the next retry, the last classification and the Jev requests, terminal failures with Retry failed, and the incidents with Clear list. The status is fetched when the block opens, every 15 seconds and after every action; only the newest answer is shown. The configuration being edited is replaced only by what a save returns, never by the status refresh.
 - The tick, its single flight and the locks that keep the routes and the tick from overwriting each other's configuration and backfill writes are in-process, which holds while one backend process serves the installation. Plugin data is deleted with the user.
@@ -613,6 +656,7 @@ The plugin `jev-classify` (`backend/src/plugins/jev-classify/`) asks Jev to clas
 | `backend/src/plugins/jev-classify/records.js` | Plugin data and account configuration reads and serialized writes |
 | `backend/src/plugins/jev-classify/processor.js` | The tick: marking, the attempt per message, backfill progress; re-queuing switched-off spam lines |
 | `backend/src/plugins/jev-classify/routes.js` | The `/api/jev-classify` endpoints |
+| `backend/src/plugins/jev-classify/backfill.js` | Owner-scoped eligibility, inspection and serialized start shared by single-account and bulk entry points |
 | `backend/src/plugins/jev-classify/*.test.js` | The tick against a mocked plugin API; the endpoints over HTTP |
 | `frontend/src/plugins/jev-classify/index.jsx` | Registers the settings block in the `settings-categories` slot and the plugin's settings location |
 | `frontend/src/plugins/jev-classify/JevClassifySettings.jsx` | The settings block: services, categories, account settings and running state |

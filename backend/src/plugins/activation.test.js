@@ -38,6 +38,68 @@ describe('plugin activation', () => {
     expect(await getActivatedPlugins('u4')).toEqual(new Set());
   });
 
+  it('fresh reads recover from a failed hot read without replacing its cached empty set', async () => {
+    query.mockRejectedValueOnce(new Error('temporary database failure'));
+    expect(await getActivatedPlugins('u4')).toEqual(new Set());
+
+    query.mockResolvedValueOnce({ rows: [{ list: ['gtd', 'other'] }] });
+    expect(await getActivatedPlugins('u4', { fresh: true })).toEqual(new Set(['gtd', 'other']));
+    expect(await getActivatedPlugins('u4')).toEqual(new Set());
+    expect(query).toHaveBeenCalledTimes(2);
+
+    query.mockResolvedValueOnce({ rows: [{ list: ['other'] }] });
+    expect(await getActivatedPlugins('u4', { fresh: true })).toEqual(new Set(['other']));
+    expect(await getActivatedPlugins('u4')).toEqual(new Set());
+    expect(query).toHaveBeenCalledTimes(3);
+  });
+
+  it('a fresh read does not populate an empty hot cache', async () => {
+    query.mockResolvedValueOnce({ rows: [{ list: ['gtd'] }] });
+    expect(await getActivatedPlugins('u1', { fresh: true })).toEqual(new Set(['gtd']));
+
+    query.mockResolvedValueOnce({ rows: [{ list: ['other'] }] });
+    expect(await getActivatedPlugins('u1')).toEqual(new Set(['other']));
+    expect(await getActivatedPlugins('u1')).toEqual(new Set(['other']));
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a fresh database failure without caching an empty fallback', async () => {
+    const failure = new Error('database unavailable');
+    query.mockRejectedValueOnce(failure);
+    await expect(getActivatedPlugins('u2', { fresh: true })).rejects.toBe(failure);
+
+    query.mockResolvedValueOnce({ rows: [{ list: ['gtd'] }] });
+    expect(await getActivatedPlugins('u2')).toEqual(new Set(['gtd']));
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a fresh database failure without replacing a previously cached enabled set', async () => {
+    query.mockResolvedValueOnce({ rows: [{ list: ['gtd'] }] });
+    expect(await getActivatedPlugins('u3')).toEqual(new Set(['gtd']));
+
+    const failure = new Error('database unavailable');
+    query.mockRejectedValueOnce(failure);
+    await expect(getActivatedPlugins('u3', { fresh: true })).rejects.toBe(failure);
+    expect(await getActivatedPlugins('u3')).toEqual(new Set(['gtd']));
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('fresh membership reads bypass a cached empty set and reject database failures instead of reporting inactive', async () => {
+    query.mockRejectedValueOnce(new Error('temporary database failure'));
+    expect(await isPluginActivated('u5', 'gtd')).toBe(false);
+
+    query.mockResolvedValueOnce({ rows: [{ list: ['gtd'] }] });
+    expect(await isPluginActivated('u5', 'gtd', { fresh: true })).toBe(true);
+    expect(await isPluginActivated('u5', 'gtd')).toBe(false);
+    expect(query).toHaveBeenCalledTimes(2);
+
+    const failure = new Error('database unavailable');
+    query.mockRejectedValueOnce(failure);
+    await expect(isPluginActivated('u5', 'gtd', { fresh: true })).rejects.toBe(failure);
+    expect(await isPluginActivated('u5', 'gtd')).toBe(false);
+    expect(query).toHaveBeenCalledTimes(3);
+  });
+
   it('caches per user until invalidated', async () => {
     query.mockResolvedValueOnce({ rows: [{ list: ['gtd'] }] });
     await getActivatedPlugins('u5');

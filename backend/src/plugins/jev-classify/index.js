@@ -7,6 +7,7 @@
 import routes from './routes.js';
 import { runTick, requestDrain, newMailDrainActive } from './processor.js';
 import { PLUGIN_ID } from './model.js';
+import { inspectBackfill, startBackfill } from './backfill.js';
 
 export const jevClassifyPlugin = {
   id: PLUGIN_ID,
@@ -14,6 +15,7 @@ export const jevClassifyPlugin = {
   version: '1.0.0',
   tier: 1,
   router: { base: '/api/jev-classify', handler: routes },
+  backfill: { inspect: inspectBackfill, start: startBackfill },
   hooks: {
     // New INBOX mail starts a tick right away. The gate is an in-memory read so the sync loop
     // does no I/O for this plugin; the interval tick picks up the mail either way.

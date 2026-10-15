@@ -16,6 +16,7 @@
 //     hooks?:   { [hookName]: handler },     // event/collect handlers — see below
 //     isActive?: (ctx) => boolean,          // gate ALL of this plugin's handlers per call
 //     tagSource?: { source, ensure, read }, // one reputation tag source — see below
+//     backfill?: { inspect, start },        // owner-scoped historical processing (fork-only)
 //   }
 //
 // `tagSource` marks a plugin as the one that owns one reputation source and stores its result in
@@ -81,6 +82,12 @@ export function createPluginRegistry() {
         if (other.tagSource?.source === tag.source) {
           throw new Error(`tag source "${tag.source}" is already owned by plugin "${other.id}"`);
         }
+      }
+    }
+    if (manifest.backfill !== undefined) {
+      const capability = manifest.backfill;
+      if (!capability || typeof capability.inspect !== 'function' || typeof capability.start !== 'function') {
+        throw new Error(`plugin "${id}" backfill needs inspect and start functions`);
       }
     }
     plugins.set(id, manifest);

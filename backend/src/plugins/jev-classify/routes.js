@@ -20,6 +20,7 @@ import {
 } from './records.js';
 import { jevCallCount, noteNewMailDrain, requeueDisabledSpam } from './processor.js';
 import { registerStoredResultRoutes } from './results.js';
+import { startBackfill } from './backfill.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -119,14 +120,13 @@ router.put('/accounts/:id', async (req, res) => {
 router.post('/accounts/:id/backfill', async (req, res) => {
   const account = await ownedAccount(req, res);
   if (!account) return;
-  const { revision } = await loadCategories(req.session.userId);
-  const outcome = await updateBackfill(account.id, req.session.userId, async run => {
-    if (run.kind === 'running') return { next: null, result: { started: false, run } };
-    const next = { kind: 'running', revision, startedAt: new Date().toISOString(), marked: 0, processed: 0, failed: 0 };
-    return { next, result: { started: true, run: next } };
-  });
-  if (!outcome.started) return res.status(409).json({ error: 'A backfill is already running', backfill: outcome.run });
-  res.json({ backfill: outcome.run });
+  const outcome = await startBackfill(req.session.userId, account.id);
+  switch (outcome.kind) {
+    case 'started': return res.json({ backfill: outcome.backfill });
+    case 'already_running': return res.status(409).json({ error: 'A backfill is already running', backfill: outcome.backfill });
+    case 'skipped': return res.status(outcome.reason === 'account_missing' ? 404 : 409).json({ error: 'Backfill unavailable', reason: outcome.reason });
+    default: throw new Error(`Unknown backfill outcome: ${outcome.kind}`);
+  }
 });
 
 router.delete('/accounts/:id/backfill', async (req, res) => {
