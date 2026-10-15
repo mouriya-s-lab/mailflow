@@ -188,7 +188,8 @@ router.get('/messages/:id', async (req, res) => {
   if (!UUID_RE.test(id)) return res.status(400).json({ error: 'Invalid message ID' });
   try {
     const result = await query(`
-      SELECT m.id, m.uid, m.folder, m.message_id, m.subject,
+      -- This endpoint presents one physical row, not the thread's aggregate message count.
+      SELECT m.id, m.uid, m.folder, m.message_id, m.thread_key AS thread_id, 1 AS message_count, m.subject,
              m.from_name, m.from_email, m.to_addresses, m.cc_addresses,
              m.reply_to, m.in_reply_to, m.thread_references,
              m.date, m.snippet, m.is_read, m.is_starred,

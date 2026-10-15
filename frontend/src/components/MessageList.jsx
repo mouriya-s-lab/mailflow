@@ -1914,6 +1914,7 @@ export default function MessageList() {
   }, [updateMessage]);
 
   const autoMarkReadTimerRef = useRef(null);
+  const readOnOpenIntentRef = useRef(null);
   useEffect(() => () => clearTimeout(autoMarkReadTimerRef.current), []);
 
   // Keep refs to bulk handlers so the shortcut effect (registered once) is never stale
@@ -1939,6 +1940,7 @@ export default function MessageList() {
       if (markReadBehavior === 'manual') return;
       clearTimeout(autoMarkReadTimerRef.current);
       autoMarkReadTimerRef.current = null;
+      readOnOpenIntentRef.current = msg.id;
       const doMarkRead = () => {
         updateMessage(msg.id, { is_read: true });
         decrementUnread(msg.account_id);
@@ -2077,6 +2079,7 @@ export default function MessageList() {
           }
           clearTimeout(autoMarkReadTimerRef.current);
           autoMarkReadTimerRef.current = null;
+          readOnOpenIntentRef.current = null;
         },
         update: (id, fields) => {
           state.updateMessage(id, fields);
@@ -2561,11 +2564,12 @@ export default function MessageList() {
   // Mark a message read when it is opened, honoring the manual/delay/instant setting.
   // Shared by the main-pane selection (handleSelect) and the detached-window open
   // path (#219) so both routes behave identically.
-  const markMessageReadOnOpen = (message) => {
+  const markMessageReadOnOpen = (message, listUnreadCount = message.unread_count) => {
+    readOnOpenIntentRef.current = message.id;
     clearTimeout(autoMarkReadTimerRef.current);
     autoMarkReadTimerRef.current = null;
     if (message.is_read || markReadBehavior === 'manual') return;
-    const prevUnread = message.unread_count;
+    const prevUnread = listUnreadCount;
     const doMarkRead = () => {
       updateMessage(message.id, { is_read: true, unread_count: 0 });
       decrementUnread(message.account_id);
@@ -2593,13 +2597,19 @@ export default function MessageList() {
     }
   };
 
-  // Open a message in a detached floating window (#219). Warms the body cache and marks
-  // it read (like a normal open) without disturbing the main-pane selection.
-  const handleOpenInWindow = (message) => {
+  // Detached windows resolve the physical row before applying the normal read-on-open behavior.
+  const handleOpenInWindow = async (message) => {
     if (!message || isMobile) return;
-    openMessageWindow(message.id);
-    api.getMessageBody(message.id).catch(() => {});
-    markMessageReadOnOpen(message);
+    // Claim the shared delayed-read timer in user-event order, not HTTP-completion order.
+    readOnOpenIntentRef.current = message.id;
+    clearTimeout(autoMarkReadTimerRef.current);
+    autoMarkReadTimerRef.current = null;
+    const exact = await openMessageWindow(message.id);
+    if (!exact) return;
+    api.getMessageBody(exact.id).catch(() => {});
+    if (markReadBehavior !== 'delay' || readOnOpenIntentRef.current === exact.id) {
+      markMessageReadOnOpen(exact, message.unread_count);
+    }
   };
 
   // Row click selects and opens the newest message in the reading pane, but leaves the

@@ -103,7 +103,7 @@ function fileIcon(type) {
   );
 }
 
-export default function MessagePane({ windowMessageId = null, onWindowClose = null } = {}) {
+export default function MessagePane({ windowMessage = null, onWindowClose = null } = {}) {
   const { t } = useTranslation();
   const {
     messages, searchResults, searchQuery, selectedMessageId: globalSelectedId, setSelectedMessage,
@@ -115,11 +115,9 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
     aiActions, setShowAdmin, setAdminTab,
   } = useStore();
 
-  // Detached-window mode (#219): when a message id is passed in, this pane renders that
-  // specific message independently of the global list selection. Shadowing selectedMessageId
-  // lets the entire component below run unchanged — for the main reading pane windowMode is
-  // false and selectedMessageId === the global selection, so behavior is byte-identical.
-  const windowMode = windowMessageId != null;
+  // Detached metadata belongs to its window's exact UUID read, never a grouped list projection.
+  const windowMode = windowMessage != null;
+  const windowMessageId = windowMessage?.id ?? null;
   const selectedMessageId = windowMode ? windowMessageId : globalSelectedId;
   // Closing actions (archive/trash/move/spam/snooze) should dismiss the window they run in;
   // in the main pane this is a no-op and the store's own selection handling applies.
@@ -197,24 +195,14 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
   }, [selectedMessageId]);
 
   const allMessages = searchQuery.trim() ? searchResults : messages;
-  const message = resolvePresentedMessage(
-    selectedMessageId, windowMode ? 'single' : selectedMessagePresentation, allMessages, threadMessages,
+  const message = windowMode ? windowMessage : resolvePresentedMessage(
+    selectedMessageId, selectedMessagePresentation, allMessages, threadMessages,
   );
 
   useEffect(() => {
     setResolvedSubject(null);
   }, [message?.id]);
 
-  // In window mode, if the message leaves the store (archived/moved from another view,
-  // a background sync, or an action taken here), close the window rather than showing an
-  // empty pane. The ref guards the initial mount, where the store copy can momentarily be
-  // absent, from self-closing before the message has ever resolved.
-  const sawMessageRef = useRef(false);
-  useEffect(() => {
-    if (!windowMode) return;
-    if (message) { sawMessageRef.current = true; return; }
-    if (sawMessageRef.current) onWindowClose?.();
-  }, [windowMode, message, onWindowClose]);
 
   // Antispam (v0.1) — toolbar visibility for the spam / ham buttons.
   // Mirrors the heuristic in ContextMenu.jsx so the toolbar matches the menu.
@@ -1104,9 +1092,6 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
     : [];
 
   if (!message) {
-    // A detached window with no message is mid-close (see auto-close effect above) —
-    // render nothing rather than the list's "select a message" placeholder.
-    if (windowMode) return null;
     return (
       <div style={{
         flex: 1, display: 'flex', flexDirection: 'column',

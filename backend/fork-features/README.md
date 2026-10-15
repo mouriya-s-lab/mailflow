@@ -336,11 +336,11 @@ classification, training, backfill, activation or configuration write.
   conversation cards and detached windows. The existing four-source live summaries stay
   activation-gated. Open mail uses the selected row UUID, never a Message-ID fallback;
   an ephemeral single-message presentation prevents conversation deduplication from
-  selecting another copy. Its existing `__dl_<UUID>` point-lookup record takes precedence
-  over a grouped row's thread-level subject/sender in the pane, detached frame and
-  minimized title; no additional fetch or cache is created. The next ordinary selection
-  restores automatic presentation; no conversation preference is changed. Ordinary
-  mark-as-read behavior remains separate from result inspection.
+  selecting another copy. In the main pane, its existing `__dl_<UUID>` point-lookup record
+  takes precedence over a grouped row's thread-level subject/sender; no additional main-pane
+  fetch or cache is created. The next ordinary selection restores automatic presentation;
+  no conversation preference is changed. Ordinary mark-as-read behavior remains separate
+  from result inspection.
 
 | Path | What |
 |---|---|
@@ -349,7 +349,24 @@ classification, training, backfill, activation or configuration write.
 | `frontend/fork-features/plugin-results/` | Shared panel, saved observations, Jev reading detail and exact-row navigation |
 | `frontend/src/components/AdminPanel.jsx` | Plugin metadata-driven result entry, independent from activation |
 | `frontend/src/components/ReadingPane.jsx`, `frontend/src/store/index.js` | Transient exact-row presentation, reset by ordinary selection |
-| `frontend/src/components/MessagePane.jsx`, `MessageWindow.jsx`, `WindowLayer.jsx` | Shared `resolvePresentedMessage` precedence for an existing exact UUID snapshot; ordinary grouped rows keep their semantics |
+| `frontend/src/components/MessagePane.jsx` | Main-pane `resolvePresentedMessage` precedence for an existing exact UUID snapshot; detached panes consume their window-owned physical row |
+
+## Detached physical-message windows
+
+Ordinary context-menu and double-click opens resolve `GET /api/mail/messages/:UUID`
+before displaying a single message or scheduling read-on-open. Each window descriptor owns
+one `loading`, `ready { message }` or `error { error }` result for its lifetime. Its outer
+title, inner pane and minimized dock use that same physical row, never grouped list metadata
+or a thread/deep-link cache. List refreshes cannot replace it; flag updates patch the exact
+UUID, and removal, close, lock or an identity change retire it. A late read cannot populate
+a subsequently reopened window. A failed read displays an error; close and reopen to retry.
+
+The exact endpoint returns the normalized thread key for replies and a singleton
+`message_count`, not the thread's total. Grouped list subjects, senders and counts are
+unchanged. Existing list-selection shortcut precedence is retained; only the no-selection
+detached fallback uses the ready window's physical message. Read-on-open retains its
+manual/delay/instant policy and the originating list's aggregate unread count for rollback;
+delayed reads follow the latest user opening, not the order of exact HTTP responses.
 
 
 ## Anti-spam training records and verdict requests

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/index.js';
 import FloatingWindow from './FloatingWindow.jsx';
 import MessagePane from './MessagePane.jsx';
-import { resolvePresentedMessage } from '../../fork-features/plugin-results/messagePresentation.js';
+import { messageWindowTitle } from '../utils/messageWindowTitle.js';
 
 // One detached message window (#219): a FloatingWindow frame wrapping a MessagePane
 // instance bound to a specific message id (independent of the main list selection).
@@ -14,11 +14,9 @@ export default function MessageWindow({ win, zIndex }) {
   const setMessageWindowMinimized = useStore(s => s.setMessageWindowMinimized);
   const updateMessageWindowRect = useStore(s => s.updateMessageWindowRect);
 
-  const message = useStore(s => resolvePresentedMessage(
-    win.messageId, 'single', s.searchQuery.trim() ? s.searchResults : s.messages, s.threadMessages,
-  ));
+  const message = win.content.kind === 'ready' ? win.content.message : null;
   const accentColor = message?.account_color || undefined;
-  const title = message?.subject?.trim() || t('common.noSubject');
+  const title = messageWindowTitle(win.content, t);
 
   const onClose = useCallback(() => closeMessageWindow(win.winId), [closeMessageWindow, win.winId]);
   const onFocus = useCallback(() => focusMessageWindow(win.winId), [focusMessageWindow, win.winId]);
@@ -38,7 +36,13 @@ export default function MessageWindow({ win, zIndex }) {
       minimizeLabel={t('window.minimize')}
       closeLabel={t('window.close')}
     >
-      <MessagePane windowMessageId={win.messageId} onWindowClose={onClose} />
+      {message ? (
+        <MessagePane windowMessage={message} onWindowClose={onClose} />
+      ) : (
+        <div role={win.content.kind === 'error' ? 'alert' : 'status'} style={{ padding: 24, color: 'var(--text-secondary)' }}>
+          {win.content.kind === 'error' ? win.content.error : t('common.loading')}
+        </div>
+      )}
     </FloatingWindow>
   );
 }

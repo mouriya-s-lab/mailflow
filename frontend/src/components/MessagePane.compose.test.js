@@ -121,12 +121,12 @@ before(async () => {
   useStore.getState().setMessages([MSG]);
   useStore.setState({
     openCompose: (draft) => drafts.push(draft),
-    messageWindows: [{ winId: 'test-window', messageId: 'm1', z: 1, minimized: false }],
+    messageWindows: [{ winId: 'test-window', messageId: MSG.id, z: 1, minimized: false, content: { kind: 'ready', message: MSG } }],
   });
   useStore.getState().setSelectedMessage('m1');
   root = createRoot(document.getElementById('root'));
   // Detached windows have no MessageList; the pane owns its toolbar actions.
-  await React.act(async () => { root.render(React.createElement(MessagePane, { windowMessageId: 'm1' })); });
+  await React.act(async () => { root.render(React.createElement(MessagePane, { windowMessage: MSG })); });
   // Let the body load, since the quoted text is built from it.
   await React.act(async () => { await new Promise(r => setTimeout(r, 60)); });
 });

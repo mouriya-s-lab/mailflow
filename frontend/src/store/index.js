@@ -122,6 +122,7 @@ export const useStore = create((set, get) => ({
     set(state => ({
       user,
       ...(state.user?.id !== user?.id ? {
+        messageWindows: [],
         serverUnreadCounts: { total: 0, byAccount: {}, snapshots: {} }, pendingCounts: {},
         unreadCounts: { total: 0, byAccount: {}, snapshots: {}, complete: false },
         senderFaviconsLoaded: false,
@@ -191,6 +192,7 @@ export const useStore = create((set, get) => ({
         serverUnreadCounts: { total: 0, byAccount: {}, snapshots: {} }, pendingCounts: {},
         isLocked: true,
         messages: [], searchResults: [], searchQuery: '',
+        messageWindows: [],
         accounts: [], accountsReady: false,
         folders: {}, selectedMessageId: null, selectedMessagePresentation: 'auto',
         unreadCounts: { total: 0, byAccount: {} },
@@ -316,11 +318,16 @@ export const useStore = create((set, get) => ({
       const unread_count = subs.filter(s => !s.is_read).length;
       return { ...updated, unread_count, is_read: unread_count === 0 };
     });
-    return { messages, searchResults: state.searchResults.map(apply), threadMessages };
+    const messageWindows = state.messageWindows.map(win =>
+      win.content.kind === 'ready' && win.messageId === id
+        ? { ...win, content: { kind: 'ready', message: apply(win.content.message) } }
+        : win);
+    return { messages, searchResults: state.searchResults.map(apply), threadMessages, messageWindows };
   }),
   removeMessage: (id) => set(state => ({
     messages: state.messages.filter(m => m.id !== id),
     searchResults: state.searchResults.filter(m => m.id !== id),
+    messageWindows: state.messageWindows.filter(win => win.messageId !== id),
     selectedMessageId: state.selectedMessageId === id ? null : state.selectedMessageId,
     selectedMessagePresentation: state.selectedMessageId === id ? 'auto' : state.selectedMessagePresentation,
   })),
@@ -334,6 +341,7 @@ export const useStore = create((set, get) => ({
     return {
       messages: state.messages.filter(m => !idSet.has(m.id)),
       searchResults: state.searchResults.filter(m => !idSet.has(m.id)),
+      messageWindows: state.messageWindows.filter(win => !idSet.has(win.messageId)),
       selectedMessageId: idSet.has(state.selectedMessageId) ? null : state.selectedMessageId,
       selectedMessagePresentation: idSet.has(state.selectedMessageId) ? 'auto' : state.selectedMessagePresentation,
     };
@@ -544,30 +552,45 @@ export const useStore = create((set, get) => ({
   // and the z-order stamp (higher = on top / more recently focused).
   messageWindows: [],
   _winSeq: 0,
-  openMessageWindow: (messageId) => set(state => {
-    const seq = state._winSeq + 1;
-    // Re-opening a message that already has a window focuses + un-minimizes it
-    // rather than spawning a duplicate.
-    if (state.messageWindows.some(w => w.messageId === messageId)) {
-      return {
-        _winSeq: seq,
-        messageWindows: state.messageWindows.map(w =>
-          w.messageId === messageId ? { ...w, minimized: false, z: seq } : w),
-      };
+  openMessageWindow: async (messageId) => {
+    const existing = get().messageWindows.find(win => win.messageId === messageId);
+    if (existing) {
+      get().setMessageWindowMinimized(existing.winId, false);
+      return existing.content.kind === 'ready' ? existing.content.message : null;
     }
+    const seq = get()._winSeq + 1;
+    const winId = `mw-${seq}`;
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
     const w = Math.min(660, Math.max(360, vw - 80));
     const h = Math.min(740, Math.max(280, vh - 80));
-    // Cascade each new window down-right so they don't stack exactly on top.
-    const cascade = (state.messageWindows.length % 6) * 28;
+    const cascade = (get().messageWindows.length % 6) * 28;
     const x = Math.max(12, Math.min(vw - w - 12, Math.round((vw - w) / 2) - 80 + cascade));
     const y = Math.max(12, Math.min(vh - h - 12, 72 + cascade));
-    return {
+    set(state => ({
       _winSeq: seq,
-      messageWindows: [...state.messageWindows, { winId: `mw-${seq}`, messageId, x, y, w, h, z: seq, minimized: false }],
-    };
-  }),
+      messageWindows: [...state.messageWindows, {
+        winId, messageId, x, y, w, h, z: seq, minimized: false, content: { kind: 'loading' },
+      }],
+    }));
+    // The exact response belongs to this window lifetime, not the grouped list or thread cache.
+    // A late response after close, lock or logout must not populate a reopened window.
+    try {
+      const message = await api.getMessage(messageId);
+      if (!get().messageWindows.some(win => win.winId === winId)) return null;
+      set(state => ({
+        messageWindows: state.messageWindows.map(win =>
+          win.winId === winId ? { ...win, content: { kind: 'ready', message } } : win),
+      }));
+      return message;
+    } catch (err) {
+      set(state => ({
+        messageWindows: state.messageWindows.map(win =>
+          win.winId === winId ? { ...win, content: { kind: 'error', error: err.message } } : win),
+      }));
+      return null;
+    }
+  },
   closeMessageWindow: (winId) => set(state => ({
     messageWindows: state.messageWindows.filter(w => w.winId !== winId),
   })),
