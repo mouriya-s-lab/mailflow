@@ -193,12 +193,12 @@ function ResultRow({
           <td key={field.key} style={{
             padding: '9px 8px', verticalAlign: 'top', overflowWrap: 'anywhere',
             color: field.key === 'subject' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            minWidth: ['subject', 'sender', 'result'].includes(field.key) ? 170 : undefined,
+            minWidth: 170,
           }}>
             {field.value}
           </td>
         ))}
-        <td style={{ padding: '9px 8px', verticalAlign: 'top' }}>{actions}</td>
+        <td style={{ padding: '9px 8px', verticalAlign: 'top', minWidth: 160 }}>{actions}</td>
       </tr>
       {expanded && (
         <tr data-testid="plugin-results-row-expanded">
