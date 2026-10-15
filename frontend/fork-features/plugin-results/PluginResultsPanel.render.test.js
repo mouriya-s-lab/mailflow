@@ -49,10 +49,30 @@ Object.assign(globalThis, {
   Element: dom.window.Element,
   HTMLElement: dom.window.HTMLElement,
   getComputedStyle: dom.window.getComputedStyle,
-  matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
   IS_REACT_ACT_ENVIRONMENT: true,
 });
-dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+const mediaQueries = new Set();
+const matchesViewport = query => {
+  const max = query.match(/\(max-width:\s*(\d+)px\)/);
+  const min = query.match(/\(min-width:\s*(\d+)px\)/);
+  return Boolean(max || min)
+    && (!max || window.innerWidth <= Number(max[1]))
+    && (!min || window.innerWidth >= Number(min[1]));
+};
+dom.window.matchMedia = query => {
+  const listeners = new Set();
+  const media = {
+    media: query,
+    get matches() { return matchesViewport(query); },
+    addEventListener(type, listener) { if (type === 'change') listeners.add(listener); },
+    removeEventListener(type, listener) { if (type === 'change') listeners.delete(listener); },
+    addListener(listener) { listeners.add(listener); },
+    removeListener(listener) { listeners.delete(listener); },
+  };
+  mediaQueries.add({ media, listeners });
+  return media;
+};
+globalThis.matchMedia = dom.window.matchMedia;
 globalThis.__VITE_ENV__ = { MODE: 'test', DEV: false, PROD: true };
 
 const React = await import('react');
@@ -150,6 +170,28 @@ const settle = async (times = 3) => {
   for (let i = 0; i < times; i++) await flush();
 };
 
+const resizeViewport = async width => {
+  await React.act(async () => {
+    const previous = [...mediaQueries].map(entry => ({ ...entry, matched: entry.media.matches }));
+    window.innerWidth = width;
+    for (const { media, listeners, matched } of previous) {
+      if (media.matches === matched) continue;
+      for (const listener of listeners) listener({ matches: media.matches, media: media.media });
+    }
+    window.dispatchEvent(new dom.window.Event('resize'));
+  });
+  await settle();
+};
+
+const click = async control => {
+  assert.ok(control, 'expected an available result viewer action');
+  assert.equal(control.disabled, false, 'the action is enabled');
+  await React.act(async () => {
+    control.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  });
+  await flush();
+};
+
 const findAccountSelect = () => rootHost.querySelector('[data-testid="plugin-results-account"]');
 
 const choose = async (control, value) => {
@@ -164,6 +206,8 @@ const choose = async (control, value) => {
 const chooseFacet = facet => choose(rootHost.querySelector('[data-testid="plugin-results-facet"]'), facet);
 
 beforeEach(() => {
+  window.innerWidth = 1024;
+  mediaQueries.clear();
   requests = [];
   fetchImpl = (url, init = {}) => {
     const parsed = new URL(String(url), 'https://mail.example.invalid');
@@ -276,5 +320,130 @@ describe('PluginResultsPanel', () => {
     assert.match(rootHost.textContent, /unknown\.example\.invalid/);
     assert.match(rootHost.textContent, /pluginResults\.facets\.listed/);
     assert.match(rootHost.textContent, /pluginResults\.facets\.unknown/);
+  });
+
+  test('mobile cards retain every result field and expanded observations across breakpoints without resetting filters or cursors', async () => {
+    await resizeViewport(767);
+    await render();
+    requests[0].resolve(response(page()));
+    await settle();
+
+    await choose(findAccountSelect(), accountB.id);
+    requests[1].resolve(response(page({ messages: [row('account-scope')] })));
+    await settle();
+    await chooseFacet('unknown');
+    requests[2].resolve(response(page({
+      messages: [row('first-filtered-page')],
+      nextCursor: 'filtered-page-two',
+    })));
+    await settle();
+    await click(rootHost.querySelector('[data-testid="plugin-results-next"]'));
+    assert.equal(requests.length, 4);
+    assert.equal(requests[3].url.searchParams.get('accountId'), accountB.id);
+    assert.equal(requests[3].url.searchParams.get('facet'), 'unknown');
+    assert.equal(requests[3].url.searchParams.get('cursor'), 'filtered-page-two');
+
+    const message = row('mobile-complete', {
+      accountId: accountB.id,
+      accountEmail: accountB.emailAddress,
+      folder: 'Archive/Complete stored result folder',
+      subject: 'Complete mobile stored result subject without truncating important context',
+      fromName: 'Complete Sender Name',
+      fromEmail: 'complete-sender@example.invalid',
+      facets: ['all', 'listed', 'unknown'],
+      observation: {
+        kind: 'listing',
+        revision: 9,
+        source: 'spamhaus_dbl',
+        checkedAt: '2026-10-13T11:00:00.000Z',
+        subjects: [
+          { kind: 'domain', domain: 'listed-mobile.example.invalid', verdict: { kind: 'listed', detail: 'Complete stored malware classification' } },
+          { kind: 'domain', domain: 'unknown-mobile.example.invalid', verdict: { kind: 'unknown', reason: 'Complete stored upstream timeout explanation' } },
+          { kind: 'domain', domain: 'safe-mobile.example.invalid', verdict: { kind: 'not_listed' } },
+        ],
+      },
+    });
+    requests[3].resolve(response(page({ messages: [message], nextCursor: 'filtered-page-three' })));
+    await settle();
+
+    const resultRow = () => {
+      const rows = rootHost.querySelectorAll('[data-testid="plugin-results-row"]');
+      assert.equal(rows.length, 1, 'the result appears once, not as duplicated mobile and desktop copies');
+      return rows[0];
+    };
+    const assertFields = () => {
+      const card = resultRow();
+      for (const value of [
+        message.accountEmail,
+        message.folder,
+        message.subject,
+        `${message.fromName} <${message.fromEmail}>`,
+        new Date(message.date).toLocaleString(),
+        ...message.facets.map(facet => `pluginResults.facets.${facet}`),
+      ]) {
+        assert.ok(card.textContent.includes(value), `the result retains the complete field: ${value}`);
+      }
+      const open = card.querySelector('[data-testid="plugin-results-row-open"]');
+      assert.ok(open, 'opening the original message remains available');
+      assert.equal(open.disabled, false);
+      assert.equal(open.textContent, 'pluginResults.open');
+      assert.equal(card.querySelectorAll('[data-testid="plugin-results-row-details"]').length, 1);
+    };
+    assert.ok(resultRow().closest('table') === null, 'a narrow viewport presents a card rather than a seven-column table');
+    assertFields();
+    assert.equal(rootHost.querySelector('[data-testid="plugin-results-row-expanded"]'), null);
+    await click(resultRow().querySelector('[data-testid="plugin-results-row-details"]'));
+
+    const assertExpandedScope = () => {
+      assertFields();
+      const details = resultRow().querySelector('[data-testid="plugin-results-row-details"]');
+      assert.equal(details.getAttribute('aria-expanded'), 'true');
+      assert.equal(details.textContent, 'pluginResults.hideDetails');
+      const expanded = rootHost.querySelectorAll('[data-testid="plugin-results-row-expanded"]');
+      assert.equal(expanded.length, 1, 'the complete observation is still expanded exactly once');
+      for (const value of [
+        'pluginResults.revision {"revision":9}',
+        'Spamhaus DBL',
+        new Date(message.observation.checkedAt).toLocaleString(),
+        'listed-mobile.example.invalid',
+        'Complete stored malware classification',
+        'unknown-mobile.example.invalid',
+        'Complete stored upstream timeout explanation',
+        'safe-mobile.example.invalid',
+        'pluginResults.verdicts.listed',
+        'pluginResults.verdicts.unknown',
+        'pluginResults.verdicts.not_listed',
+      ]) {
+        assert.ok(expanded[0].textContent.includes(value), `the expanded observation retains: ${value}`);
+      }
+      assert.equal(findAccountSelect().value, accountB.id);
+      assert.equal(rootHost.querySelector('[data-testid="plugin-results-facet"]').value, 'unknown');
+      assert.equal(rootHost.querySelector('[data-testid="plugin-results-count-unknown"]').getAttribute('aria-pressed'), 'true');
+      assert.equal(rootHost.querySelector('[data-testid="plugin-results-previous"]').disabled, false);
+      assert.equal(requests.length, 4, 'expanding or resizing does not refetch stored results');
+    };
+    assertExpandedScope();
+    await resizeViewport(768);
+    assert.ok(resultRow().closest('table'), 'the desktop breakpoint restores the existing table view');
+    assertExpandedScope();
+    await resizeViewport(767);
+    assert.ok(resultRow().closest('table') === null, 'returning to a narrow viewport restores the complete card');
+    assertExpandedScope();
+
+    await click(rootHost.querySelector('[data-testid="plugin-results-next"]'));
+    assert.equal(requests.length, 5);
+    assert.equal(requests[4].url.searchParams.get('accountId'), accountB.id);
+    assert.equal(requests[4].url.searchParams.get('facet'), 'unknown');
+    assert.equal(requests[4].url.searchParams.get('cursor'), 'filtered-page-three');
+    requests[4].resolve(response(page({ messages: [row('third-filtered-page')] })));
+    await settle();
+    await click(rootHost.querySelector('[data-testid="plugin-results-previous"]'));
+    assert.equal(requests.length, 6);
+    assert.equal(requests[5].url.searchParams.get('accountId'), accountB.id);
+    assert.equal(requests[5].url.searchParams.get('facet'), 'unknown');
+    assert.equal(requests[5].url.searchParams.get('cursor'), 'filtered-page-two', 'resizing preserves the existing cursor history');
+    requests[5].resolve(response(page({ messages: [message], nextCursor: 'filtered-page-three' })));
+    await settle();
+    assertFields();
   });
 });

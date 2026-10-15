@@ -11,13 +11,14 @@ const frameStyle = {
   flexDirection: 'column',
   gap: 8,
   minWidth: 0,
+  overflowWrap: 'anywhere',
   fontSize: 12,
   color: 'var(--text-secondary)',
 };
 
 const rowsStyle = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(0, max-content) minmax(0, 1fr)',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)',
   gap: '3px 10px',
   margin: 0,
 };
@@ -46,8 +47,8 @@ function InfoRows({ rows }) {
     <dl style={rowsStyle}>
       {rows.map(({ label, value }, index) => (
         <div key={`${label}:${index}`} style={{ display: 'contents' }}>
-          <dt style={{ fontWeight: 600, color: 'var(--text-tertiary)' }}>{label}</dt>
-          <dd style={{ margin: 0, overflowWrap: 'anywhere' }}>{value}</dd>
+          <dt style={{ minWidth: 0, fontWeight: 600, color: 'var(--text-tertiary)', overflowWrap: 'anywhere' }}>{label}</dt>
+          <dd style={{ minWidth: 0, margin: 0, overflowWrap: 'anywhere' }}>{value}</dd>
         </div>
       ))}
     </dl>

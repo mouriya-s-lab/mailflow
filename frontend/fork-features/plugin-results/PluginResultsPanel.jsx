@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useMobile } from '../../src/hooks/useMobile.js';
 import { getStoredResults } from './api.js';
 import { openStoredResultMessage } from './navigation.js';
 import StoredObservation from './StoredObservation.jsx';
@@ -8,6 +9,9 @@ const PAGE_LIMIT = 50;
 
 const buttonStyle = (disabled = false) => ({
   padding: '6px 10px',
+  minHeight: 44,
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
   border: '1px solid var(--border)',
   borderRadius: 6,
   background: 'var(--bg-tertiary)',
@@ -25,14 +29,15 @@ const primaryButtonStyle = (disabled = false) => ({
 });
 
 const selectStyle = {
-  minWidth: 150,
+  minWidth: 0,
   maxWidth: '100%',
   padding: '7px 9px',
   border: '1px solid var(--border)',
   borderRadius: 6,
   background: 'var(--bg-tertiary)',
   color: 'var(--text-primary)',
-  fontSize: 12,
+  fontSize: 16,
+  minHeight: 44,
 };
 
 const formatDate = value => (value ? new Date(value).toLocaleString() : '');
@@ -107,57 +112,93 @@ function ResultRow({
   opening,
   onToggleDetails,
   onOpen,
+  mobile,
   t,
 }) {
   const facets = Array.isArray(message.facets) ? message.facets : [];
+  const fields = [
+    { key: 'account', value: message.accountEmail },
+    { key: 'folder', value: message.folder },
+    { key: 'subject', value: message.subject || t('pluginResults.noSubject') },
+    { key: 'sender', value: senderLabel(message, t('pluginResults.noSender')) },
+    { key: 'date', value: formatDate(message.date) },
+    { key: 'result', value: (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {facets.map(resultFacet => (
+          <span key={resultFacet} style={{
+            padding: '2px 6px', borderRadius: 999, background: 'var(--bg-tertiary)',
+            color: 'var(--text-secondary)', fontSize: 11,
+          }}>
+            {t(`pluginResults.facets.${resultFacet}`)}
+          </span>
+        ))}
+      </div>
+    ) },
+  ];
+  const actions = (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      <button
+        type="button"
+        onClick={() => onToggleDetails(message)}
+        style={buttonStyle()}
+        aria-expanded={expanded}
+        data-testid="plugin-results-row-details"
+      >
+        {expanded ? t('pluginResults.hideDetails') : t('pluginResults.showDetails')}
+      </button>
+      <button
+        type="button"
+        onClick={() => onOpen(message)}
+        style={primaryButtonStyle(opening)}
+        disabled={opening}
+        data-testid="plugin-results-row-open"
+      >
+        {opening ? t('pluginResults.opening') : t('pluginResults.open')}
+      </button>
+    </div>
+  );
+
+  if (mobile) {
+    return (
+      <article data-testid="plugin-results-row" style={{
+        minWidth: 0, padding: 12, border: '1px solid var(--border-subtle)', borderRadius: 7,
+        fontSize: 13, overflowWrap: 'anywhere',
+      }}>
+        <dl style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '0 0 12px' }}>
+          {fields.map(field => (
+            <div key={field.key} style={{ minWidth: 0 }}>
+              <dt style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 2 }}>{t(`pluginResults.${field.key}`)}</dt>
+              <dd style={{ margin: 0, color: field.key === 'subject' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                {field.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        {actions}
+        {expanded && (
+          <div data-testid="plugin-results-row-expanded" style={{
+            marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border-subtle)',
+          }}>
+            <StoredObservation observation={message.observation} />
+          </div>
+        )}
+      </article>
+    );
+  }
+
   return (
     <>
       <tr data-testid="plugin-results-row" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-        <td style={{ padding: '9px 8px', color: 'var(--text-secondary)', verticalAlign: 'top' }}>{message.accountEmail}</td>
-        <td style={{ padding: '9px 8px', color: 'var(--text-secondary)', verticalAlign: 'top', whiteSpace: 'nowrap' }}>{message.folder}</td>
-        <td style={{ padding: '9px 8px', color: 'var(--text-primary)', verticalAlign: 'top', minWidth: 170 }}>
-          {message.subject || t('pluginResults.noSubject')}
-        </td>
-        <td style={{ padding: '9px 8px', color: 'var(--text-secondary)', verticalAlign: 'top', minWidth: 170 }}>
-          {senderLabel(message, t('pluginResults.noSender'))}
-        </td>
-        <td style={{ padding: '9px 8px', color: 'var(--text-secondary)', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
-          {formatDate(message.date)}
-        </td>
-        <td style={{ padding: '9px 8px', color: 'var(--text-secondary)', verticalAlign: 'top', minWidth: 180 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {facets.map(resultFacet => (
-              <span key={resultFacet} style={{
-                padding: '2px 6px', borderRadius: 999, background: 'var(--bg-tertiary)',
-                color: 'var(--text-secondary)', fontSize: 11,
-              }}>
-                {t(`pluginResults.facets.${resultFacet}`)}
-              </span>
-            ))}
-          </div>
-        </td>
-        <td style={{ padding: '9px 8px', color: 'var(--text-secondary)', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            <button
-              type="button"
-              onClick={() => onToggleDetails(message)}
-              style={buttonStyle()}
-              aria-expanded={expanded}
-              data-testid="plugin-results-row-details"
-            >
-              {expanded ? t('pluginResults.hideDetails') : t('pluginResults.showDetails')}
-            </button>
-            <button
-              type="button"
-              onClick={() => onOpen(message)}
-              style={primaryButtonStyle(opening)}
-              disabled={opening}
-              data-testid="plugin-results-row-open"
-            >
-              {opening ? t('pluginResults.opening') : t('pluginResults.open')}
-            </button>
-          </div>
-        </td>
+        {fields.map(field => (
+          <td key={field.key} style={{
+            padding: '9px 8px', verticalAlign: 'top', overflowWrap: 'anywhere',
+            color: field.key === 'subject' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            minWidth: ['subject', 'sender', 'result'].includes(field.key) ? 170 : undefined,
+          }}>
+            {field.value}
+          </td>
+        ))}
+        <td style={{ padding: '9px 8px', verticalAlign: 'top' }}>{actions}</td>
       </tr>
       {expanded && (
         <tr data-testid="plugin-results-row-expanded">
@@ -174,6 +215,7 @@ function ResultRow({
 
 export default function PluginResultsPanel({ pluginId, pluginName, onClose }) {
   const { t } = useTranslation();
+  const isMobile = useMobile();
   const [query, setQuery] = useState(() => ({
     pluginId,
     accountId: null,
@@ -384,10 +426,28 @@ export default function PluginResultsPanel({ pluginId, pluginName, onClose }) {
           : t('pluginResults.openFailed', { error: openError.message }))
         : null;
 
+  const resultRows = displayedPage?.messages.map(message => (
+    <ResultRow
+      key={message.id}
+      message={message}
+      expanded={expandedId === message.id}
+      opening={openingId === message.id}
+      onToggleDetails={toggleDetails}
+      onOpen={openMessage}
+      mobile={isMobile}
+      t={t}
+    />
+  ));
+  const filterStyle = {
+    display: 'flex', flexDirection: isMobile ? 'column' : 'row',
+    alignItems: isMobile ? 'stretch' : 'center', gap: 6, minWidth: 0,
+    flex: isMobile ? '1 1 100%' : '1 1 180px', fontSize: 12, color: 'var(--text-secondary)',
+  };
+
   return (
-    <div data-testid="plugin-results-panel" style={{ color: 'var(--text-primary)' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-        <div>
+    <div data-testid="plugin-results-panel" style={{ color: 'var(--text-primary)', minWidth: 0, overflowWrap: 'anywhere' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>{t('pluginResults.title', { plugin: pluginName })}</h2>
           <div style={{ marginTop: 5, fontSize: 12, color: 'var(--text-tertiary)' }}>{t('pluginResults.storedOnly')}</div>
           {displayedPage?.plugin && <StatusLine plugin={displayedPage.plugin} t={t} />}
@@ -412,7 +472,7 @@ export default function PluginResultsPanel({ pluginId, pluginName, onClose }) {
 
       {displayedError && (
         <div role="alert" data-testid="plugin-results-error" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10,
           padding: '9px 11px', marginBottom: 12, borderRadius: 6,
           color: 'var(--danger, #d94a4a)', background: 'rgba(248,113,113,0.1)',
           border: '1px solid rgba(248,113,113,0.25)', fontSize: 12,
@@ -425,7 +485,7 @@ export default function PluginResultsPanel({ pluginId, pluginName, onClose }) {
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+        <label style={filterStyle}>
           <span>{t('pluginResults.account')}</span>
           <select
             value={query.accountId || ''}
@@ -439,7 +499,7 @@ export default function PluginResultsPanel({ pluginId, pluginName, onClose }) {
             ))}
           </select>
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+        <label style={filterStyle}>
           <span>{t('pluginResults.filter')}</span>
           <select
             value={query.facet}
@@ -494,7 +554,9 @@ export default function PluginResultsPanel({ pluginId, pluginName, onClose }) {
         </div>
       )}
 
-      {displayedPage && displayedPage.messages.length > 0 && (
+      {displayedPage && displayedPage.messages.length > 0 && (isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>{resultRows}</div>
+      ) : (
         <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 7 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
@@ -508,22 +570,10 @@ export default function PluginResultsPanel({ pluginId, pluginName, onClose }) {
                 <th style={{ padding: '8px', color: 'var(--text-secondary)', fontWeight: 600 }} />
               </tr>
             </thead>
-            <tbody>
-              {displayedPage.messages.map(message => (
-                <ResultRow
-                  key={message.id}
-                  message={message}
-                  expanded={expandedId === message.id}
-                  opening={openingId === message.id}
-                  onToggleDetails={toggleDetails}
-                  onOpen={openMessage}
-                  t={t}
-                />
-              ))}
-            </tbody>
+            <tbody>{resultRows}</tbody>
           </table>
         </div>
-      )}
+      ))}
 
       {displayedPage && (query.cursorIndex > 0 || displayedPage.nextCursor) && (
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>

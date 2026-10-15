@@ -7,6 +7,32 @@ This fork adds features to upstream [maathimself/mailflow](https://github.com/ma
 | File | Change |
 |---|---|
 | `backend/package.json` | `npm run lint` covers `fork-features` as well as `src`, so fork-only backend code is held to the same zero-warning lint as upstream code |
+| `frontend/src/components/AdminPanel.jsx` | One settings content subtree survives the mobile/desktop layout switch, so rotating a phone does not discard fork form drafts, proxy sign-in state or an open stored-results panel |
+
+### Mobile web UI
+
+Fork settings use the existing `useMobile()` breakpoint (below 768 CSS pixels), without
+changing API requests or maintaining separate mobile state. OAuth proxy and external-service
+forms, Jev category/routing editors and reputation backfill controls keep their existing
+component instances. Mobile inputs use 16px text, action targets allow at least 44px of
+height, and long addresses, paths and diagnostics wrap instead of pushing controls off-screen.
+
+Stored plugin results render every desktop field and both actions in vertically arranged
+mobile records; desktop retains the table. Account/facet filters, counts, cursor pagination,
+expanded observations and exact physical-message navigation share the same state in both
+layouts. Jev queue matrices, move incidents and anti-spam language partitions likewise keep
+every value in labelled mobile records. The spam explanation dialog wraps long evidence and
+keeps its Close control reachable while scrolling. Mail-list tags and all-source reading
+details remain available; the shared reading header wraps long sender and account identities
+without letting account metadata consume the sender's width. Desktop-only detached windows
+are not a mobile navigation path.
+
+On upstream sync, preserve the single settings content subtree as well as the individual
+layouts. The render regressions in `frontend/src/components/AdminPanel.render.test.js` and
+`frontend/fork-features/plugin-results/PluginResultsPanel.render.test.js` cover draft and
+expanded-result retention across the breakpoint. Actual browser checks must also exercise
+320px, 390px, 767px and desktop widths, including long content and real saves/actions; JSDOM
+does not establish control geometry or absence of horizontal clipping.
 
 ## CI and release
 

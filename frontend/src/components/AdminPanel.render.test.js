@@ -42,15 +42,47 @@ registerHooks({
 });
 
 const dom = new JSDOM('<div id="root"></div>', { url: 'https://mail.example.invalid', pretendToBeVisual: true });
+const mediaQueries = new Map();
+const matchesWidth = (query) => {
+  const widthQuery = query.match(/^\((min|max)-width:\s*(\d+)px\)$/);
+  if (!widthQuery) return false;
+  const [, bound, width] = widthQuery;
+  return bound === 'max' ? window.innerWidth <= Number(width) : window.innerWidth >= Number(width);
+};
+const matchMedia = (query) => {
+  if (!mediaQueries.has(query)) {
+    const media = new dom.window.EventTarget();
+    Object.assign(media, {
+      media: query, matches: matchesWidth(query),
+      addListener(listener) { this.addEventListener('change', listener); },
+      removeListener(listener) { this.removeEventListener('change', listener); },
+    });
+    mediaQueries.set(query, media);
+  }
+  return mediaQueries.get(query);
+};
+function setViewportWidth(width) {
+  window.innerWidth = width;
+  for (const media of mediaQueries.values()) {
+    const matches = matchesWidth(media.media);
+    if (matches === media.matches) continue;
+    media.matches = matches;
+    const event = new window.Event('change');
+    Object.assign(event, { matches, media: media.media });
+    media.dispatchEvent(event);
+  }
+  window.dispatchEvent(new window.Event('resize'));
+}
+
 Object.assign(globalThis, {
   window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage,
   CustomEvent: dom.window.CustomEvent, Node: dom.window.Node, Element: dom.window.Element,
   HTMLElement: dom.window.HTMLElement, getComputedStyle: dom.window.getComputedStyle,
-  matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+  matchMedia,
   ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
   IS_REACT_ACT_ENVIRONMENT: true,
 });
-dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+dom.window.matchMedia = matchMedia;
 globalThis.__VITE_ENV__ = { MODE: 'test', DEV: false, PROD: true };
 globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}), text: async () => '' });
 
@@ -59,6 +91,15 @@ const { createRoot } = await import('react-dom/client');
 const { useStore } = await import('../store/index.js');
 const { api } = await import('../utils/api.js');
 const AdminPanel = (await import('./AdminPanel.jsx')).default;
+
+const click = (el) => React.act(async () => { el.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+async function type(input, text) {
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  await React.act(async () => {
+    setValue.call(input, text);
+    input.dispatchEvent(new window.Event('input', { bubbles: true }));
+  });
+}
 
 const ACCOUNT = {
   id: 'acct', name: 'Work', email_address: 'me@example.invalid', color: '#6366f1',
@@ -79,19 +120,11 @@ describe('account form: automatic Cc and Bcc (#491)', () => {
   });
   afterEach(() => React.act(async () => root.unmount()));
 
-  const click = (el) => React.act(async () => { el.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
   const field = (placeholder) => {
     const input = document.querySelector(`input[placeholder="${placeholder}"]`);
     assert.ok(input, `the form has a ${placeholder} field`);
     return input;
   };
-  async function type(input, text) {
-    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-    await React.act(async () => {
-      setValue.call(input, text);
-      input.dispatchEvent(new window.Event('input', { bubbles: true }));
-    });
-  }
   const save = () => click([...document.querySelectorAll('button')].find(b => b.textContent === 'admin.accounts.saveChanges'));
 
   // Settings > Accounts > Edit, for an account that already has both lists saved.
@@ -153,5 +186,60 @@ describe('account form: automatic Cc and Bcc (#491)', () => {
     assert.equal(sent.length, 1);
     assert.ok(document.body.textContent.includes(error), 'the server error is shown in the form');
     assert.equal(field('compose.bccPh').value, 'me');
+  });
+});
+
+describe('settings: account draft across viewport changes', () => {
+  let root;
+
+  before(() => {
+    api.admin.getSettings = async () => ({ settings: {} });
+  });
+  afterEach(() => React.act(async () => {
+    root.unmount();
+    setViewportWidth(1024);
+  }));
+
+  const button = (text) => {
+    const el = [...document.querySelectorAll('button')].find(b => b.textContent === text);
+    assert.ok(el, `the settings view has a ${text} button`);
+    return el;
+  };
+  const field = (labelKey) => {
+    const label = [...document.querySelectorAll('label')].find(el => el.textContent.trim().startsWith(labelKey));
+    assert.ok(label?.control, `the Proxy form has a ${labelKey} field`);
+    return label.control;
+  };
+  const expectDraft = (email, name) => {
+    assert.equal(button('admin.accounts.proxy.modeProxy').getAttribute('aria-pressed'), 'true', 'Proxy mode stays selected');
+    assert.equal(field('admin.accounts.proxy.email').value, email, 'the unsaved email stays');
+    assert.equal(field('admin.accounts.proxy.name').value, name, 'the unsaved name stays');
+    assert.equal(button('admin.accounts.proxy.start').disabled, false, 'the same setup can still continue');
+  };
+
+  test('Proxy Add account keeps its mode and editable draft through 390 → 900 → 390', async () => {
+    setViewportWidth(390);
+    useStore.setState({ user: { id: 'u1' }, accounts: [ACCOUNT], adminTab: 'accounts' });
+    root = createRoot(document.getElementById('root'));
+    await React.act(async () => { root.render(React.createElement(AdminPanel)); });
+    await click(button('admin.accounts.addButton'));
+    await click(button('admin.accounts.proxy.modeProxy'));
+    assert.equal(button('admin.accounts.proxy.start').disabled, true, 'setup needs an email before it can continue');
+    await type(field('admin.accounts.proxy.email'), 'draft@example.invalid');
+    await type(field('admin.accounts.proxy.name'), 'Unsaved mailbox');
+    expectDraft('draft@example.invalid', 'Unsaved mailbox');
+
+    await React.act(async () => { setViewportWidth(900); });
+    expectDraft('draft@example.invalid', 'Unsaved mailbox');
+    await type(field('admin.accounts.proxy.name'), 'Edited on desktop');
+    expectDraft('draft@example.invalid', 'Edited on desktop');
+
+    await React.act(async () => { setViewportWidth(390); });
+    expectDraft('draft@example.invalid', 'Edited on desktop');
+    await type(field('admin.accounts.proxy.email'), '');
+    assert.equal(button('admin.accounts.proxy.start').disabled, true, 'the retained form still responds to edits');
+    await type(field('admin.accounts.proxy.email'), 'continued@example.invalid');
+    await type(field('admin.accounts.proxy.name'), 'Continued on mobile');
+    expectDraft('continued@example.invalid', 'Continued on mobile');
   });
 });

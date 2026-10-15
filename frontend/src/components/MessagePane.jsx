@@ -2043,6 +2043,7 @@ export default function MessagePane({ windowMessage = null, onWindowClose = null
             borderBottom: '1px solid var(--border-subtle)',
             fontSize: 17, fontWeight: 600,
             color: 'var(--text-primary)', lineHeight: 1.3,
+            minWidth: 0, overflowWrap: 'anywhere',
             fontFamily: 'var(--font-display)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
@@ -2060,7 +2061,7 @@ export default function MessagePane({ windowMessage = null, onWindowClose = null
             <JevSpamDetails key={message.id} messageId={message.id} />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12, padding: '12px 16px' }}>
             {/* Avatar */}
             <div style={{
               width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
@@ -2077,30 +2078,30 @@ export default function MessagePane({ windowMessage = null, onWindowClose = null
             </div>
 
             {/* Sender info */}
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: isMobile ? '1 1 calc(100% - 52px)' : '1 1 200px', minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere' }}>
               {isMobile ? (
                 <>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
                     {message.from_name || message.from_email}
                   </div>
                   {message.from_name && (
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', overflowWrap: 'anywhere' }}>
                       {message.from_email}
                     </div>
                   )}
                   {body?.senderEmail && (
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2, overflowWrap: 'anywhere' }}>
                       <span>{t('message.via')} </span>
                       <span style={{ color: 'var(--text-secondary)' }}>{body.senderName ? `${body.senderName} <${body.senderEmail}>` : body.senderEmail}</span>
                     </div>
                   )}
                   {body?.forwardedFromEmail && (
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2, overflowWrap: 'anywhere' }}>
                       <span>{t('message.forwardedFrom', { service: body.forwardedVia })} </span>
                       <span style={{ color: 'var(--text-secondary)' }}>{body.forwardedFromName ? `${body.forwardedFromName} <${body.forwardedFromEmail}>` : body.forwardedFromEmail}</span>
                     </div>
                   )}
-                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2, overflowWrap: 'anywhere' }}>
                     <span>{t('message.to')} </span>
                     <span style={{ color: 'var(--text-secondary)' }}>
                       {toList.length > 0
@@ -2111,7 +2112,7 @@ export default function MessagePane({ windowMessage = null, onWindowClose = null
                     </span>
                   </div>
                   {ccList.length > 0 && (
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2, overflowWrap: 'anywhere' }}>
                       <span>Cc </span>
                       <span style={{ color: 'var(--text-secondary)' }}>
                         {ccList.map((r, i) => (
@@ -2176,16 +2177,19 @@ export default function MessagePane({ windowMessage = null, onWindowClose = null
             </div>
 
             {/* Date + account */}
-            <div style={{ flexShrink: 0, textAlign: 'right' }}>
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+            <div style={{
+              flex: isMobile ? '1 1 100%' : '0 1 180px', minWidth: 0, maxWidth: '100%',
+              marginLeft: isMobile ? 52 : undefined, textAlign: isMobile ? 'left' : 'right', overflowWrap: 'anywhere',
+            }}>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: isMobile ? 'normal' : 'nowrap' }}>
                 {message.date ? format(new Date(message.date), isMobile ? 'MMM d, h:mm a' : 'MMM d, yyyy h:mm a') : ''}
               </div>
               <div style={{
                 fontSize: 11, marginTop: 4,
-                display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end',
+                display: 'flex', alignItems: 'center', gap: 4, justifyContent: isMobile ? 'flex-start' : 'flex-end', minWidth: 0,
               }}>
                 <div style={{
-                  width: 6, height: 6, borderRadius: '50%',
+                  width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
                   background: message.account_color || 'var(--accent)',
                 }} />
                 <span style={{ color: 'var(--text-tertiary)' }}>{message.account_name}</span>
