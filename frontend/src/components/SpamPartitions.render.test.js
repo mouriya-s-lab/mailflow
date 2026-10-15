@@ -40,6 +40,7 @@ Object.assign(globalThis, {
   HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true,
   __VITE_ENV__: { MODE: 'test', DEV: false, PROD: true },
 });
+dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 const React = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { spamApi } = await import('../utils/spamApi.js');

@@ -35,6 +35,8 @@ const shellStyle = {
   display: 'flex',
   flexDirection: 'column',
   gap: 6,
+  minWidth: 0,
+  overflowWrap: 'anywhere',
   marginTop: 6,
   padding: '8px 10px',
   border: '1px solid var(--border-subtle)',
@@ -91,6 +93,8 @@ export default function JevSpamDetails({ messageId }) {
           style={{
             alignSelf: 'flex-start',
             padding: '4px 9px',
+            minHeight: 44,
+            maxWidth: '100%',
             border: '1px solid var(--border)',
             borderRadius: 4,
             background: 'var(--bg-secondary)',

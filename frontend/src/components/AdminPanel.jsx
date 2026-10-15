@@ -8989,14 +8989,8 @@ export default function AdminPanel() {
     </>
   );
 
-  if (isMobile) {
-    return (
-      <div className="admin-panel" style={{
-        position: 'fixed', inset: 0, zIndex: 2000,
-        background: 'var(--bg-secondary)',
-        display: 'flex', flexDirection: 'column',
-        animation: 'sheet-enter var(--motion-normal) var(--ease-emphasized) both',
-      }}>
+  const mobileNavigation = (
+      <div style={{ flexShrink: 0, minWidth: 0 }}>
         {/* Mobile header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -9058,42 +9052,29 @@ export default function AdminPanel() {
           {tabRightOverflow && <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 48, pointerEvents: 'none', background: 'linear-gradient(to right, transparent, var(--bg-secondary))' }} />}
         </div>
 
-        {/* Content — full width, scrollable */}
-        <div
-          style={{ flex: 1, overflow: 'auto', padding: '20px 16px' }}
-          onScroll={e => {
-            const el = e.currentTarget;
-            el.style.boxShadow = el.scrollTop > 4 ? 'inset 0 8px 8px -8px rgba(0,0,0,0.2)' : 'none';
-          }}
-        >
-          {searchResults !== null
-            ? <SearchResultsView results={searchResults} query={searchQuery} onNavigate={navigateTo} t={t} />
-            : tabContent}
-        </div>
       </div>
-    );
-  }
+  );
 
   return (
     <div
       onClick={e => e.target === e.currentTarget && setShowAdmin(false)}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        position: 'fixed', inset: 0, background: isMobile ? 'var(--bg-secondary)' : 'rgba(0,0,0,0.6)',
+        backdropFilter: isMobile ? undefined : 'blur(8px)', WebkitBackdropFilter: isMobile ? undefined : 'blur(8px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 2000, padding: 24,
+        zIndex: 2000, padding: isMobile ? 0 : 24,
         animation: 'backdrop-enter var(--motion-fast) var(--ease-standard) both',
       }}
     >
-      <div className="admin-panel admin-window" style={{
-        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        borderRadius: 16, width: '100%', maxWidth: 740,
-        height: '82vh', maxHeight: 700, display: 'flex', overflow: 'hidden',
-        boxShadow: 'var(--shadow-modal)',
+      <div className={isMobile ? 'admin-panel' : 'admin-panel admin-window'} style={{
+        background: 'var(--bg-secondary)', border: isMobile ? 'none' : '1px solid var(--border)',
+        borderRadius: isMobile ? 0 : 16, width: '100%', maxWidth: isMobile ? undefined : 740,
+        height: isMobile ? '100%' : '82vh', maxHeight: isMobile ? undefined : 700,
+        display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflow: 'hidden', minWidth: 0,
+        boxShadow: isMobile ? undefined : 'var(--shadow-modal)',
         animation: 'modal-enter var(--motion-normal) var(--ease-emphasized) both',
       }}>
-        {/* Left sidebar */}
-        <div style={{
+        {isMobile ? mobileNavigation : <div style={{
           width: 216, borderRight: '1px solid var(--border-subtle)',
           background: 'var(--bg-primary)', padding: '20px 10px',
           display: 'flex', flexDirection: 'column', flexShrink: 0,
@@ -9197,11 +9178,11 @@ export default function AdminPanel() {
             </svg>
             {t('admin.close')}
           </button>
-        </div>
+        </div>}
 
         {/* Content */}
         <div
-          style={{ flex: 1, overflow: 'auto', padding: '24px' }}
+          style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'auto', padding: isMobile ? '20px 16px calc(20px + var(--sab))' : '24px' }}
           onScroll={e => {
             const el = e.currentTarget;
             el.style.boxShadow = el.scrollTop > 4 ? 'inset 0 8px 8px -8px rgba(0,0,0,0.2)' : 'none';

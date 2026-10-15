@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/index.js';
 import { spamApi } from '../utils/spamApi.js';
+import { useMobile } from '../hooks/useMobile.js';
 
 // Antispam settings panel (v0.2) — mounted as the "Antispam" tab in AdminPanel.
 // Global-per-user scope: model status, thresholds, decay, master switch,
@@ -59,6 +60,7 @@ function Slider({ value, min, max, step = 0.01, onChange }) {
 
 export default function SpamSettings() {
   const { t } = useTranslation();
+  const isMobile = useMobile();
   const addNotification = useStore(s => s.addNotification);
   const [status, setStatus] = useState(null);
   const [thresholds, setThresholds] = useState(null);
@@ -165,7 +167,7 @@ export default function SpamSettings() {
   }
 
   return (
-    <div style={{ padding: '4px 2px', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ padding: '4px 2px', maxWidth: 640, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
       <h3 style={{ margin: '16px 0 4px', fontSize: 16 }}>{t('spam.title')}</h3>
       <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
         {t('spam.subtitle')}
@@ -178,6 +180,22 @@ export default function SpamSettings() {
           <Stat label={t('spam.statDecay')} value={`${status.decayThresholdDays ?? 90} ${t('spam.days')}`} />
         </div>
         {status.partitions.length > 0 ? (
+          isMobile ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, marginTop: 12 }}>
+              {status.partitions.map(partition => (
+                <dl key={partition.language} style={{ margin: 0, padding: 12, minWidth: 0, border: '1px solid var(--border-subtle)', borderRadius: 10, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 6, fontSize: 13, overflowWrap: 'anywhere' }}>
+                  <dt style={{ color: 'var(--text-secondary)' }}>{t('spam.statLanguage')}</dt>
+                  <dd style={{ margin: '0 0 6px', fontWeight: 600 }}>{partition.language}</dd>
+                  <dt style={{ color: 'var(--text-secondary)' }}>{t('spam.statRecords')}</dt>
+                  <dd style={{ margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{partition.trainingRecords}</dd>
+                  <dt style={{ color: 'var(--text-secondary)' }}>{t('spam.statMaturity')}</dt>
+                  <dd style={{ margin: '0 0 6px' }}>{t(`spam.maturity.${partition.maturity}`)}</dd>
+                  <dt style={{ color: 'var(--text-secondary)' }}>{t('spam.statLastTrained')}</dt>
+                  <dd style={{ margin: 0 }}>{partition.lastTrainedAt ? new Date(partition.lastTrainedAt).toLocaleString() : t('spam.never')}</dd>
+                </dl>
+              ))}
+            </div>
+          ) : (
           <div style={{ overflowX: 'auto', marginTop: 12 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, textAlign: 'left' }}>
               <thead>
@@ -202,6 +220,7 @@ export default function SpamSettings() {
               </tbody>
             </table>
           </div>
+          )
         ) : (
           <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--text-secondary)' }}>
             {t('spam.noLanguageModels')}

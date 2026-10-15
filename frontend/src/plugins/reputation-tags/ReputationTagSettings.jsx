@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useMobile } from '../../hooks/useMobile.js';
 import { reputationTagsApi } from './api.js';
 
 export const STATUS_REFRESH_MS = 15_000;
-const cardStyle = { border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', background: 'var(--bg-secondary)' };
-const hintStyle = { fontSize: 12, color: 'var(--text-tertiary)', margin: '6px 0 10px' };
-const buttonStyle = { padding: '6px 12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 12 };
+const cardStyle = { border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', background: 'var(--bg-secondary)', minWidth: 0, overflowWrap: 'anywhere' };
+const hintStyle = { fontSize: 12, color: 'var(--text-tertiary)', margin: '6px 0 10px', minWidth: 0, overflowWrap: 'anywhere' };
+const buttonStyle = { padding: '6px 12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 12, maxWidth: '100%', overflowWrap: 'anywhere' };
 
 function sourceText(t, source) {
   switch (source) {
@@ -26,7 +27,7 @@ function backfillText(t, run) {
   }
 }
 
-function AccountBackfill({ pluginId, account, refresh, sourceReady, onError }) {
+function AccountBackfill({ pluginId, account, refresh, sourceReady, onError, isMobile }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const running = account.backfill.kind === 'running';
@@ -48,11 +49,11 @@ function AccountBackfill({ pluginId, account, refresh, sourceReady, onError }) {
   };
   const disabled = busy || (!running && !sourceReady);
   return (
-    <div style={cardStyle} data-testid={`tag-account-${account.id}`}>
+    <div style={{ ...cardStyle, padding: isMobile ? '12px' : cardStyle.padding }} data-testid={`tag-account-${account.id}`}>
       <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{account.emailAddress}</div>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
-        <span data-testid="tag-backfill" style={{ fontSize: 13, color: 'var(--text-primary)', flex: 1 }}>{backfillText(t, account.backfill)}</span>
-        <button type="button" disabled={disabled} onClick={action} style={{ ...buttonStyle, opacity: disabled ? 0.5 : 1, cursor: disabled ? 'default' : 'pointer' }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', marginTop: 8, minWidth: 0 }}>
+        <span data-testid="tag-backfill" style={{ fontSize: 13, color: 'var(--text-primary)', flex: 1, minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere' }}>{backfillText(t, account.backfill)}</span>
+        <button type="button" disabled={disabled} onClick={action} style={{ ...buttonStyle, minHeight: isMobile ? 44 : undefined, opacity: disabled ? 0.5 : 1, cursor: disabled ? 'default' : 'pointer' }}>
           {t(running ? 'reputationTags.stop' : 'reputationTags.start')}
         </button>
       </div>
@@ -67,6 +68,7 @@ function AccountBackfill({ pluginId, account, refresh, sourceReady, onError }) {
 
 export default function ReputationTagSettings({ pluginId, name, initialSubTab }) {
   const { t } = useTranslation();
+  const isMobile = useMobile();
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -93,11 +95,11 @@ export default function ReputationTagSettings({ pluginId, name, initialSubTab })
   }, [initialSubTab, pluginId, loaded]);
 
   return (
-    <section ref={sectionRef} data-testid={`settings-${pluginId}`}>
+    <section ref={sectionRef} data-testid={`settings-${pluginId}`} style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
       <div style={{ height: 1, background: 'var(--border-subtle)', margin: '24px 0 20px' }} />
       <h3 style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', margin: '0 0 6px' }}>{name}</h3>
       <p style={hintStyle}>{t('reputationTags.description')}</p>
-      <button type="button" onClick={refresh} style={buttonStyle}>{t('reputationTags.refresh')}</button>
+      <button type="button" onClick={refresh} style={{ ...buttonStyle, minHeight: isMobile ? 44 : undefined }}>{t('reputationTags.refresh')}</button>
       {error && <p role="alert" style={{ ...hintStyle, color: 'var(--red)' }}>{t('reputationTags.refreshFailed', { error })}</p>}
       {actionError && <p role="alert" style={{ ...hintStyle, color: 'var(--red)' }}>{actionError}</p>}
       {status ? (
@@ -105,9 +107,9 @@ export default function ReputationTagSettings({ pluginId, name, initialSubTab })
           <p data-testid="tag-source" style={{ fontSize: 13, color: status.source === 'enabled' ? 'var(--green)' : 'var(--text-secondary)' }}>{sourceText(t, status.source)}</p>
           <p style={hintStyle}>{t('reputationTags.stopHint')}</p>
           {status.accounts.length === 0 ? <p style={hintStyle}>{t('reputationTags.noAccounts')}</p> : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
               {status.accounts.map(account => (
-                <AccountBackfill key={account.id} pluginId={pluginId} account={account} refresh={refresh} sourceReady={status.activated && status.source === 'enabled'} onError={setActionError} />
+                <AccountBackfill key={account.id} pluginId={pluginId} account={account} refresh={refresh} sourceReady={status.activated && status.source === 'enabled'} onError={setActionError} isMobile={isMobile} />
               ))}
             </div>
           )}

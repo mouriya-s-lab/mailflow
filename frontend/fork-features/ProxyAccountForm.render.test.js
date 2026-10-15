@@ -38,6 +38,7 @@ registerHooks({
 });
 
 const dom = new JSDOM('<div id="root"></div>', { url: 'https://mail.example.invalid', pretendToBeVisual: true });
+dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 Object.assign(globalThis, {
   window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage,
   CustomEvent: dom.window.CustomEvent, Node: dom.window.Node, Element: dom.window.Element,
