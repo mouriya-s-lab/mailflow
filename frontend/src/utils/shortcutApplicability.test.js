@@ -21,12 +21,14 @@ test('right sidebar toggle only captures a key when its sidebar is rendered', ()
 });
 
 test('frontmost open message window enables its pane actions without a main selection', () => {
+  const front = { id: 'front', account_id: 'a1' };
+  const behind = { id: 'behind', account_id: 'a1' };
   const popout = {
     selectedMessageId: null,
-    messages: [{ id: 'front', account_id: 'a1' }, { id: 'behind', account_id: 'a1' }],
+    messages: [],
     messageWindows: [
-      { messageId: 'behind', z: 2, minimized: false },
-      { messageId: 'front', z: 4, minimized: false },
+      { messageId: 'behind', z: 2, minimized: false, content: { kind: 'ready', message: behind } },
+      { messageId: 'front', z: 4, minimized: false, content: { kind: 'ready', message: front } },
     ],
   };
   for (const action of ['reply', 'replyAll', 'forward', 'replyAllFromSelection', 'toggleStar', 'printMessage', 'markUnread', 'openLabelPicker']) {
@@ -38,6 +40,40 @@ test('frontmost open message window enables its pane actions without a main sele
   assert.equal(canHandlePaneShortcut('front', popout), true);
   assert.equal(canHandlePaneShortcut('behind', popout), false);
   assert.equal(canHandlePaneShortcut(null, popout), false);
+});
+
+test('loading and failed windows do not enable selected-message actions from cached rows', () => {
+  for (const content of [
+    { kind: 'loading' },
+    { kind: 'error', error: 'Message unavailable' },
+  ]) {
+    const state = {
+      ...selected, selectedMessageId: null,
+      messageWindows: [
+        { messageId: 'behind', z: 1, minimized: false, content: { kind: 'ready', message: { id: 'behind', account_id: 'a1' } } },
+        { messageId: 'm1', z: 2, minimized: false, content },
+      ],
+    };
+    for (const action of ['reply', 'replyAll', 'forward', 'replyAllFromSelection', 'toggleStar', 'printMessage', 'markUnread', 'openLabelPicker']) {
+      assert.equal(canRunSelectedAction(action, state), false, `${content.kind}: ${action}`);
+    }
+  }
+});
+
+test('an explicit selected row retains its actions regardless of detached window content', () => {
+  for (const content of [
+    { kind: 'ready', message: { id: 'other', account_id: 'a2' } },
+    { kind: 'loading' },
+    { kind: 'error', error: 'Message unavailable' },
+  ]) {
+    const state = {
+      ...selected,
+      messageWindows: [{ messageId: 'other', z: 1, minimized: false, content }],
+    };
+    for (const action of ['reply', 'replyAll', 'forward', 'replyAllFromSelection', 'toggleStar', 'printMessage', 'markUnread', 'openLabelPicker', 'unsubscribe', 'loadRemoteImages', 'selectMessage']) {
+      assert.equal(canRunSelectedAction(action, state), true, `${content.kind}: ${action}`);
+    }
+  }
 });
 
 test('GTD shortcuts only capture keys for an active plugin and eligible live selected account', () => {

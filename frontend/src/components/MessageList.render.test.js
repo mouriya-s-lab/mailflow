@@ -434,3 +434,173 @@ describe('MessageList reply draft indicators', () => {
     assert.equal(container.querySelector('[aria-label="Open reply draft"]'), null);
   });
 });
+
+describe('MessageList — detached opener read intent', () => {
+  const FIRST = { ...MESSAGE, id: '10000000-0000-4000-8000-000000000001', unread_count: 1 };
+  const SECOND = {
+    ...MESSAGE, id: '10000000-0000-4000-8000-000000000002',
+    uid: 2, message_id: '<detached-second@example.com>', unread_count: 1,
+  };
+  const metadataPath = id => `/api/mail/messages/${id}`;
+  const readRequest = id => ({
+    method: 'POST', path: '/api/mail/messages/bulk-read', body: { ids: [id], read: true },
+  });
+
+  async function openerScenario(t, rows, { threadedView = false } = {}) {
+    const originalFetch = globalThis.fetch;
+    const previousBehavior = useStore.getState().markReadBehavior;
+    const previousDelay = useStore.getState().markReadDelay;
+    const requests = [];
+    const pending = new Map();
+    const response = (status, body) => ({
+      ok: status < 400, status, headers: { get: () => 'application/json' },
+      json: async () => body, text: async () => JSON.stringify(body),
+    });
+    globalThis.fetch = (url, options = {}) => {
+      const request = {
+        method: options.method || 'GET', path: new URL(url, dom.window.location.href).pathname,
+        body: options.body ? JSON.parse(options.body) : null,
+      };
+      requests.push(request);
+      if (request.method === 'GET' && rows.some(row => request.path === metadataPath(row.id))) {
+        assert.ok(!pending.has(request.path), `duplicate metadata request for ${request.path}`);
+        return new Promise(resolve => { pending.set(request.path, resolve); });
+      }
+      return originalFetch(url, options);
+    };
+    t.after(async () => {
+      await React.act(async () => {
+        if (root) root.unmount();
+        root = null;
+        useStore.setState({
+          messageWindows: [], selectedMessageId: null,
+          markReadBehavior: previousBehavior, markReadDelay: previousDelay,
+        });
+        // Drain read/count bookkeeping while timers and the request recorder still belong
+        // to this scenario, rather than leaking their callbacks into another mounted list.
+        t.mock.timers.tick(60000);
+      });
+      globalThis.fetch = originalFetch;
+      t.mock.timers.reset();
+    });
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    await React.act(async () => {
+      useStore.setState({
+        messageWindows: [], selectedMessageId: null, expandedThreadId: null, threadMessages: {},
+        notifications: [], markReadBehavior: 'delay', markReadDelay: 1,
+      });
+    });
+    await mount({ rows, threadedView });
+
+    const event = async (id, type) => {
+      const row = container.querySelector(`[data-msgid="${id}"]`);
+      assert.ok(row, `expected a rendered opener row for ${id}`);
+      await React.act(async () => {
+        (row.querySelector('[draggable]') || row).dispatchEvent(
+          new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: 20, clientY: 20 }),
+        );
+      });
+    };
+    return {
+      requests,
+      reads: () => requests.filter(request => request.path === '/api/mail/messages/bulk-read'),
+      metadata: () => requests.filter(request => rows.some(row => request.path === metadataPath(row.id))),
+      doubleClick: id => event(id, 'dblclick'),
+      openFromMenu: async id => {
+        await event(id, 'contextmenu');
+        const label = [...document.querySelectorAll('span')]
+          .find(candidate => candidate.textContent.trim() === 'contextMenu.openInNewWindow');
+        assert.ok(label, 'expected the actual context-menu detached opener');
+        await React.act(async () => {
+          label.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        });
+      },
+      resolve: async (message, status = 200) => {
+        const resolve = pending.get(metadataPath(message.id));
+        assert.ok(resolve, `expected a pending exact metadata GET for ${message.id}`);
+        await React.act(async () => {
+          resolve(response(status, status < 400 ? message : { error: 'metadata unavailable' }));
+        });
+      },
+      advance: async milliseconds => {
+        await React.act(async () => { t.mock.timers.tick(milliseconds); });
+      },
+    };
+  }
+
+  test('reverse metadata completion preserves the latest DOM opening intent and its UUID', async t => {
+    const scenario = await openerScenario(t, [FIRST, SECOND]);
+    await scenario.doubleClick(FIRST.id);
+    await scenario.doubleClick(SECOND.id);
+    assert.deepEqual(scenario.metadata(), [
+      { method: 'GET', path: metadataPath(FIRST.id), body: null },
+      { method: 'GET', path: metadataPath(SECOND.id), body: null },
+    ]);
+    assert.deepEqual(scenario.reads(), [], 'opening loading shells must not mark either row read');
+
+    await scenario.resolve(SECOND);
+    await scenario.advance(400);
+    await scenario.resolve(FIRST);
+    await scenario.advance(599);
+    assert.deepEqual(scenario.reads(), [], 'neither row is marked before the latest intent reaches 1000 ms');
+    // At 1400 ms the stale-A timer would also have fired if A's later HTTP response
+    // replaced B's timer. Assert the network UUID, not only the number of mutations.
+    await scenario.advance(401);
+    assert.deepEqual(scenario.reads(), [readRequest(SECOND.id)]);
+    assert.equal(useStore.getState().messages.find(row => row.id === FIRST.id).is_read, false);
+    assert.equal(useStore.getState().messages.find(row => row.id === SECOND.id).is_read, true);
+  });
+
+  test('context-menu refocus of the same loading UUID preserves the original waiter', async t => {
+    const scenario = await openerScenario(t, [FIRST]);
+    await scenario.doubleClick(FIRST.id);
+    const originalWindow = useStore.getState().messageWindows[0];
+    assert.equal(originalWindow.content.kind, 'loading');
+    await scenario.openFromMenu(FIRST.id);
+    assert.deepEqual(scenario.metadata(), [{ method: 'GET', path: metadataPath(FIRST.id), body: null }]);
+    assert.equal(useStore.getState().messageWindows.length, 1);
+    assert.equal(useStore.getState().messageWindows[0].winId, originalWindow.winId);
+    assert.ok(useStore.getState().messageWindows[0].z > originalWindow.z, 'the second action really refocused the loading shell');
+
+    await scenario.resolve(FIRST);
+    await scenario.advance(999);
+    assert.deepEqual(scenario.reads(), []);
+    await scenario.advance(1);
+    assert.deepEqual(scenario.reads(), [readRequest(FIRST.id)]);
+  });
+
+  for (const physicalRead of [false, true]) {
+    test(`context-menu opening uses physical is_read=${physicalRead}, not the opposite grouped flag`, async t => {
+      const grouped = {
+        ...FIRST, is_read: !physicalRead, thread_id: 'grouped-thread',
+        message_count: 3, unread_count: 2,
+      };
+      const physical = { ...FIRST, is_read: physicalRead, thread_id: null, message_count: 1 };
+      const scenario = await openerScenario(t, [grouped], { threadedView: true });
+      await scenario.openFromMenu(FIRST.id);
+      assert.deepEqual(scenario.reads(), [], 'the grouped row is not authoritative before metadata arrives');
+      await scenario.resolve(physical);
+      await scenario.advance(999);
+      assert.deepEqual(scenario.reads(), []);
+      await scenario.advance(1);
+      assert.deepEqual(scenario.reads(), physicalRead ? [] : [readRequest(FIRST.id)]);
+    });
+  }
+
+  for (const outcome of ['failed', 'closed']) {
+    test(`${outcome} metadata opening neither warms a body nor marks the row read`, async t => {
+      const scenario = await openerScenario(t, [FIRST]);
+      await scenario.doubleClick(FIRST.id);
+      if (outcome === 'closed') {
+        await React.act(async () => {
+          useStore.getState().closeMessageWindow(useStore.getState().messageWindows[0].winId);
+        });
+      }
+      await scenario.resolve(FIRST, outcome === 'failed' ? 503 : 200);
+      await scenario.advance(2000);
+      assert.deepEqual(scenario.reads(), []);
+      assert.deepEqual(scenario.requests.filter(request => request.path === `${metadataPath(FIRST.id)}/body`), []);
+      assert.equal(useStore.getState().messages.find(row => row.id === FIRST.id).is_read, false);
+    });
+  }
+});

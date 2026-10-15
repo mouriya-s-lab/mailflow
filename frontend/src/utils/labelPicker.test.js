@@ -23,19 +23,62 @@ test('picker captures selected message identity from a sidebar section', () => {
 });
 
 test('picker captures the frontmost open message window when the list has no selection', () => {
+  const behind = { id: 'behind', account_id: 'a1', folder: 'INBOX' };
+  const front = { id: 'front', account_id: 'a1', folder: 'Projects' };
   const captured = selectedPickerMessage({
     selectedMessageId: null,
-    messages: [
-      { id: 'behind', account_id: 'a1', folder: 'INBOX' },
-      { id: 'front', account_id: 'a1', folder: 'Projects' },
-    ],
+    messages: [],
     messageWindows: [
-      { messageId: 'behind', z: 2, minimized: false },
-      { messageId: 'front', z: 4, minimized: false },
+      { messageId: 'behind', z: 2, minimized: false, content: { kind: 'ready', message: behind } },
+      { messageId: 'front', z: 4, minimized: false, content: { kind: 'ready', message: front } },
     ],
   });
   assert.equal(captured.id, 'front');
   assert.equal(captured.folder, 'Projects');
+});
+
+test('window label choice copies only the exact physical message, not its same-UUID grouped conversation', async () => {
+  const exact = {
+    id: 'physical-uuid', account_id: 'a1', folder: 'INBOX', subject: 'Exact subject',
+    thread_id: 'thread', message_count: 1,
+  };
+  const grouped = { ...exact, subject: 'Wrong grouped subject', folder: 'Archive', message_count: 4 };
+  const captured = selectedPickerMessage({
+    selectedMessageId: null, messages: [grouped],
+    messageWindows: [
+      { messageId: exact.id, z: 1, minimized: false, content: { kind: 'ready', message: exact } },
+    ],
+  });
+  assert.deepEqual(captured, {
+    id: 'physical-uuid', account_id: 'a1', folder: 'INBOX', thread_id: 'thread', message_count: 1,
+  });
+  const calls = [];
+  await executeLabelChoice(captured, { path: 'Projects' }, {
+    getThread: async (...args) => {
+      calls.push(['thread', ...args]);
+      return { messages: [{ id: 'other-physical-uuid', account_id: 'a1', folder: 'INBOX' }] };
+    },
+    copyMessage: async (...args) => calls.push(['copy', ...args]),
+  });
+  assert.deepEqual(calls, [['copy', 'physical-uuid', 'Projects']]);
+});
+
+test('picker cannot capture or copy a loading or failed window from a same-UUID mailbox row', async () => {
+  for (const content of [
+    { kind: 'loading' },
+    { kind: 'error', error: 'Message unavailable' },
+  ]) {
+    const captured = selectedPickerMessage({
+      selectedMessageId: null, messages: [{ id: 'front', account_id: 'a1', folder: 'Projects' }],
+      messageWindows: [{ messageId: 'front', z: 1, minimized: false, content }],
+    });
+    assert.equal(captured, null, content.kind);
+    const copied = [];
+    await executeLabelChoice(captured, { path: 'Reference' }, {
+      copyMessage: async (...args) => copied.push(args),
+    });
+    assert.deepEqual(copied, [], content.kind);
+  }
 });
 
 test('picker uses the active search row when its id also exists in the mailbox list', () => {

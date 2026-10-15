@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/index.js';
 import MessageWindow from './MessageWindow.jsx';
-import { resolvePresentedMessage } from '../../fork-features/plugin-results/messagePresentation.js';
+import { messageWindowTitle } from '../utils/messageWindowTitle.js';
 
 // Renders all detached message windows (#219): open ones as floating frames, minimized
 // ones as pills in a bottom-left dock so several minimized windows lay out side by side
@@ -13,10 +13,6 @@ export default function WindowLayer() {
   const windows = useStore(s => s.messageWindows);
   const setMinimized = useStore(s => s.setMessageWindowMinimized);
   const closeWindow = useStore(s => s.closeMessageWindow);
-  const messages = useStore(s => s.messages);
-  const searchResults = useStore(s => s.searchResults);
-  const searchQuery = useStore(s => s.searchQuery);
-  const threadMessages = useStore(s => s.threadMessages);
 
   if (!windows.length) return null;
 
@@ -26,14 +22,6 @@ export default function WindowLayer() {
   // is preserved without the raw counter creeping toward the compose modal's z-index.
   const zOrder = [...open].sort((a, b) => a.z - b.z).map(w => w.winId);
 
-  const resolveTitle = (messageId) => {
-    const list = searchQuery.trim() ? searchResults : messages;
-    const msg = resolvePresentedMessage(messageId, 'single', list, threadMessages);
-    return {
-      title: msg?.subject?.trim() || t('common.noSubject'),
-      accent: msg?.account_color || 'var(--accent)',
-    };
-  };
 
   return (
     <>
@@ -47,7 +35,9 @@ export default function WindowLayer() {
           display: 'flex', flexWrap: 'wrap', gap: 8, maxWidth: 'calc(100vw - 24px)',
         }}>
           {minimized.map(win => {
-            const { title, accent } = resolveTitle(win.messageId);
+            const title = messageWindowTitle(win.content, t);
+            const accent = win.content.kind === 'ready'
+              ? win.content.message.account_color || 'var(--accent)' : 'var(--accent)';
             return (
               <div
                 key={win.winId}
