@@ -9,9 +9,11 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { pluginRegistry } from '../plugins/registry.js';
 import { getActivatedPlugins, setPluginActivated } from '../plugins/activation.js';
+import backfillRoutes from '../../fork-features/plugin-backfill/routes.js';
 
 const router = Router();
 router.use(requireAuth);
+router.use('/backfill', backfillRoutes);
 
 // The user-facing view of a registered plugin. Deliberately minimal — no handlers/hooks/router.
 function publicManifest(plugin, activated) {

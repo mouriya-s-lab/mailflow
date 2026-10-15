@@ -41,6 +41,48 @@ describe('plugin registry — registration & validation', () => {
     second.register({ ...base, id: 'a', tagSource });
     expect(() => second.register({ ...base, id: 'b', tagSource: { ...tagSource } })).toThrow(/already owned by plugin "a"/);
   });
+
+  it('accepts a backfill capability and exposes both owner operations', async () => {
+    const r = createPluginRegistry();
+    const status = { kind: 'available', eligibility: { kind: 'ready' }, backfill: { kind: 'idle' } };
+    const outcome = { kind: 'skipped', reason: 'module_disabled' };
+    const calls = [];
+    r.register({
+      ...base,
+      backfill: {
+        inspect: async (userId, accountId) => { calls.push(['inspect', userId, accountId]); return status; },
+        start: async (userId, accountId) => { calls.push(['start', userId, accountId]); return outcome; },
+      },
+    });
+
+    expect(await r.get(base.id).backfill.inspect('user-one', 'account-one')).toEqual(status);
+    expect(await r.get(base.id).backfill.start('user-one', 'account-one')).toEqual(outcome);
+    expect(calls).toEqual([
+      ['inspect', 'user-one', 'account-one'],
+      ['start', 'user-one', 'account-one'],
+    ]);
+  });
+
+  it.each([
+    ['null', null],
+    ['boolean', true],
+    ['string', 'backfill'],
+    ['number', 1],
+    ['array', []],
+    ['function', () => {}],
+    ['empty object', {}],
+    ['missing start', { inspect: async () => {} }],
+    ['missing inspect', { start: async () => {} }],
+    ['non-function inspect', { inspect: true, start: async () => {} }],
+    ['non-function start', { inspect: async () => {}, start: 'start' }],
+  ])('rejects a malformed backfill capability (%s) without registering the plugin', (_label, backfill) => {
+    const r = createPluginRegistry();
+
+    expect(() => r.register({ ...base, backfill })).toThrow(/backfill/);
+    expect(r.has(base.id)).toBe(false);
+    expect(r.list()).toEqual([]);
+    expect(() => r.register(base)).not.toThrow();
+  });
 });
 
 describe('plugin registry — runHook (fire-and-forget)', () => {

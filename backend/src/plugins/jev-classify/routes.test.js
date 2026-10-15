@@ -41,7 +41,9 @@ import router from './routes.js';
 const PLUGIN = 'jev-classify';
 const USER = 'router-test-user';
 const ACCOUNT_ID = '11111111-1111-4111-8111-111111111111';
-const ACCOUNT = { id: ACCOUNT_ID, user_id: USER, email_address: 'test@example.com' };
+const ACCOUNT = {
+  id: ACCOUNT_ID, user_id: USER, email_address: 'test@example.com', enabled: true, protocol: 'imap',
+};
 const ACCOUNT_PATH = `/accounts/${ACCOUNT_ID}`;
 const DEFAULT_IDS = [
   'action-required', 'important-update', 'personal', 'money-and-orders',
@@ -330,6 +332,8 @@ describe('Jev classification HTTP routes', () => {
   });
 
   it('starts and stops a revision-bound backfill without rewriting duplicate requests', async () => {
+    configs.set(configKey(ACCOUNT_ID), { ...SETTINGS, newMailFloors: {} });
+    mocks.jevStatus.mockResolvedValue({ kind: 'configured' });
     values.set(storageKey(`user:${USER}:categories`), {
       ownerId: USER, value: { revision: 7, categories: CATEGORIES },
     });
@@ -360,6 +364,63 @@ describe('Jev classification HTTP routes', () => {
     });
     expect(mocks.storage.put).toHaveBeenCalledTimes(2);
     expect(values.get(key).value).toEqual(stopped.body.backfill);
+  });
+
+  it.each([
+    ['disabled account', 'account_disabled', () => {
+      mocks.getOwnedAccount.mockResolvedValue({ ...ACCOUNT, enabled: false });
+    }],
+    ['non-IMAP account', 'unsupported_protocol', () => {
+      mocks.getOwnedAccount.mockResolvedValue({ ...ACCOUNT, protocol: 'pop3' });
+    }],
+    ['inactive plugin', 'plugin_inactive', () => {
+      mocks.isPluginActivated.mockResolvedValue(false);
+    }],
+    ['disabled account module', 'module_disabled', () => {
+      configs.set(configKey(ACCOUNT_ID), { ...SETTINGS, enabled: false, newMailFloors: {} });
+    }],
+    ['unconfigured Jev service', 'service_unconfigured', () => {
+      mocks.jevStatus.mockResolvedValue({ kind: 'unconfigured' });
+    }],
+  ])('refuses a backfill for a %s without reporting a permanently running run', async (_name, reason, arrange) => {
+    configs.set(configKey(ACCOUNT_ID), { ...SETTINGS, newMailFloors: {} });
+    mocks.jevStatus.mockResolvedValue({ kind: 'configured' });
+    arrange();
+
+    expect(await request(`${ACCOUNT_PATH}/backfill`, { method: 'POST' })).toEqual({
+      status: 409, body: { error: 'Backfill unavailable', reason },
+    });
+    const status = await request('/status');
+    expect(status.status).toBe(200);
+    expect(status.body.accounts.find(account => account.id === ACCOUNT_ID).backfill).toEqual({ kind: 'idle' });
+    expect(values.size).toBe(0);
+    expect(mocks.storage.put).not.toHaveBeenCalled();
+    expect(mocks.setAccountConfig).not.toHaveBeenCalled();
+  });
+
+  it('denies another user a backfill without reading or rewriting private progress', async () => {
+    const key = storageKey(`account:${ACCOUNT_ID}:backfill`);
+    const running = {
+      kind: 'running', revision: 4, startedAt: DECIDED_AT, marked: 31, processed: 12, failed: 2,
+    };
+    values.set(key, { ownerId: USER, value: running });
+    expect(await request(`${ACCOUNT_PATH}/backfill`, { method: 'POST', user: 'another-user' })).toEqual({
+      status: 404, body: { error: 'Account not found' },
+    });
+    expect(values.get(key)).toEqual({ ownerId: USER, value: running });
+    expect(mocks.storage.getValue).not.toHaveBeenCalled();
+    expect(mocks.getAccountConfig).not.toHaveBeenCalled();
+    expect(mocks.storage.put).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed backfill account id before ownership lookup or writes', async () => {
+    const response = await request('/accounts/not-a-uuid/backfill', { method: 'POST' });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Invalid request');
+    expect(response.body.fields.id).toEqual(expect.any(String));
+    expect(mocks.getOwnedAccount).not.toHaveBeenCalled();
+    expect(mocks.storage.getValue).not.toHaveBeenCalled();
+    expect(mocks.storage.put).not.toHaveBeenCalled();
   });
 
   it('reopens failed category decisions, actions and spam training while preserving queue origins', async () => {

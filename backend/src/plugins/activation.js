@@ -18,18 +18,25 @@ export function invalidateActivationCache(userId) {
   activationCache.delete(userId);
 }
 
+// Explicit user commands must distinguish a failed read from an empty activation set.
+export async function readActivatedPlugins(userId) {
+  if (!userId) return new Set();
+  const { rows } = await query('SELECT preferences->\'enabledPlugins\' AS list FROM users WHERE id = $1', [userId]);
+  const list = rows[0]?.list;
+  return new Set(Array.isArray(list) ? list.filter(id => typeof id === 'string') : []);
+}
+
 // The set of plugin ids this user has activated. Reads preferences.enabledPlugins; a missing/
 // malformed value reads as the empty set (default off). Cached per user with a short TTL.
-export async function getActivatedPlugins(userId) {
+export async function getActivatedPlugins(userId, { fresh = false } = {}) {
+  if (fresh) return readActivatedPlugins(userId);
   if (!userId) return new Set();
   const cached = activationCache.get(userId);
   if (cached && cached.expiry > Date.now()) return cached.value;
 
-  let value = new Set();
+  let value;
   try {
-    const { rows } = await query('SELECT preferences->\'enabledPlugins\' AS list FROM users WHERE id = $1', [userId]);
-    const list = rows[0]?.list;
-    if (Array.isArray(list)) value = new Set(list.filter((id) => typeof id === 'string'));
+    value = await readActivatedPlugins(userId);
   } catch {
     // A prefs read blip degrades to "nothing activated" rather than throwing on a hot path.
     value = new Set();
@@ -40,8 +47,8 @@ export async function getActivatedPlugins(userId) {
 
 // Whether a specific plugin is activated for a user. The cheap gate plugins compose with their
 // own config.
-export async function isPluginActivated(userId, pluginId) {
-  return (await getActivatedPlugins(userId)).has(pluginId);
+export async function isPluginActivated(userId, pluginId, options) {
+  return (await getActivatedPlugins(userId, options)).has(pluginId);
 }
 
 // Whether a plugin is activated for the user who OWNS an account. Lets a plugin compose activation
