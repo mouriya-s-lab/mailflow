@@ -4,6 +4,7 @@ import express from 'express';
 const account = vi.hoisted(() => ({ id: '00000000-0000-4000-8000-000000000044', user_id: 'user' }));
 const state = vi.hoisted(() => ({ backfill: null, rows: [], bodyAvailable: false }));
 const api = vi.hoisted(() => ({
+  NEW_DOMAIN_MAX_AGE_MS: 30 * 24 * 60 * 60 * 1000,
   logger: { warn: vi.fn() },
   requireAuth: (req, _res, next) => { req.session = { userId: account.user_id }; next(); },
   getOwnedAccount: vi.fn(async () => account), listUserAccounts: vi.fn(async () => [account]),

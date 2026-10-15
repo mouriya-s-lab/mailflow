@@ -6,6 +6,7 @@ const api = vi.hoisted(() => ({
   logger: { warn: vi.fn() },
 }));
 vi.mock('../api.js', () => ({ ...api,
+  NEW_DOMAIN_MAX_AGE_MS: 30 * 24 * 60 * 60 * 1000,
   requireAuth: (_req,_res,next) => next(), getOwnedAccount: vi.fn(), listUserAccounts: vi.fn(),
   isPluginActivated: vi.fn(), currentUidFloors: vi.fn(), markMessages: vi.fn(), listQueuedMessages: vi.fn(), countQueued: vi.fn(),
   setMessageAnnotation: vi.fn(), ensureMessageBodies: vi.fn(), getMessageLinks: vi.fn(), reputationUrlSubject: vi.fn(),

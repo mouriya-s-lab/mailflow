@@ -2,8 +2,8 @@
 //
 // Four plugins — `tag-rdap`, `tag-spamhaus`, `tag-urlhaus`, `tag-safebrowsing` — each own one
 // reputation source and store their result in their own namespace of a message's
-// plugin_annotations. This module is how the rest of the system reads them: no consumer parses a
-// plugin's namespace, and no consumer queries a reputation source itself.
+// plugin_annotations. This module is how live consumers read them: they neither parse a plugin's
+// namespace nor query a source. The separate stored inspection projection does not supply tags.
 //
 // TagState, per source, for one message of an account:
 //   { kind: 'inactive' }                      the user has not activated that plugin

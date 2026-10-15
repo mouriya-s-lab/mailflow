@@ -64,6 +64,7 @@ Everything a plugin may do, grouped:
 - **Message signals (fork-only):** `getMessageSignals(accountId, ids, { deadlineMs })` (async; sender, recipients, trusted authentication, links, attachments, mailing-list marks and language), `getMessageBodyTexts(accountId, ids)` (the stored body as text), `getMessageLinks(accountId, ids)` (stored HTML links only; no header fetch or IMAP); see `backend/fork-features/README.md`
 - **Message bodies (fork-only):** `ensureMessageBodies(accountId, ids, { deadlineMs })` (async; fetches and stores the body of each of the account's messages that has none yet, never overwriting a stored one; per message `stored`, `fetched`, `empty` or `unavailable { reason }`, and a provider refusal stops the batch); see `backend/fork-features/README.md`
 - **Message tags (fork-only):** `ensureMessageTags(accountId, ids, { deadlineMs })` synchronously asks activated, configured tag sources; `getMessageTags(accountId, ids)` only reads their snapshots. Both scope messages to the account and explicitly distinguish inactive, unconfigured, unchecked (read only), complete and unavailable states; see `backend/fork-features/README.md`
+- **Stored result inspection (fork-only):** `readJevSpamResults`, `readJevSpamMessage`, `readReputationResults`, `readReputationMessage` (fixed ownership-scoped database reads, independent from current activation; counts and a page share one SQL snapshot). These validate only the documented public read projection; owners parse their private state and produce whitelisted observations. No source call, classification, ensure or write; see `backend/fork-features/README.md`.
 - **Per-plugin storage:** `storage.*` (the `plugin_data` table — KV + blobs, owner-scoped, cascade-cleaned)
 - **Per-account plugin config:** `getAccountConfig`, `setAccountConfig` (the `plugin_account_config` table)
 - **Per-message annotations:** `getMessageAnnotations`, `setMessageAnnotation` (namespaced `messages.plugin_annotations`; the write resolves to `{ kind: 'written' }` or `{ kind: 'message_missing' }`)
@@ -117,13 +118,21 @@ Both read and ensure check current activation and source configuration before re
 inactive or unconfigured sources hide existing snapshots without deleting them, so disabled sources
 cannot contribute summary chips.
 
+Stored inspection is separate from `tagSource.read`/`ensure`: `GET /results` and
+`GET /results/:messageId` under each of the four routers retain saved results while inactive
+or unconfigured. The Jev router exposes the same inspection endpoints for its spam line.
+Counts represent current live physical mail rows, not request totals or a backfill's progress;
+folder/label copies count separately and facets can overlap. Saved revision and current
+activation/configuration are shown separately; inspection never restores live chip eligibility.
+
 ---
 
 ## Frontend
 
-Core carries no plugin-specific UI code. A plugin registers into a small in-process registry
-(imported once at startup via `frontend/src/plugins/index.js`), activation-gated on
-`store.enabledPlugins`:
+Plugins register into a small in-process registry (imported once at startup via
+`frontend/src/plugins/index.js`). Runtime effects and feature slots are activation-gated
+on `store.enabledPlugins`; static metadata and saved-result inspection remain available
+when a plugin is disabled:
 
 - `registerSlot(name, { pluginId, isActive?, render })` — render UI at a core seam (`right-sidebar`,
   `settings-categories`, `row-hover-action`, …). Rendered with `<PluginSlot>` / `usePluginSlot`.
@@ -134,6 +143,8 @@ Core carries no plugin-specific UI code. A plugin registers into a small in-proc
 - `registerWsHandler(type, { pluginId, handler })` / `registerReconnectHandler(...)` — handle WS
   message types core doesn't, and resync on reconnect.
 - `registerPluginMeta(pluginId, meta)` — static metadata (e.g. where the plugin's settings live).
+  Bundled Jev and reputation plugins declare `hasStoredResults: true`; the shared Plugins tab
+  renders their read-only result entry without turning the plugin on.
 
 **Caveat — the one place core still knows about GTD:** the inbox pill-tab strip (Inbox/Todo/Waiting/…)
 in `MessageList.jsx` is interleaved with the core *category* tabs (shared tab strip + active-tab
@@ -141,6 +152,12 @@ state + list-body swap), so it isn't behind a slot yet. Changes there still touc
 else (right sidebar, context menu, row actions, settings, WS, the sections fetch) is fully behind the
 registry. There's no import-boundary lint on the frontend — but a frontend plugin's blast radius is
 one user's own browser (never the server or other users), so it's reviewed lightly.
+
+The fork's shared result viewer lives in `frontend/fork-features/plugin-results/`.
+Core's mail presentation seams mount its Jev saved-detail component and the existing live
+four-source summaries in normal, conversation and detached views. Opening a result uses its
+exact physical UUID with a transient single-message selection, not a Message-ID recovery
+or a persisted conversation-mode change.
 
 ---
 

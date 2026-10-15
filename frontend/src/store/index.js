@@ -192,7 +192,7 @@ export const useStore = create((set, get) => ({
         isLocked: true,
         messages: [], searchResults: [], searchQuery: '',
         accounts: [], accountsReady: false,
-        folders: {}, selectedMessageId: null,
+        folders: {}, selectedMessageId: null, selectedMessagePresentation: 'auto',
         unreadCounts: { total: 0, byAccount: {} },
         notifications: [], threadMessages: {}, expandedThreadId: null,
         backfillProgress: {},
@@ -202,7 +202,7 @@ export const useStore = create((set, get) => ({
       const restoredMessageId = localStorage.getItem('mailflow_locked_message') || null;
       localStorage.removeItem('mailflow_locked_message');
       localStorage.removeItem('mailflow_locked');
-      set({ isLocked: false, selectedMessageId: restoredMessageId });
+      set({ isLocked: false, selectedMessageId: restoredMessageId, selectedMessagePresentation: 'auto' });
     }
   },
   // Lock now: tell the server (it then 423s the API until unlocked), then drop into
@@ -266,6 +266,7 @@ export const useStore = create((set, get) => ({
         selectedAccountId: accountId,
         selectedFolder: folder,
         selectedMessageId: null,
+        selectedMessagePresentation: 'auto',
         messages: [],
         messagesOffset: 0,
         hasMoreMessages: true,
@@ -321,6 +322,7 @@ export const useStore = create((set, get) => ({
     messages: state.messages.filter(m => m.id !== id),
     searchResults: state.searchResults.filter(m => m.id !== id),
     selectedMessageId: state.selectedMessageId === id ? null : state.selectedMessageId,
+    selectedMessagePresentation: state.selectedMessageId === id ? 'auto' : state.selectedMessagePresentation,
   })),
   // Remove many messages in a single state update. Bulk triage (e.g. archiving ~40 rows)
   // otherwise calls removeMessage once per id, firing one store update — and, in a
@@ -333,6 +335,7 @@ export const useStore = create((set, get) => ({
       messages: state.messages.filter(m => !idSet.has(m.id)),
       searchResults: state.searchResults.filter(m => !idSet.has(m.id)),
       selectedMessageId: idSet.has(state.selectedMessageId) ? null : state.selectedMessageId,
+      selectedMessagePresentation: idSet.has(state.selectedMessageId) ? 'auto' : state.selectedMessagePresentation,
     };
   }),
   restoreMessages: (msgs) => set(state => {
@@ -361,8 +364,11 @@ export const useStore = create((set, get) => ({
 
   // Selected message
   selectedMessageId: null,
+  selectedMessagePresentation: 'auto', // per-selection intent; never changes the conversation preference
   lastViewedMessageId: null,
-  setSelectedMessage: (id) => set(id ? { selectedMessageId: id, lastViewedMessageId: id } : { selectedMessageId: null }),
+  setSelectedMessage: (id, presentation = 'auto') => set(id
+    ? { selectedMessageId: id, lastViewedMessageId: id, selectedMessagePresentation: presentation }
+    : { selectedMessageId: null, selectedMessagePresentation: 'auto' }),
 
   // Server snapshots are retained separately from a bounded optimistic window.
   serverUnreadCounts: { total: 0, byAccount: {}, snapshots: {} },

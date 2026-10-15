@@ -41,6 +41,7 @@ import SpamSettings from './SpamSettings.jsx';
 import BackupSettings from './BackupSettings.jsx';
 import { AddAccountView } from '../../fork-features/ProxyAccountForm.jsx';
 import { ExternalServicesTab } from '../../fork-features/ExternalServicesTab.jsx';
+import PluginResultsPanel from '../../fork-features/plugin-results/PluginResultsPanel.jsx';
 
 // ─── Shared field component ───────────────────────────────────────────────────
 function Field({ label, required, children }) {
@@ -4891,6 +4892,7 @@ function PluginsSection({ onNavigate }) {
   const [manifests, setManifests] = useState(null); // null = loading
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(false);
+  const [resultsPluginId, setResultsPluginId] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -4907,6 +4909,18 @@ function PluginsSection({ onNavigate }) {
     catch { setError(true); }
     finally { setBusyId(null); }
   };
+
+  if (resultsPluginId) {
+    const resultPlugin = manifests?.find(plugin => plugin.id === resultsPluginId);
+    return (
+      <PluginResultsPanel
+        key={resultsPluginId}
+        pluginId={resultsPluginId}
+        pluginName={resultPlugin?.name || resultsPluginId}
+        onClose={() => setResultsPluginId(null)}
+      />
+    );
+  }
 
   return (
     <div>
@@ -4926,6 +4940,7 @@ function PluginsSection({ onNavigate }) {
       {manifests && manifests.map(p => {
         const on = enabledPlugins.includes(p.id);
         const busy = busyId === p.id;
+        const meta = getPluginMeta(p.id);
         return (
           <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 0', borderBottom: '1px solid var(--border-subtle)' }}>
             <button
@@ -4948,7 +4963,7 @@ function PluginsSection({ onNavigate }) {
                 <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>v{p.version}</span>
               </div>
               {(() => {
-                const loc = getPluginMeta(p.id)?.settingsLocation;
+                const loc = meta?.settingsLocation;
                 // Activated + has a settings home → a clickable pointer to it. Activated with no
                 // settings, or not activated → a plain status line.
                 if (on && loc && onNavigate) {
@@ -4968,6 +4983,20 @@ function PluginsSection({ onNavigate }) {
                   </div>
                 );
               })()}
+              {meta?.hasStoredResults && (
+                <button
+                  type="button"
+                  onClick={() => setResultsPluginId(p.id)}
+                  data-testid={`plugin-results-open-${p.id}`}
+                  style={{
+                    display: 'block', marginTop: 9, padding: '6px 10px', borderRadius: 6,
+                    border: '1px solid var(--accent)', background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                    color: 'var(--accent)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                  }}
+                >
+                  {t('pluginResults.view')}
+                </button>
+              )}
             </div>
           </div>
         );

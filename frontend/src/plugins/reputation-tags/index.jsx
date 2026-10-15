@@ -11,6 +11,7 @@ const plugins = [
 plugins.forEach((plugin, index) => {
   registerPluginMeta(plugin.pluginId, {
     settingsLocation: { tab: 'categories', subtab: plugin.pluginId, labelKey: 'admin.tabs.categories' },
+    hasStoredResults: true,
   });
   registerSlot('settings-categories', {
     pluginId: plugin.pluginId,
