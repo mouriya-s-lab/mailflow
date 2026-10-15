@@ -78,13 +78,22 @@ capability to `api.js`. That's a small, deliberate core change; the boundary sta
 
 ### Manifest + registration
 
-A plugin exports a manifest (see `gtd/index.js`): `{ id, name, version, tier, router?, hooks?, sync?, tagSource? }`.
+A plugin exports a manifest (see `gtd/index.js`): `{ id, name, version, tier, router?, hooks?, sync?, tagSource?, backfill? }`.
 Core mounts the router and fires the hooks through the registry — core never calls a plugin directly.
 `hooks` are the plugin's halves of generic core events (e.g. `inboxIngest`, `afterLabelCopy`,
 `onSentMessage`, `validateAccountSettings`, `enrichAccount`, …); `sync` is an optional periodic tick.
 `tagSource` is `{ source, ensure(accountId, ids, { deadlineMs }), read(accountId, ids) }`.
 Its functions return a `Map` covering the requested ids with typed tag states; registry registration
 rejects duplicate source ownership or malformed declarations.
+The fork's optional `backfill` capability is `{ inspect(userId, accountId), start(userId, accountId) }`.
+The owner checks account ownership before reading private records and confirms start eligibility
+from current activation, account/module configuration and service configuration. `inspect`
+returns `{ kind: 'available', eligibility, backfill }`; eligibility is `ready` or
+`skipped { reason }`. `start` returns `started { backfill }`, `already_running { backfill }`
+or `skipped { reason }`, acknowledging `started` only after its existing run is persisted.
+Unexpected failures throw. Both functions are required when declaring the capability.
+The shared `/api/plugins/backfill` router discovers these capabilities through the registry;
+it neither knows plugin ids nor owns another run.
 
 ### Data
 
@@ -100,8 +109,9 @@ floors, backfill records or single-flight turns (`pluginId:accountId`). Activati
 there are no per-account settings. The account config contains only server-maintained UID floors.
 
 Each signed-in user's plugin router (`/api/<pluginId>`) provides `GET /status` and
-`POST`/`DELETE /accounts/:id/backfill`. Starting an already running backfill, or stopping one
-that is not running, returns 409; another user's account is 404. Status reads no external source.
+`POST`/`DELETE /accounts/:id/backfill`. Starting an already running backfill, stopping one
+that is not running, or starting an ineligible account returns 409; eligibility refusals
+include `reason`. Another user's account is 404. Status reads no external source.
 Stopping prevents another batch from being marked; previously queued messages still finish and
 increment `processed`, while the backfill state remains `stopped`.
 

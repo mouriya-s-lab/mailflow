@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { requireAuth, getOwnedAccount, listUserAccounts, isPluginActivated, sourceStatus, countQueued } from '../api.js';
-import { REVISION } from './model.js';
 import { exclusive, loadBackfill, saveBackfill } from './records.js';
 import { registerStoredResultRoutes } from './results.js';
+import { startBackfill } from './backfill.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -39,15 +39,13 @@ export function createRoutes(plugin) {
   router.post('/accounts/:id/backfill', async (req, res) => {
     const account = await ownedAccount(req, res);
     if (!account) return;
-    const outcome = await exclusive(plugin.id, account.id, async () => {
-      const run = await loadBackfill(plugin.id, account.id);
-      if (run.kind === 'running') return { started: false, run };
-      const next = { kind: 'running', revision: REVISION, startedAt: new Date().toISOString(), marked: 0, processed: 0, failed: 0 };
-      await saveBackfill(plugin.id, account.id, req.session.userId, next);
-      return { started: true, run: next };
-    });
-    if (!outcome.started) return res.status(409).json({ error: 'A backfill is already running', backfill: outcome.run });
-    res.json({ backfill: outcome.run });
+    const outcome = await startBackfill(plugin, req.session.userId, account.id);
+    switch (outcome.kind) {
+      case 'started': return res.json({ backfill: outcome.backfill });
+      case 'already_running': return res.status(409).json({ error: 'A backfill is already running', backfill: outcome.backfill });
+      case 'skipped': return res.status(outcome.reason === 'account_missing' ? 404 : 409).json({ error: 'Backfill unavailable', reason: outcome.reason });
+      default: throw new Error(`Unknown backfill outcome: ${outcome.kind}`);
+    }
   });
 
   router.delete('/accounts/:id/backfill', async (req, res) => {

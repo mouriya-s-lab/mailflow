@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/index.js';
 import { getPluginMeta } from '../plugins/registry.js';
 import { PluginSlot } from '../plugins/PluginSlot.jsx';
+import PluginBackfillPanel from '../../fork-features/plugin-backfill/PluginBackfillPanel.jsx';
 import { newAiAction, AI_ACTION_LIMITS } from '../aiActions.js';
 import { useMobile } from '../hooks/useMobile.js';
 import { api } from '../utils/api.js';
@@ -4926,6 +4927,10 @@ function PluginsSection({ onNavigate }) {
     <div>
       <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>{t('admin.plugins.title')}</h2>
       <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: '0 0 20px', lineHeight: 1.5 }}>{t('admin.plugins.description')}</p>
+      <PluginBackfillPanel activationKey={enabledPlugins.join(',')} onConfigure={id => {
+        const loc = getPluginMeta(id)?.settingsLocation;
+        if (loc && onNavigate) onNavigate(loc.tab, loc.subtab);
+      }} />
 
       {error && (
         <div style={{ fontSize: 12, color: 'var(--danger, #d94a4a)', marginBottom: 12 }}>{t('admin.plugins.error')}</div>
