@@ -21,3 +21,13 @@ export function tabExpr(tabs, alias = 'm') {
     ? `(${alias}.plugin_annotations #>> '{"jev-classify",category,decision,choice}')`
     : `COALESCE(${alias}.category, 'primary')`;
 }
+
+// The folders a Jev tab view spans: INBOX, and the folder Jev physically moved a message to. Routing
+// moves INBOX mail out of INBOX, and its tab must keep it. A label route ('labeled') leaves the INBOX
+// copy where it is and adds a copy elsewhere, so only a 'moved' route widens the scope: that keeps each
+// message to one row.
+export function jevFolderScope(alias = 'm') {
+  return `(${alias}.folder = 'INBOX' OR (`
+    + `${alias}.plugin_annotations #>> '{"jev-classify",category,action,effect}' = 'moved' AND `
+    + `${alias}.folder = ${alias}.plugin_annotations #>> '{"jev-classify",category,action,target}'))`;
+}

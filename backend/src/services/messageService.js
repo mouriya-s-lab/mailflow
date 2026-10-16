@@ -1,7 +1,7 @@
 import { query } from './db.js';
 import { resolveAccountScope } from './unifiedInbox.js';
 import { draftMessageSql } from '../utils/mailUtils.js';
-import { BUILTIN_TABS, tabExpr } from './categoryTabs.js';
+import { BUILTIN_TABS, tabExpr, jevFolderScope } from './categoryTabs.js';
 
 export async function listMessages({ userId, accountId, folder = 'INBOX', limit = 50, offset = 0, unreadOnly, threaded, category, tabs = BUILTIN_TABS }) {
   const accountsResult = await query(
@@ -19,25 +19,30 @@ export async function listMessages({ userId, accountId, folder = 'INBOX', limit 
   let p = 1;
 
   const isSpecificAccount = resolvedAccountId !== null;
+  // Category filter, for the tab source in effect (categoryTabs.js). The caller validates the id.
+  // A Jev tab view replaces the folder: its scope is INBOX plus where Jev moved the message.
+  const safeCategory = typeof category === 'string' && category.length > 0 ? category : null;
+  const jevTabView = tabs.kind === 'jev' && safeCategory !== null;
 
   if (isSpecificAccount) {
     whereConditions.push(`m.account_id = $${p++}`);
     values.push(resolvedAccountId);
-    whereConditions.push(`m.folder = $${p++}`);
-    values.push(folder);
+    if (!jevTabView) {
+      whereConditions.push(`m.folder = $${p++}`);
+      values.push(folder);
+    }
   } else {
     whereConditions.push(`m.account_id = ANY($${p++})`);
     values.push(scopedAccountIds);
-    whereConditions.push(`m.folder = 'INBOX'`);
+    if (!jevTabView) whereConditions.push(`m.folder = 'INBOX'`);
   }
+  if (jevTabView) whereConditions.push(jevFolderScope('m'));
 
   const isUnreadOnly = unreadOnly === 'true' || unreadOnly === true;
   if (isUnreadOnly) whereConditions.push('m.is_read = false');
 
-  // Category filter, for the tab source in effect (categoryTabs.js). The caller validates the id.
   // Built-in: 'primary' matches NULL and 'primary'; others match exactly.
-  const safeCategory = typeof category === 'string' && category.length > 0 ? category : null;
-  if (safeCategory && tabs.kind === 'jev') {
+  if (jevTabView) {
     whereConditions.push(`${tabExpr(tabs)} = $${p++}`);
     values.push(safeCategory);
   } else if (safeCategory && safeCategory !== 'primary') {

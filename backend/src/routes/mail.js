@@ -13,7 +13,7 @@ import { snippetFromBody, decodeMimeWords, parseRawHeaders, parseMailboxList, bu
 import { draftMessageSql, resolveTrashFolder, resolveAllTrashPaths, resolveAllDraftsPaths, resolveArchiveFolder, isAllMailFolder, resolveSpamFolder, resolveAllSpamPaths, getDeleteStrategy, adjustFolderCounts, fanOutReadToSiblings, fanOutStarToSiblings, fanOutBulkReadToSiblings } from '../utils/mailUtils.js';
 import { pluginRegistry } from '../plugins/registry.js';
 import { listMessages } from '../services/messageService.js';
-import { categoryTabsFor, tabIds, tabExpr } from '../services/categoryTabs.js';
+import { categoryTabsFor, tabIds, tabExpr, jevFolderScope } from '../services/categoryTabs.js';
 import { recordSyncSignal } from '../services/diagnosticsRing.js';
 import { resolveAccountScope } from '../services/unifiedInbox.js';
 import { validateHost } from '../services/hostValidation.js';
@@ -2441,7 +2441,7 @@ router.get('/category-counts', async (req, res) => {
            COUNT(*) FILTER (WHERE m.is_read = false)::int AS unread_count
     FROM messages m
     WHERE m.account_id = ANY($1)
-      AND m.folder = 'INBOX'
+      AND ${tabs.kind === 'jev' ? jevFolderScope('m') : "m.folder = 'INBOX'"}
       AND m.is_deleted = false
     GROUP BY ${expr}
   `, [scopedIds]);
