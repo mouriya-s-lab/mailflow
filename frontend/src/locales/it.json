@@ -1427,6 +1427,9 @@
       "description": "Ordina automaticamente le email in arrivo in schede di categoria. Abilita la categorizzazione nelle impostazioni account.",
       "globalEnabled": "Abilita categorizzazione globalmente",
       "globalEnabledDesc": "Abilita le schede di categoria per tutti gli account, inclusa la casella unificata.",
+      "jevEnabled": "Classificazione Jev",
+      "jevEnabledDesc": "Mostra le categorie di Jev come schede per tutti gli account, inclusa la casella unificata. Sostituisce le categorie integrate.",
+      "globalDisabledByJev": "Non disponibile finché la classificazione Jev è attiva.",
       "sourcesTitle": "Fonti della categoria Social",
       "sourcesDesc": "Solo la categoria Social si imposta tramite domini. Aggiungi domini o indirizzi email da classificare come Social — sono disponibili anche set integrati e iscrizioni URL. Le altre categorie vengono rilevate automaticamente dagli header delle email e non possono essere mappate per dominio.",
       "addManualPh": "ad es. twitter.com",
@@ -1990,6 +1993,16 @@
       "saveFailed": "Impossibile salvare le categorie: {{error}}",
       "save": "Salva categorie",
       "add": "Aggiungi categoria"
+    },
+    "spam": {
+      "title": "Istruzione per il giudizio spam",
+      "description": "La domanda a cui Jev risponde per ogni messaggio per giudicarne lo spam. Si applica ai messaggi giudicati da ora; la posta già giudicata mantiene il verdetto.",
+      "label": "Domanda per il giudizio spam",
+      "save": "Salva istruzione",
+      "restore": "Ripristina predefinita",
+      "saved": "Istruzione salvata.",
+      "restored": "Istruzione predefinita ripristinata.",
+      "saveFailed": "Impossibile salvare l’istruzione: {{error}}"
     },
     "accounts": {
       "title": "Account di posta",

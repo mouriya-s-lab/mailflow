@@ -1427,6 +1427,9 @@
       "description": "自动将收到的邮件按类别选项卡分类。在各账户设置中启用分类功能。",
       "globalEnabled": "全局启用分类",
       "globalEnabledDesc": "为所有账户（包括统一收件箱）启用类别选项卡。",
+      "jevEnabled": "Jev 分类",
+      "jevEnabledDesc": "为所有账户（包括统一收件箱）用 Jev 的类别替代内置类别选项卡。",
+      "globalDisabledByJev": "Jev 分类启动时，此开关不可用。",
       "sourcesTitle": "社交类别来源",
       "sourcesDesc": "只有「社交」类别通过域名设置。添加发件人域名或地址以归类为社交，也可使用内置合集和 URL 订阅。其他类别会根据邮件头自动识别，无法按域名映射。",
       "addManualPh": "例如 twitter.com",
@@ -1990,6 +1993,16 @@
       "saveFailed": "无法保存分类：{{error}}",
       "save": "保存分类",
       "add": "添加分类"
+    },
+    "spam": {
+      "title": "垃圾邮件判断提示",
+      "description": "Jev 为每封邮件判断是否为垃圾邮件时所回答的问题。仅适用于此后判断的邮件；已判断的邮件保留原结果。",
+      "label": "垃圾邮件判断问题",
+      "save": "保存垃圾邮件提示",
+      "restore": "恢复默认",
+      "saved": "垃圾邮件提示已保存。",
+      "restored": "已恢复默认垃圾邮件提示。",
+      "saveFailed": "无法保存垃圾邮件提示：{{error}}"
     },
     "accounts": {
       "title": "账户",

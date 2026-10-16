@@ -11,11 +11,12 @@ import {
   jevStatus, sourceStatus, tagSourcePlugins, logger,
 } from '../api.js';
 import {
-  PLUGIN_ID, parseCategoriesBody, parseAccountSettingsBody, parseAnnotation, resetTerminal,
+  PLUGIN_ID, parseCategoriesBody, parseSpamInstructionsBody, parseAccountSettingsBody, parseAnnotation, resetTerminal,
   deriveQueue,
 } from './model.js';
 import {
-  loadCategories, saveCategories, loadAccountConfig, updateAccountConfig, loadBackfill,
+  loadCategories, saveCategories, loadSpamInstructions, saveSpamInstructions,
+  loadAccountConfig, updateAccountConfig, loadBackfill,
   updateBackfill, loadIncidents, clearIncidents, loadStats,
 } from './records.js';
 import { jevCallCount, noteNewMailDrain, requeueDisabledSpam } from './processor.js';
@@ -77,6 +78,20 @@ router.put('/categories', async (req, res) => {
   if (!parsed.ok) return invalid(res, parsed.fields);
   const revision = await saveCategories(req.session.userId, parsed.value);
   res.json({ revision });
+});
+
+// ── Spam judgment prompt ──────────────────────────────────────────────────────
+
+router.get('/spam-instructions', async (req, res) => {
+  res.json(await loadSpamInstructions(req.session.userId));
+});
+
+router.put('/spam-instructions', async (req, res) => {
+  const parsed = parseSpamInstructionsBody(req.body);
+  if (!parsed.ok) return invalid(res, parsed.fields);
+  const { userId } = req.session;
+  await saveSpamInstructions(userId, parsed.value);
+  res.json(await loadSpamInstructions(userId));
 });
 
 // ── Accounts ──────────────────────────────────────────────────────────────────

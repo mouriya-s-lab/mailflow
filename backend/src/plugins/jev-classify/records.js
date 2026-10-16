@@ -2,6 +2,7 @@
 //
 // plugin_data keys (all owned by the account's user, so they are deleted with the user):
 //   user:<userId>:categories        the category definition
+//   user:<userId>:spam-instructions  the user's spam judgment prompt, { instructions } (null: the default)
 //   account:<accountId>:backfill    the backfill run
 //   account:<accountId>:incidents   moves the server made that MailFlow could not follow
 //   account:<accountId>:stats       when Jev last decided a message of the account
@@ -14,7 +15,7 @@
 
 import { storage, getAccountConfig, setAccountConfig } from '../api.js';
 import {
-  PLUGIN_ID, storedCategories, storedAccountConfig, storedBackfill, storedIncidents, storedStats,
+  PLUGIN_ID, storedCategories, storedSpamInstructions, spamInstructionsView, storedAccountConfig, storedBackfill, storedIncidents, storedStats,
 } from './model.js';
 
 const chains = new Map();
@@ -30,6 +31,7 @@ export function serialized(key, fn) {
 }
 
 const categoriesKey = userId => `user:${userId}:categories`;
+const spamInstructionsKey = userId => `user:${userId}:spam-instructions`;
 const backfillKey = accountId => `account:${accountId}:backfill`;
 const incidentsKey = accountId => `account:${accountId}:incidents`;
 const statsKey = accountId => `account:${accountId}:stats`;
@@ -50,6 +52,15 @@ export function saveCategories(userId, categories) {
     return next.revision;
   });
 }
+
+// ── Spam judgment prompt ──────────────────────────────────────────────────────
+
+// The user's text, or null for the default; { instructions, custom } is what the routes and the tick use.
+export const loadSpamInstructions = async userId =>
+  spamInstructionsView(storedSpamInstructions(await readValue(spamInstructionsKey(userId))));
+
+// Saves the user's text, or null to restore the default. One value, so it needs no serialized turn.
+export const saveSpamInstructions = (userId, instructions) => writeValue(spamInstructionsKey(userId), { instructions }, userId);
 
 // ── Account configuration ─────────────────────────────────────────────────────
 

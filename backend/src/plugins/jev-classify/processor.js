@@ -25,7 +25,7 @@ import {
   actionForMove, deriveQueue, buildJevRequest, bodyGate,
 } from './model.js';
 import {
-  loadAccountConfig, updateAccountConfig, loadCategories, updateBackfill, appendIncident,
+  loadAccountConfig, updateAccountConfig, loadCategories, loadSpamInstructions, updateBackfill, appendIncident,
   recordLastDecision,
 } from './records.js';
 
@@ -121,11 +121,12 @@ async function tickBody(mgr, account, startedAt) {
   if (!activated || !config.enabled) return;
 
   const categories = await loadCategories(account.user_id);
+  const spamInstructions = (await loadSpamInstructions(account.user_id)).instructions;
   if (config.classifyNewMail) await markNewMail(account, categories.revision);
   await advanceBackfill(account, categories.revision);
 
   const ctx = {
-    mgr, account, config, categories,
+    mgr, account, config, categories, spamInstructions,
     deadline: startedAt + TICK_BUDGET_MS,
     labelStore: isLabelStoreAccount(account),
     targets: new Map(),
@@ -304,7 +305,7 @@ async function decide(ctx, row, signals, bodyText, asked, revision, lines) {
   if (Object.values(reputation).some(state => state.kind === 'unavailable' && state.reason === 'deadline')) {
     return { kind: 'not_run' };
   }
-  const request = buildJevRequest({ signals, reputation, bodyText, categories: ctx.categories.categories, asked });
+  const request = buildJevRequest({ signals, reputation, bodyText, categories: ctx.categories.categories, spamInstructions: ctx.spamInstructions, asked });
   const result = await jevDecide(request, { deadlineMs: remaining(ctx) });
   if (result.kind === 'ok') {
     countJevCall(ctx.account.id);

@@ -1044,6 +1044,9 @@
       "description": "Automaticky třiďte příchozí e-maily do karet kategorií podle záhlaví každé zprávy. Kategorii Sociální sítě lze také upravit níže uvedeným seznamem domén. Kategorizaci zapněte u jednotlivých účtů v nastavení Účty.",
       "globalEnabled": "Zapnout kategorizaci globálně",
       "globalEnabledDesc": "Zapne karty kategorií pro všechny účty včetně sjednocené Doručené pošty.",
+      "jevEnabled": "Klasifikace Jev",
+      "jevEnabledDesc": "Zobrazí kategorie Jev jako karty pro všechny účty včetně sjednocené Doručené pošty. Nahrazuje vestavěné kategorie.",
+      "globalDisabledByJev": "Není k dispozici, dokud je zapnutá klasifikace Jev.",
       "sourcesTitle": "Zdroje kategorie Sociální sítě",
       "sourcesDesc": "Pomocí domén se nastavuje pouze kategorie Sociální sítě. Přidejte domény odesílatelů nebo e-mailové adresy, které do ní chcete zařadit — fungují také vestavěné seznamy a odběry z URL. Newslettery, Propagace a Automatické zprávy se rozpoznávají automaticky ze záhlaví e-mailů, proto je nelze přiřadit podle domény.",
       "addManualPh": "např. twitter.com",
@@ -2009,6 +2012,16 @@
       "saveFailed": "Kategorie se nepodařilo uložit: {{error}}",
       "save": "Uložit kategorie",
       "add": "Přidat kategorii"
+    },
+    "spam": {
+      "title": "Pokyn pro hodnocení spamu",
+      "description": "Otázka, kterou Jev pro každou zprávu zodpovídá, aby posoudil, zda jde o spam. Platí pro zprávy posouzené od této chvíle; už posouzená pošta si ponechá svůj verdikt.",
+      "label": "Otázka pro hodnocení spamu",
+      "save": "Uložit pokyn",
+      "restore": "Obnovit výchozí",
+      "saved": "Pokyn uložen.",
+      "restored": "Výchozí pokyn obnoven.",
+      "saveFailed": "Pokyn se nepodařilo uložit: {{error}}"
     },
     "accounts": {
       "title": "Účty",
