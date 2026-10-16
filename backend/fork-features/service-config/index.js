@@ -75,13 +75,28 @@ export function createServiceConfig({
     return key;
   }
 
-  async function save(parse) {
+  // The key a test uses for one field: the mask stands for the stored key, a blank field for none.
+  // Nothing is written.
+  function plainKey(input, field, stored, label) {
+    const value = input[field];
+    if (typeof value !== 'string') invalid(`${field} must be a string`);
+    if (value === MASKED_API_KEY) return reveal(stored, label);
+    return value.trim() || null;
+  }
+
+  // Runs one parse of admin input, turning a request the parser refuses into a value.
+  async function checked(parse) {
     try {
-      return { kind: 'saved', config: await parse() };
+      return { kind: 'checked', value: await parse() };
     } catch (err) {
       if (err instanceof Invalid) return { kind: 'invalid', error: err.message };
       throw err;
     }
+  }
+
+  async function save(parse) {
+    const result = await checked(parse);
+    return result.kind === 'invalid' ? result : { kind: 'saved', config: result.value };
   }
 
   async function loadJevConfig() {
@@ -94,25 +109,41 @@ export function createServiceConfig({
     return { baseUrl: stored.baseUrl, model: stored.model, apiKey: mask(stored.apiKey) };
   }
 
+  // The validated Jev endpoint and model from an admin request.
+  async function parseJevInput(input) {
+    if (!isRecord(input)) invalid('Request body must be an object');
+    const baseUrl = requiredString(input, 'baseUrl');
+    const model = requiredString(input, 'model');
+    let url;
+    try {
+      url = new URL(baseUrl);
+    } catch {
+      invalid('baseUrl must be a URL');
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') invalid('baseUrl must be an http or https URL');
+    const policy = await getConnectionPolicyFn();
+    const hostError = await validateHostFn(url.hostname, { allowPrivate: policy.allowPrivateHosts });
+    if (hostError) invalid(`baseUrl: ${hostError}`);
+    return { baseUrl, model };
+  }
+
   function saveJevConfig(input) {
     return save(async () => {
-      if (!isRecord(input)) invalid('Request body must be an object');
-      const baseUrl = requiredString(input, 'baseUrl');
-      const model = requiredString(input, 'model');
-      let url;
-      try {
-        url = new URL(baseUrl);
-      } catch {
-        invalid('baseUrl must be a URL');
-      }
-      if (url.protocol !== 'https:' && url.protocol !== 'http:') invalid('baseUrl must be an http or https URL');
-      const policy = await getConnectionPolicyFn();
-      const hostError = await validateHostFn(url.hostname, { allowPrivate: policy.allowPrivateHosts });
-      if (hostError) invalid(`baseUrl: ${hostError}`);
+      const { baseUrl, model } = await parseJevInput(input);
       const stored = await read(JEV_SETTING, JEV_UNSET);
       const next = { baseUrl, model, apiKey: nextKey(input, 'apiKey', stored.apiKey, encryptFn) };
       await write(JEV_SETTING, next);
       return { baseUrl, model, apiKey: mask(next.apiKey) };
+    });
+  }
+
+  // The Jev configuration a test runs with: the form's endpoint and model, the key it resolves to.
+  // Validated like a save, never written.
+  function jevTestConfig(input) {
+    return checked(async () => {
+      const { baseUrl, model } = await parseJevInput(input);
+      const stored = await read(JEV_SETTING, JEV_UNSET);
+      return { baseUrl, model, apiKey: plainKey(input, 'apiKey', stored.apiKey, 'Jev key') };
     });
   }
 
@@ -149,13 +180,24 @@ export function createServiceConfig({
     });
   }
 
+  // The source keys a test runs with, resolved as plainKey does. Never written.
+  function reputationTestKeys(input) {
+    return checked(async () => {
+      if (!isRecord(input)) invalid('Request body must be an object');
+      const stored = await read(REPUTATION_SETTING, REPUTATION_UNSET);
+      return Object.fromEntries(REPUTATION_KEYS.map(field => [field, plainKey(input, field, stored[field], field)]));
+    });
+  }
+
   return {
     loadJevConfig,
     getAdminJevConfig,
     saveJevConfig,
+    jevTestConfig,
     getReputationConfig,
     getAdminReputationConfig,
     saveReputationConfig,
+    reputationTestKeys,
   };
 }
 
@@ -167,3 +209,5 @@ export const saveJevConfig = serviceConfig.saveJevConfig;
 export const getReputationConfig = serviceConfig.getReputationConfig;
 export const getAdminReputationConfig = serviceConfig.getAdminReputationConfig;
 export const saveReputationConfig = serviceConfig.saveReputationConfig;
+export const testJevConfig = serviceConfig.jevTestConfig;
+export const testReputationKeys = serviceConfig.reputationTestKeys;

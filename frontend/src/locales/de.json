@@ -820,6 +820,24 @@
       "externalServices": "Externe Dienste"
     },
     "externalServices": {
+      "test": "Verbindung testen",
+      "testing": "Wird getestet…",
+      "testOk": "Verbindung funktioniert mit diesen Einstellungen.",
+      "testFail": "Verbindung fehlgeschlagen: {{reason}}.",
+      "testFailShort": "fehlgeschlagen: {{reason}}",
+      "testWorks": "funktioniert",
+      "testNoKey": "kein Schlüssel eingegeben, nicht getestet",
+      "testReason": {
+        "http": "der Server hat mit HTTP {{status}} abgelehnt",
+        "rate_limited": "Anfragelimit erreicht, später erneut versuchen",
+        "network": "Endpunkt nicht erreichbar",
+        "invalid_response": "Antwort hatte nicht das erwartete Format",
+        "invalid_request": "Anfrage wurde abgelehnt",
+        "unconfigured": "kein Schlüssel eingegeben",
+        "aborted": "Test wurde abgebrochen",
+        "timeout": "Zeitüberschreitung",
+        "error": "die Quelle hat einen Fehler gemeldet"
+      },
       "description": "Dienste, die MailFlow bei der Klassifizierung von E-Mails und der Prüfung darin enthaltener Links abfragt. Schlüssel werden verschlüsselt gespeichert und nach dem Speichern nie wieder angezeigt.",
       "saved": "Gespeichert",
       "keepKey": "Ein Schlüssel ist gespeichert. Lassen Sie die Punkte stehen, um ihn beizubehalten, leeren Sie das Feld zum Entfernen oder fügen Sie einen neuen Schlüssel zum Ersetzen ein.",

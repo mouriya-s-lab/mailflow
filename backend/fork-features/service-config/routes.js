@@ -11,7 +11,11 @@ import {
   getAdminReputationConfig,
   saveJevConfig,
   saveReputationConfig,
+  testJevConfig,
+  testReputationKeys,
 } from './index.js';
+import { decide } from '../jev/index.js';
+import { testReputationSource } from '../reputation/index.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -42,6 +46,40 @@ router.get('/reputation', async (_req, res) => {
 
 router.put('/reputation', async (req, res) => {
   respond(req, res, await saveReputationConfig(req.body), 'link reputation');
+});
+
+// A fixed question for the Jev connection test. Any well-formed answer shows that the endpoint, the
+// key and the model work; the answer itself is discarded.
+const JEV_TEST = {
+  state: 'MailFlow connection test. This message is a test with no content.',
+  questions: { connection: { kind: 'noul', instructions: 'Answer whether this test message is spam.' } },
+};
+
+const KEYED_SOURCES = [
+  ['spamhaus_dbl', 'spamhausDqsKey'],
+  ['urlhaus', 'urlhausAuthKey'],
+  ['safe_browsing', 'safeBrowsingApiKey'],
+];
+
+// Tests run with the form's values, saved or not, and write nothing. A refused test is a 200 result;
+// only a request the server cannot read is a 400. No key is ever in a response.
+router.post('/jev/test', async (req, res) => {
+  const config = await testJevConfig(req.body);
+  if (config.kind === 'invalid') return res.status(400).json({ error: config.error });
+  const result = await decide(config.value, JEV_TEST);
+  if (result.kind === 'ok') return res.json({ ok: true });
+  const { kind, status } = result.error;
+  return res.json({ ok: false, reason: kind, status: kind === 'http' ? status : null });
+});
+
+router.post('/reputation/test', async (req, res) => {
+  const keys = await testReputationKeys(req.body);
+  if (keys.kind === 'invalid') return res.status(400).json({ error: keys.error });
+  const results = await Promise.all(KEYED_SOURCES.map(async ([source, field]) => {
+    const key = keys.value[field];
+    return [source, key ? await testReputationSource(source, key) : { kind: 'unconfigured' }];
+  }));
+  res.json({ results: Object.fromEntries(results) });
 });
 
 export default router;

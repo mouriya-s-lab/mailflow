@@ -820,6 +820,24 @@
       "externalServices": "外部服务"
     },
     "externalServices": {
+      "test": "测试连接",
+      "testing": "测试中…",
+      "testOk": "连接可用，配置有效。",
+      "testFail": "连接失败：{{reason}}。",
+      "testFailShort": "失败：{{reason}}",
+      "testWorks": "可用",
+      "testNoKey": "未填写密钥，未测试",
+      "testReason": {
+        "http": "服务器拒绝了请求，HTTP {{status}}",
+        "rate_limited": "请求过于频繁，请稍后重试",
+        "network": "无法连接到该端点",
+        "invalid_response": "返回内容格式不符合预期",
+        "invalid_request": "请求被拒绝",
+        "unconfigured": "未填写密钥",
+        "aborted": "测试已取消",
+        "timeout": "超时",
+        "error": "数据源返回了错误"
+      },
       "description": "MailFlow 在分类邮件和检查其中的链接时所请求的服务。密钥会加密存储，保存后不会再次显示。",
       "saved": "已保存",
       "keepKey": "已有密钥存储。保留圆点即可继续使用；清空字段可移除密钥；粘贴新密钥可将其替换。",

@@ -1014,6 +1014,24 @@
       "externalServices": "Externí služby"
     },
     "externalServices": {
+      "test": "Otestovat připojení",
+      "testing": "Testuji…",
+      "testOk": "Připojení s těmito nastaveními funguje.",
+      "testFail": "Připojení selhalo: {{reason}}.",
+      "testFailShort": "selhalo: {{reason}}",
+      "testWorks": "funguje",
+      "testNoKey": "klíč není zadán, netestováno",
+      "testReason": {
+        "http": "server odmítl požadavek, HTTP {{status}}",
+        "rate_limited": "omezeno, zkuste to později",
+        "network": "koncový bod není dostupný",
+        "invalid_response": "odpověď nemá očekávaný formát",
+        "invalid_request": "požadavek byl odmítnut",
+        "unconfigured": "klíč není zadán",
+        "aborted": "test byl zrušen",
+        "timeout": "vypršel časový limit",
+        "error": "zdroj vrátil chybu"
+      },
       "description": "Služby, na které se MailFlow obrací při klasifikaci pošty a kontrole odkazů v ní. Klíče jsou uloženy šifrovaně a po uložení se již nikdy nezobrazí.",
       "saved": "Uloženo",
       "keepKey": "Klíč je uložen. Ponechte tečky, chcete-li jej zachovat, vymažte pole, chcete-li jej odstranit, nebo vložte nový klíč, chcete-li jej nahradit.",
