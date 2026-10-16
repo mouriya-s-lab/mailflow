@@ -820,6 +820,24 @@
       "externalServices": "Services externes"
     },
     "externalServices": {
+      "test": "Tester la connexion",
+      "testing": "Test en cours…",
+      "testOk": "La connexion fonctionne avec ces paramètres.",
+      "testFail": "Échec de la connexion : {{reason}}.",
+      "testFailShort": "échec : {{reason}}",
+      "testWorks": "ok",
+      "testNoKey": "aucune clé saisie, non testé",
+      "testReason": {
+        "http": "le serveur l’a refusé, HTTP {{status}}",
+        "rate_limited": "limite atteinte, réessayez plus tard",
+        "network": "point de terminaison injoignable",
+        "invalid_response": "la réponse n’avait pas le format attendu",
+        "invalid_request": "la requête a été rejetée",
+        "unconfigured": "aucune clé saisie",
+        "aborted": "le test a été annulé",
+        "timeout": "délai dépassé",
+        "error": "la source a renvoyé une erreur"
+      },
       "description": "Services interrogés par MailFlow pour classifier les e-mails et vérifier leurs liens. Les clés sont stockées chiffrées et ne sont plus jamais affichées après leur enregistrement.",
       "saved": "Enregistré",
       "keepKey": "Une clé est enregistrée. Laissez les points pour la conserver, videz le champ pour la supprimer ou collez une nouvelle clé pour la remplacer.",

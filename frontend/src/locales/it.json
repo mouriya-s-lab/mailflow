@@ -820,6 +820,24 @@
       "externalServices": "Servizi esterni"
     },
     "externalServices": {
+      "test": "Verifica connessione",
+      "testing": "Verifica in corso…",
+      "testOk": "La connessione funziona con queste impostazioni.",
+      "testFail": "Connessione non riuscita: {{reason}}.",
+      "testFailShort": "non riuscito: {{reason}}",
+      "testWorks": "funziona",
+      "testNoKey": "nessuna chiave inserita, non verificato",
+      "testReason": {
+        "http": "il server lo ha rifiutato, HTTP {{status}}",
+        "rate_limited": "limite raggiunto, riprova più tardi",
+        "network": "endpoint non raggiungibile",
+        "invalid_response": "la risposta non aveva il formato previsto",
+        "invalid_request": "la richiesta è stata rifiutata",
+        "unconfigured": "nessuna chiave inserita",
+        "aborted": "test annullato",
+        "timeout": "tempo scaduto",
+        "error": "la fonte ha restituito un errore"
+      },
       "description": "Servizi consultati da MailFlow quando classifica la posta e controlla i link al suo interno. Le chiavi vengono memorizzate in modo cifrato e non vengono mai più mostrate dopo il salvataggio.",
       "saved": "Salvato",
       "keepKey": "È memorizzata una chiave. Lascia i puntini per mantenerla, svuota il campo per rimuoverla oppure incolla una nuova chiave per sostituirla.",

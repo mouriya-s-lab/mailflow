@@ -836,6 +836,24 @@
       "externalServices": "Usługi zewnętrzne"
     },
     "externalServices": {
+      "test": "Testuj połączenie",
+      "testing": "Testowanie…",
+      "testOk": "Połączenie działa z tymi ustawieniami.",
+      "testFail": "Połączenie nie powiodło się: {{reason}}.",
+      "testFailShort": "nie powiodło się: {{reason}}",
+      "testWorks": "działa",
+      "testNoKey": "nie podano klucza, nie testowano",
+      "testReason": {
+        "http": "serwer odrzucił żądanie, HTTP {{status}}",
+        "rate_limited": "limit żądań, spróbuj później",
+        "network": "punkt końcowy jest nieosiągalny",
+        "invalid_response": "odpowiedź miała nieoczekiwany format",
+        "invalid_request": "żądanie zostało odrzucone",
+        "unconfigured": "nie podano klucza",
+        "aborted": "test został anulowany",
+        "timeout": "przekroczono czas",
+        "error": "źródło zwróciło błąd"
+      },
       "description": "Usługi, do których MailFlow odwołuje się podczas klasyfikowania poczty i sprawdzania znajdujących się w niej linków. Klucze są przechowywane w postaci zaszyfrowanej i po zapisaniu nigdy nie są ponownie wyświetlane.",
       "saved": "Zapisano",
       "keepKey": "Klucz jest zapisany. Pozostaw kropki, aby go zachować, wyczyść pole, aby go usunąć, albo wklej nowy klucz, aby go zastąpić.",

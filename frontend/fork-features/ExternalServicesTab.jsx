@@ -7,9 +7,9 @@ import { useMobile } from '../src/hooks/useMobile.js';
 import { serviceConfigApi } from './api.js';
 
 const REPUTATION_KEYS = [
-  { field: 'spamhausDqsKey', labelKey: 'admin.externalServices.reputation.spamhausDqsKey' },
-  { field: 'urlhausAuthKey', labelKey: 'admin.externalServices.reputation.urlhausAuthKey' },
-  { field: 'safeBrowsingApiKey', labelKey: 'admin.externalServices.reputation.safeBrowsingApiKey' },
+  { source: 'spamhaus_dbl', field: 'spamhausDqsKey', labelKey: 'admin.externalServices.reputation.spamhausDqsKey' },
+  { source: 'urlhaus', field: 'urlhausAuthKey', labelKey: 'admin.externalServices.reputation.urlhausAuthKey' },
+  { source: 'safe_browsing', field: 'safeBrowsingApiKey', labelKey: 'admin.externalServices.reputation.safeBrowsingApiKey' },
 ];
 
 const cardStyle = {
@@ -26,6 +26,10 @@ const saveButtonStyle = (disabled, isMobile) => ({
   padding: '8px 18px', background: 'var(--accent)', color: 'var(--accent-text)', border: 'none', borderRadius: 7,
   fontSize: 13, fontWeight: 500, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
   minHeight: isMobile ? 44 : undefined, maxWidth: '100%', overflowWrap: 'anywhere',
+});
+const testButtonStyle = (disabled, isMobile) => ({
+  ...saveButtonStyle(disabled, isMobile), background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+  border: '1px solid var(--border)', marginRight: 8,
 });
 
 function Card({ title, description, children, isMobile }) {
@@ -69,6 +73,50 @@ function Message({ msg }) {
   );
 }
 
+// Runs a connection test with the form as it stands, saved or not. A test that cannot be sent is
+// shown as a failed test.
+function useConnectionTest(run) {
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState(null);
+  const test = async () => {
+    setTesting(true); setResult(null);
+    try {
+      setResult(await run());
+    } catch (err) {
+      setResult({ type: 'error', text: err.message });
+    } finally {
+      setTesting(false);
+    }
+  };
+  return { testing, result, test };
+}
+
+// Why a test failed, in the admin's language. The reason is a fixed word from the server; the
+// status is set for an HTTP refusal.
+function reasonText(t, { reason, status }) {
+  return t(`admin.externalServices.testReason.${reason}`, { status, defaultValue: reason });
+}
+
+// One line per keyed source. A source without a key is not tested and counts neither way. The
+// result fails when a tested source fails, or when no source was tested.
+function summarizeSources(t, rows) {
+  const lines = rows.map(({ label, answer }) => {
+    switch (answer.kind) {
+      case 'ok': return { label, failed: false, tested: true, text: t('admin.externalServices.testWorks') };
+      case 'failed': return {
+        label, failed: true, tested: true,
+        text: t('admin.externalServices.testFailShort', { reason: reasonText(t, answer) }) + (answer.detail ? ` (${answer.detail})` : ''),
+      };
+      case 'unconfigured': return { label, failed: false, tested: false, text: t('admin.externalServices.testNoKey') };
+      default: throw new Error(`unhandled source result ${answer.kind}`);
+    }
+  });
+  return {
+    type: lines.some(line => line.failed) || !lines.some(line => line.tested) ? 'error' : 'ok',
+    text: lines.map(line => `${line.label}: ${line.text}`).join(' · '),
+  };
+}
+
 // Loads one service's admin config, keeps an editable copy, and saves it back. `saved` is what
 // the server last returned, so the status line follows what is stored rather than the form.
 function useServiceConfig(load, save) {
@@ -106,8 +154,15 @@ function useServiceConfig(load, save) {
 function JevSettings({ isMobile }) {
   const { t } = useTranslation();
   const { saved, form, setForm, saving, msg, submit } = useServiceConfig(serviceConfigApi.getJev, serviceConfigApi.saveJev);
+  const connection = useConnectionTest(async () => {
+    const answer = await serviceConfigApi.testJev(form);
+    return answer.ok
+      ? { type: 'ok', text: t('admin.externalServices.testOk') }
+      : { type: 'error', text: t('admin.externalServices.testFail', { reason: reasonText(t, answer) }) };
+  });
   const set = field => value => setForm(f => ({ ...f, [field]: value }));
   const invalid = !form || !form.baseUrl.trim() || !form.model.trim();
+  const testDisabled = connection.testing || invalid;
 
   return (
     <Card title={t('admin.externalServices.jev.title')} description={t('admin.externalServices.jev.description')} isMobile={isMobile}>
@@ -132,9 +187,13 @@ function JevSettings({ isMobile }) {
             placeholder={t('admin.externalServices.jev.apiKeyPh')}
             hint={saved.apiKey ? t('admin.externalServices.keepKey') : null}
           />
+          <button type="button" onClick={connection.test} disabled={testDisabled} style={testButtonStyle(testDisabled, isMobile)}>
+            {connection.testing ? t('admin.externalServices.testing') : t('admin.externalServices.test')}
+          </button>
           <button type="submit" disabled={saving || invalid} style={saveButtonStyle(saving || invalid, isMobile)}>
             {saving ? t('common.saving') : t('common.save')}
           </button>
+          <div style={{ marginTop: 14 }}><Message msg={connection.result} /></div>
         </form>
       )}
     </Card>
@@ -146,6 +205,11 @@ function ReputationSettings({ isMobile }) {
   const { saved, form, setForm, saving, msg, submit } = useServiceConfig(
     serviceConfigApi.getReputation, serviceConfigApi.saveReputation,
   );
+  const connection = useConnectionTest(async () => {
+    const { results } = await serviceConfigApi.testReputation(form);
+    return summarizeSources(t, REPUTATION_KEYS.map(({ source, labelKey }) => ({ label: t(labelKey), answer: results[source] })));
+  });
+  const testDisabled = connection.testing;
 
   return (
     <Card title={t('admin.externalServices.reputation.title')} description={t('admin.externalServices.reputation.description')} isMobile={isMobile}>
@@ -187,9 +251,13 @@ function ReputationSettings({ isMobile }) {
               hint={saved[field] ? t('admin.externalServices.keepKey') : t('admin.externalServices.reputation.keyUnset')}
             />
           ))}
+          <button type="button" onClick={connection.test} disabled={testDisabled} style={testButtonStyle(testDisabled, isMobile)}>
+            {connection.testing ? t('admin.externalServices.testing') : t('admin.externalServices.test')}
+          </button>
           <button type="submit" disabled={saving} style={saveButtonStyle(saving, isMobile)}>
             {saving ? t('common.saving') : t('common.save')}
           </button>
+          <div style={{ marginTop: 14 }}><Message msg={connection.result} /></div>
         </form>
       )}
     </Card>
