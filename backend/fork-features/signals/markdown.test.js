@@ -93,6 +93,24 @@ describe('messageBodyMarkdown', () => {
 describe('getAccountMessageBodyMarkdowns', () => {
   beforeEach(() => query.mockReset());
 
+  it('allows pending I/O to run before converting the next stored body', async () => {
+    let ioObserved = false;
+    let secondBodySawIo = false;
+    const ioTurn = new Promise(resolve => setImmediate(() => { ioObserved = true; resolve(); }));
+    query.mockResolvedValueOnce({ rows: [
+      { id: 'first', body_html: '<h1>First</h1>', body_text: null },
+      { id: 'second', get body_html() { secondBodySawIo = ioObserved; return '<h1>Second</h1>'; }, body_text: null },
+    ] });
+    try {
+      const documents = await getAccountMessageBodyMarkdowns('account-1', ['first', 'second']);
+      expect(secondBodySawIo).toBe(true);
+      expect(documents.get('first')).toEqual({ kind: 'ready', document: expect.stringContaining('# First') });
+      expect(documents.get('second')).toEqual({ kind: 'ready', document: expect.stringContaining('# Second') });
+    } finally {
+      await ioTurn;
+    }
+  });
+
   it('isolates a real conversion failure and distinguishes ready empty documents from missing rows', async () => {
     query.mockResolvedValueOnce({ rows: [
       { id: 'bad', body_html: deepHtml(), body_text: 'Do not silently fall back' },

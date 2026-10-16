@@ -1,4 +1,5 @@
 // OMP's local HTML reader uses html_to_markdown_rs with aggressive preprocessing and Tier2.
+import { setImmediate } from 'node:timers/promises';
 import { convert, WasmConversionOptions, WasmPreprocessingOptions, WasmPreprocessingPreset, WasmTierStrategy } from '@xberg-io/html-to-markdown-wasm';
 import { query } from '../../src/services/db.js';
 
@@ -36,11 +37,16 @@ export async function getAccountMessageBodyMarkdowns(accountId, messageIds) {
     'SELECT id, body_text, body_html FROM messages WHERE account_id = $1 AND id = ANY($2::uuid[])',
     [accountId, ids],
   );
-  return new Map(rows.map(row => {
+  const documents = new Map();
+  for (let index = 0; index < rows.length; index++) {
+    // A macrotask turn lets HTTP/IMAP/database I/O progress between synchronous conversions.
+    if (index > 0) await setImmediate();
+    const row = rows[index];
     try {
-      return [row.id, { kind: 'ready', document: messageBodyMarkdown({ bodyText: row.body_text, bodyHtml: row.body_html }) }];
+      documents.set(row.id, { kind: 'ready', document: messageBodyMarkdown({ bodyText: row.body_text, bodyHtml: row.body_html }) });
     } catch {
-      return [row.id, { kind: 'failed', reason: 'conversion_failed' }];
+      documents.set(row.id, { kind: 'failed', reason: 'conversion_failed' });
     }
-  }));
+  }
+  return documents;
 }
