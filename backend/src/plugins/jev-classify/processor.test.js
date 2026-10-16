@@ -14,7 +14,7 @@ vi.mock('../api.js', async () => ({
   countQueued: vi.fn(),
   setMessageAnnotation: vi.fn(),
   getMessageSignals: vi.fn(),
-  getMessageBodyTexts: vi.fn(),
+  getMessageBodyMarkdowns: vi.fn(),
   ensureMessageBodies: vi.fn(),
   ensureMessageTags: vi.fn(),
   reputationUrlSubject: (await vi.importActual('../../../fork-features/reputation/index.js')).reputationUrlSubject,
@@ -111,7 +111,7 @@ beforeEach(() => {
   api.countQueued.mockResolvedValue({ pending: 0, retry: 0, done: 0, terminal: 0 });
   api.setMessageAnnotation.mockResolvedValue({ kind: 'written' });
   api.getMessageSignals.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, signalsFor([])])));
-  api.getMessageBodyTexts.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, 'Statement body'])));
+  api.getMessageBodyMarkdowns.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, { kind: 'ready', document: 'Statement body' }])));
   api.ensureMessageBodies.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, { kind: 'stored' }])));
   api.ensureMessageTags.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, inactiveTags()])));
   api.jevDecide.mockImplementation(answering());
@@ -314,7 +314,7 @@ describe('bodies before Jev (#38 row 4)', () => {
     const asked = [stored.id, fetched.id, refused.id, afterRefusal.id, failed.id, missing.id];
     expect(api.ensureMessageBodies).toHaveBeenCalledWith(account.id, asked, { deadlineMs: expect.any(Number) });
     expect(api.getMessageSignals).toHaveBeenCalledWith(account.id, [stored.id, fetched.id], expect.anything());
-    expect(api.getMessageBodyTexts).toHaveBeenCalledWith(account.id, [stored.id, fetched.id]);
+    expect(api.getMessageBodyMarkdowns).toHaveBeenCalledWith(account.id, [stored.id, fetched.id]);
     expect(api.jevDecide).toHaveBeenCalledTimes(2);
     expect(states().map(s => s.bodyText)).toEqual(['Statement body', 'Statement body']);
     expect(jevCallCount(account.id)).toBe(2);
@@ -330,6 +330,81 @@ describe('bodies before Jev (#38 row 4)', () => {
     expect(api.moveMessagesVerified).not.toHaveBeenCalled(); // nothing routed: no routing configured
   });
 
+  it('fails only the unconvertible message terminally and classifies its good batch sibling', async () => {
+    const account = newAccount();
+    store.configs.set(account.id, config({ trainSpam: true }));
+    const [bad, good] = [710, 711].map(n => row(n, fresh()));
+    api.listQueuedMessages.mockResolvedValue([bad, good]);
+    api.getMessageBodyMarkdowns.mockResolvedValue(new Map([
+      [bad.id, { kind: 'failed', reason: 'conversion_failed' }],
+      [good.id, { kind: 'ready', document: '# Statement\n\n- Amount: **42**' }],
+    ]));
+    api.jevDecide.mockImplementation(answering({ probability: 0.02 }));
+
+    await runTick({ mgr: mgr(), account });
+
+    expect(api.getMessageBodyMarkdowns).toHaveBeenCalledWith(account.id, [bad.id, good.id]);
+    expect(patchFor(bad.id)).toEqual({
+      revision: 0,
+      queue: { state: 'terminal', dueAt: null, origin: 'new_mail' },
+      category: {
+        decision: { kind: 'terminal_failed', errorKind: 'body_conversion_failed' },
+        action: { kind: 'skipped', reason: 'decision_failed' },
+      },
+      spam: {
+        decision: { kind: 'terminal_failed', errorKind: 'body_conversion_failed' },
+        training: { kind: 'skipped', reason: 'decision_failed' },
+      },
+    });
+    expect(api.ensureMessageTags).toHaveBeenCalledTimes(1);
+    expect(api.ensureMessageTags).toHaveBeenCalledWith(account.id, [good.id], expect.objectContaining({ deadlineMs: expect.any(Number) }));
+    expect(api.jevDecide).toHaveBeenCalledTimes(1);
+    expect(states()[0].bodyText).toBe('# Statement\n\n- Amount: **42**');
+    expect(patchFor(good.id).category.decision.kind).toBe('done');
+    expect(patchFor(good.id).queue.state).toBe('done');
+    expect(api.recordJevSpamVerdict).toHaveBeenCalledTimes(1);
+    expect(api.recordJevSpamVerdict).toHaveBeenCalledWith({ messageId: good.id, label: 'ham' });
+    expect(api.moveMessagesVerified).not.toHaveBeenCalled();
+    expect(api.logger.warn).toHaveBeenCalledWith(expect.stringContaining(bad.id));
+    expect(jevCallCount(account.id)).toBe(1);
+  });
+
+  it('does not classify a missing Markdown result as an empty document or spend its retry attempt', async () => {
+    const account = newAccount();
+    store.configs.set(account.id, config({ trainSpam: true }));
+    const annotation = {
+      revision: 0, queue: { state: 'retry', dueAt: '2026-01-01T00:00:00.000Z', origin: 'backfill' },
+      category: {
+        decision: { kind: 'retry', attempts: 2, errorKind: 'body_unavailable', dueAt: '2026-01-01T00:00:00.000Z' },
+        action: { kind: 'blocked' },
+      },
+    };
+    const missing = row(712, annotation);
+    const empty = row(713, fresh());
+    const original = structuredClone(annotation);
+    api.listQueuedMessages.mockResolvedValue([missing, empty]);
+    api.ensureMessageBodies.mockImplementation(outcomes(new Map([
+      [missing.id, { kind: 'stored' }],
+      [empty.id, { kind: 'empty' }],
+    ])));
+    api.getMessageBodyMarkdowns.mockResolvedValue(new Map([[empty.id, { kind: 'ready', document: '' }]]));
+    api.jevDecide.mockImplementation(answering({ probability: 0.02 }));
+
+    await runTick({ mgr: mgr(), account });
+
+    expect(api.jevDecide).toHaveBeenCalledTimes(1);
+    expect(states()[0]).toMatchObject({ subject: 'Your statement', bodyText: '' });
+    expect(api.ensureMessageTags).toHaveBeenCalledTimes(1);
+    expect(api.ensureMessageTags).toHaveBeenCalledWith(account.id, [empty.id], expect.anything());
+    expect(api.setMessageAnnotation).toHaveBeenCalledTimes(1);
+    expect(patchFor(missing.id)).toBeUndefined();
+    expect(missing.plugin_annotation).toEqual(original);
+    expect(patchFor(empty.id).category.decision.kind).toBe('done');
+    expect(api.recordJevSpamVerdict).toHaveBeenCalledTimes(1);
+    expect(api.recordJevSpamVerdict).toHaveBeenCalledWith({ messageId: empty.id, label: 'ham' });
+    expect(jevCallCount(account.id)).toBe(1);
+  });
+
   it('asks a message whose retried body turns out empty with its headers alone', async () => {
     const account = newAccount();
     store.configs.set(account.id, config());
@@ -338,7 +413,7 @@ describe('bodies before Jev (#38 row 4)', () => {
     const r = row(706, ann);
     api.listQueuedMessages.mockResolvedValue([r]);
     api.ensureMessageBodies.mockImplementation(outcomes(new Map([[r.id, { kind: 'empty' }]])));
-    api.getMessageBodyTexts.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, ''])));
+    api.getMessageBodyMarkdowns.mockImplementation(async (accountId, ids) => new Map(ids.map(id => [id, { kind: 'ready', document: '' }])));
 
     await runTick({ mgr: mgr(), account });
 
@@ -522,9 +597,9 @@ describe('the state sent to Jev (row 12)', () => {
     ];
     const signals = signalsFor(links);
     api.getMessageSignals.mockResolvedValue(new Map([[r.id, signals]]));
-    // The visible text of a long HTML-only body, with an astral character straddling 8000.
+    // A long converted Markdown document, with an astral character straddling 8000.
     const body = `${'x'.repeat(7999)}😀${'tail'.repeat(1000)}`;
-    api.getMessageBodyTexts.mockResolvedValue(new Map([[r.id, body]]));
+    api.getMessageBodyMarkdowns.mockResolvedValue(new Map([[r.id, { kind: 'ready', document: body }]]));
     const urlSubjects = Object.fromEntries(links.map(link => {
       const { urlDigest, host } = api.reputationUrlSubject(link.href);
       return [urlDigest, { host, verdict: { kind: 'listed', detail: 'phishing' } }];
