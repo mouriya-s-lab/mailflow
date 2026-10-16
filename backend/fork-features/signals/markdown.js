@@ -8,6 +8,8 @@ const preprocessing = new WasmPreprocessingOptions(true, WasmPreprocessingPreset
 options.preprocessing = preprocessing;
 preprocessing.free();
 options.tierStrategy = WasmTierStrategy.Tier2;
+// Match OMP's native defaults; the WASM build otherwise imposes its own 2 MiB input cap.
+options.maxInputSize = null;
 
 export function messageBodyMarkdown({ bodyText, bodyHtml }) {
   if (typeof bodyHtml !== 'string' || !bodyHtml.trim()) return typeof bodyText === 'string' ? bodyText : '';

@@ -61,6 +61,14 @@ describe('messageBodyMarkdown', () => {
     expect(messageBodyMarkdown(body)).toBe('');
   });
 
+  it('converts complete stored HTML above the WASM default size cap without dropping its tail', () => {
+    const bodyHtml = `<h1>Large stored message</h1>${' '.repeat(2 * 1024 * 1024)}<p>Required tail content</p>`;
+    const document = messageBodyMarkdown({ bodyHtml, bodyText: 'Do not silently fall back' });
+    expect(document).toMatch(/^# Large stored message$/m);
+    expect(document).toContain('Required tail content');
+    expect(messageBodyMarkdown({ bodyHtml: '<h1>Next message</h1>' })).toMatch(/^# Next message$/m);
+  });
+
   it('rejects excessive depth instead of accepting the converter\'s partial Markdown', () => {
     const bodyHtml = deepHtml();
     const options = WasmConversionOptions.default();
