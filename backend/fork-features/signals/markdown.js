@@ -1,22 +1,28 @@
 // OMP's local HTML reader uses html_to_markdown_rs with aggressive preprocessing and Tier2.
-import { convert, PreprocessingPreset, TierStrategy, WarningKind } from '@xberg-io/html-to-markdown';
+import { convert, WasmConversionOptions, WasmPreprocessingOptions, WasmPreprocessingPreset, WasmTierStrategy } from '@xberg-io/html-to-markdown-wasm';
 import { query } from '../../src/services/db.js';
+
+// The official WASM binding uses the same Rust core without a platform-specific addon loader.
+const options = WasmConversionOptions.default();
+const preprocessing = new WasmPreprocessingOptions(true, WasmPreprocessingPreset.Aggressive, true, true);
+options.preprocessing = preprocessing;
+preprocessing.free();
+options.tierStrategy = WasmTierStrategy.Tier2;
 
 export function messageBodyMarkdown({ bodyText, bodyHtml }) {
   if (typeof bodyHtml !== 'string' || !bodyHtml.trim()) return typeof bodyText === 'string' ? bodyText : '';
-  const result = convert(bodyHtml, {
-    preprocessing: {
-      enabled: true,
-      preset: PreprocessingPreset.Aggressive,
-      removeNavigation: true,
-      removeForms: true,
-    },
-    tierStrategy: TierStrategy.Tier2,
-  });
-  if (result.warnings.some(warning => warning.kind === WarningKind.DepthLimitExceeded)) {
-    throw new Error('Markdown conversion exceeded the HTML depth limit');
+  // convert takes ownership of its options; retain the immutable template for later messages.
+  const result = convert(bodyHtml, options.copyForTransfer());
+  const warnings = result.warnings;
+  try {
+    if (warnings.some(warning => warning.kind === 'depth_limit_exceeded')) {
+      throw new Error('Markdown conversion exceeded the HTML depth limit');
+    }
+    return result.content ?? '';
+  } finally {
+    for (const warning of warnings) warning.free();
+    result.free();
   }
-  return result.content ?? '';
 }
 
 // A missing id is not an empty document. Conversion failures belong to the individual message;
