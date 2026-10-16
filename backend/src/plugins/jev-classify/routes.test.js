@@ -37,6 +37,7 @@ vi.mock('../api.js', () => mocks);
 
 import express from 'express';
 import router from './routes.js';
+import { DEFAULT_SPAM_INSTRUCTIONS } from './model.js';
 
 const PLUGIN = 'jev-classify';
 const USER = 'router-test-user';
@@ -215,6 +216,52 @@ describe('Jev classification HTTP routes', () => {
     expect(values.get(storageKey(`user:${USER}:categories`))).toEqual({
       ownerId: USER, value: { revision: 2, categories: changed },
     });
+  });
+
+  it('requires authentication for the spam prompt', async () => {
+    expect(await request('/spam-instructions', { user: null })).toEqual({
+      status: 401, body: { error: 'Not authenticated' },
+    });
+    expect(mocks.storage.getValue).not.toHaveBeenCalled();
+  });
+
+  it('returns the default, not custom, and writes nothing until a prompt is saved', async () => {
+    expect(await request('/spam-instructions')).toEqual({
+      status: 200, body: { instructions: DEFAULT_SPAM_INSTRUCTIONS, custom: false },
+    });
+    expect(mocks.storage.put).not.toHaveBeenCalled();
+  });
+
+  it('saves the trimmed prompt as the user\'s own and restores the default with null', async () => {
+    expect(await request('/spam-instructions', { method: 'PUT', body: { instructions: '  Is this a scam?  ' } })).toEqual({
+      status: 200, body: { instructions: 'Is this a scam?', custom: true },
+    });
+    expect(values.get(storageKey(`user:${USER}:spam-instructions`))).toEqual({
+      ownerId: USER, value: { instructions: 'Is this a scam?' },
+    });
+    expect(await request('/spam-instructions')).toEqual({
+      status: 200, body: { instructions: 'Is this a scam?', custom: true },
+    });
+    expect(await request('/spam-instructions', { method: 'PUT', body: { instructions: null } })).toEqual({
+      status: 200, body: { instructions: DEFAULT_SPAM_INSTRUCTIONS, custom: false },
+    });
+    expect(values.get(storageKey(`user:${USER}:spam-instructions`))).toEqual({
+      ownerId: USER, value: { instructions: null },
+    });
+  });
+
+  it.each([
+    ['blank text', { instructions: '  \t ' }, 'instructions'],
+    ['a number', { instructions: 3 }, 'instructions'],
+    ['text over 2000 characters', { instructions: 'x'.repeat(2001) }, 'instructions'],
+    ['an unknown field', { instructions: 'Is this spam?', model: 'other' }, 'model'],
+    ['no instructions field', {}, 'instructions'],
+  ])('rejects %s without writing', async (_name, body, field) => {
+    const response = await request('/spam-instructions', { method: 'PUT', body });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Invalid request');
+    expect(response.body.fields[field]).toEqual(expect.any(String));
+    expect(mocks.storage.put).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -1354,6 +1354,9 @@
       "description": "Eingehende E-Mails automatisch in Kategorie-Tabs einteilen. Kategorisierung in den Kontoeinstellungen aktivieren.",
       "globalEnabled": "Kategorisierung global aktivieren",
       "globalEnabledDesc": "Aktiviert Kategorie-Tabs für alle Konten, einschließlich des gemeinsamen Posteingangs.",
+      "jevEnabled": "Jev-Klassifizierung",
+      "jevEnabledDesc": "Zeigt Jevs Kategorien als Kategorie-Tabs für alle Konten, einschließlich des gemeinsamen Posteingangs. Ersetzt die integrierten Kategorien.",
+      "globalDisabledByJev": "Nicht verfügbar, solange die Jev-Klassifizierung aktiv ist.",
       "sourcesTitle": "Quellen für die Social-Kategorie",
       "sourcesDesc": "Nur die Kategorie „Sozial“ wird über Domänen festgelegt. Absenderdomänen oder E-Mail-Adressen als Sozial klassifizieren — vordefinierte Sets und URL-Abonnements funktionieren ebenfalls. Die übrigen Kategorien werden automatisch anhand der E-Mail-Header erkannt und können nicht per Domäne zugeordnet werden.",
       "addManualPh": "z.B. twitter.com",
@@ -1990,6 +1993,16 @@
       "saveFailed": "Die Kategorien konnten nicht gespeichert werden: {{error}}",
       "save": "Kategorien speichern",
       "add": "Kategorie hinzufügen"
+    },
+    "spam": {
+      "title": "Spam-Prüfungsanweisung",
+      "description": "Die Frage, die Jev für jede Nachricht zur Spam-Erkennung beantwortet. Gilt für Nachrichten ab jetzt; bereits geprüfte Mails behalten ihr Ergebnis.",
+      "label": "Frage zur Spam-Prüfung",
+      "save": "Spam-Anweisung speichern",
+      "restore": "Standard wiederherstellen",
+      "saved": "Spam-Anweisung gespeichert.",
+      "restored": "Standard-Spam-Anweisung wiederhergestellt.",
+      "saveFailed": "Spam-Anweisung konnte nicht gespeichert werden: {{error}}"
     },
     "accounts": {
       "title": "Konten",

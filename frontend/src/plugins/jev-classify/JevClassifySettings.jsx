@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { useMobile } from '../../hooks/useMobile.js';
 import { jevClassifyApi } from './api.js';
 import {
-  MAX_CATEGORIES, accountDraft, addedDraft, categoryDrafts, parseAccountDraft, parseCategoryDrafts, routingTargets,
+  MAX_CATEGORIES, accountDraft, addedDraft, categoryDrafts, parseAccountDraft, parseCategoryDrafts, parseSpamInstructionsDraft, routingTargets,
 } from './model.js';
 
 export const STATUS_REFRESH_MS = 15_000;
@@ -272,6 +272,69 @@ function CategoriesEditor({ saved, onSaved, isMobile }) {
         </button>
         <button type="button" onClick={add} disabled={drafts.length >= MAX_CATEGORIES} style={secondaryButton(drafts.length >= MAX_CATEGORIES, isMobile)}>
           {t('jevClassify.categories.add')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Spam judgment prompt ──────────────────────────────────────────────────────
+
+function SpamInstructionsEditor({ saved, onSaved, isMobile }) {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState(saved.instructions);
+  const [attempted, setAttempted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const fieldStyle = { ...inputStyle, fontSize: isMobile ? 16 : 13, minHeight: isMobile ? 44 : undefined };
+
+  useEffect(() => { setDraft(saved.instructions); setAttempted(false); }, [saved]);
+
+  const parsed = parseSpamInstructionsDraft(draft);
+  const problem = attempted && !parsed.ok ? parsed.problem : null;
+
+  const write = async (instructions, okText) => {
+    setSaving(true);
+    try {
+      onSaved(await jevClassifyApi.saveSpamInstructions(instructions));
+      setMsg({ type: 'ok', text: okText });
+    } catch (err) {
+      setMsg({ type: 'error', text: t('jevClassify.spam.saveFailed', { error: err.message }) });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const save = () => {
+    setAttempted(true);
+    setMsg(null);
+    if (parsed.ok) write(parsed.instructions, t('jevClassify.spam.saved'));
+  };
+  const restore = () => {
+    setAttempted(false);
+    setMsg(null);
+    write(null, t('jevClassify.spam.restored'));
+  };
+
+  return (
+    <div style={{ ...cardStyle, marginBottom: 16 }} data-testid="jev-spam-instructions">
+      <div style={headingStyle}>{t('jevClassify.spam.title')}</div>
+      <p style={hintStyle}>{t('jevClassify.spam.description')}</p>
+      <textarea
+        value={draft}
+        onChange={e => { setDraft(e.target.value); setMsg(null); }}
+        aria-label={t('jevClassify.spam.label')}
+        aria-invalid={Boolean(problem)}
+        rows={4}
+        style={{ ...fieldStyle, width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
+      />
+      {problem && <div data-testid="field-error" style={fieldErrorStyle}>{textProblemText(t, problem)}</div>}
+      <Message msg={msg} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        <button type="button" onClick={save} disabled={saving} style={primaryButton(saving, isMobile)}>
+          {saving ? t('common.saving') : t('jevClassify.spam.save')}
+        </button>
+        <button type="button" onClick={restore} disabled={saving || !saved.custom} style={secondaryButton(saving || !saved.custom, isMobile)}>
+          {t('jevClassify.spam.restore')}
         </button>
       </div>
     </div>
@@ -629,23 +692,25 @@ export default function JevClassifySettings({ initialSubTab }) {
   const isMobile = useMobile();
   const sectionRef = useRef(null);
   const [categories, setCategories] = useState(null);
+  const [spamInstructions, setSpamInstructions] = useState(null);
   const [accounts, setAccounts] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const { status, error: statusError, refresh: refreshStatus } = useJevStatus();
 
   // The Plugins tab's "configure" link lands here, once the block has its full height.
-  const loaded = categories !== null && accounts !== null;
+  const loaded = categories !== null && accounts !== null && spamInstructions !== null;
   useEffect(() => {
     if (loaded && initialSubTab === 'jev-classify') sectionRef.current.scrollIntoView({ block: 'start' });
   }, [initialSubTab, loaded]);
 
   useEffect(() => {
     let active = true;
-    Promise.all([jevClassifyApi.getCategories(), jevClassifyApi.getAccounts()])
-      .then(([loadedCategories, loadedAccounts]) => {
+    Promise.all([jevClassifyApi.getCategories(), jevClassifyApi.getAccounts(), jevClassifyApi.getSpamInstructions()])
+      .then(([loadedCategories, loadedAccounts, loadedSpam]) => {
         if (!active) return;
         setCategories(loadedCategories);
         setAccounts(loadedAccounts);
+        setSpamInstructions(loadedSpam);
       })
       .catch(err => { if (active) setLoadError(err.message); });
     return () => { active = false; };
@@ -666,9 +731,10 @@ export default function JevClassifySettings({ initialSubTab }) {
       <Services status={status} error={statusError} />
 
       {loadError && <Message msg={{ type: 'error', text: t('jevClassify.loadFailed', { error: loadError }) }} />}
-      {categories && accounts && (
+      {loaded && (
         <>
           <CategoriesEditor saved={categories} onSaved={setCategories} isMobile={isMobile} />
+          <SpamInstructionsEditor saved={spamInstructions} onSaved={setSpamInstructions} isMobile={isMobile} />
           <div style={headingStyle}>{t('jevClassify.accounts.title')}</div>
           {accounts.length === 0 ? (
             <p style={hintStyle}>{t('jevClassify.accounts.none')}</p>

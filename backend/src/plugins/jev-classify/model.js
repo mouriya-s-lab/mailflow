@@ -101,6 +101,40 @@ export function storedCategories(value) {
   return { revision: value.revision, categories: parsed.categories };
 }
 
+// ── Spam judgment prompt ──────────────────────────────────────────────────────
+// The question Jev answers for each message's spam decision: the user's text, or the default while
+// none is saved. A save applies to decisions made from then on; a decision already made keeps its
+// verdict, because spam decisions are not keyed to the category revision.
+
+export const DEFAULT_SPAM_INSTRUCTIONS = 'Is this email spam, a scam, or phishing? Weigh sender authentication, reply-to and link destinations, not only the wording.';
+export const MAX_SPAM_INSTRUCTIONS_CHARS = 2000;
+
+// PUT /spam-instructions body: { instructions } with the text, or null to restore the default.
+export function parseSpamInstructionsBody(body) {
+  if (!isRecord(body)) return rejected({ body: 'must be an object { instructions }' });
+  const extra = unknownFields(body, ['instructions']);
+  if (extra.length) return rejected(Object.fromEntries(extra.map(key => [key, 'is not a field of this request'])));
+  const { instructions } = body;
+  if (instructions === null) return ok(null);
+  if (typeof instructions !== 'string') return rejected({ instructions: 'must be text, or null for the default' });
+  const text = instructions.trim();
+  if (!text) return rejected({ instructions: 'must not be empty; send null to restore the default' });
+  if (text.length > MAX_SPAM_INSTRUCTIONS_CHARS) return rejected({ instructions: `must be at most ${MAX_SPAM_INSTRUCTIONS_CHARS} characters` });
+  return ok(text);
+}
+
+// The stored value (plugin_data): { instructions } with null for the default. A missing record is the default too.
+export function storedSpamInstructions(value) {
+  if (value == null) return null;
+  if (!isRecord(value) || !(value.instructions === null || isNonEmptyString(value.instructions))) throw new Corrupt('spam instructions');
+  return value.instructions;
+}
+
+// What the routes return and the tick asks Jev: the text, and whether it is the user's own.
+export const spamInstructionsView = stored => (stored === null
+  ? { instructions: DEFAULT_SPAM_INSTRUCTIONS, custom: false }
+  : { instructions: stored, custom: true });
+
 // ── Account configuration ─────────────────────────────────────────────────────
 // AccountConfig = { enabled, classifyNewMail, newMailFloors, routing, createFolders, trainSpam,
 //                   routingMinConfidence }. newMailFloors is kept by the server; a request sets
@@ -581,7 +615,6 @@ export function resetTerminal({ category, spam }) {
 // ── The Jev request ───────────────────────────────────────────────────────────
 
 const CATEGORY_INSTRUCTIONS = 'Which category does this email belong to? Judge from the sender and its authentication, where the links really go, the mailing-list marks and the content, not only the wording.';
-const SPAM_INSTRUCTIONS = 'Is this email spam, a scam, or phishing? Weigh sender authentication, reply-to and link destinations, not only the wording.';
 
 // The first `count` characters (code points, so a surrogate pair is never split).
 export function firstChars(text, count) {
@@ -608,7 +641,7 @@ function subjectTag(state, subject) {
 
 // { state, questions } for jevDecide. Existing K5 signals remain intact; new URL tag evidence
 // uses only host and the canonical digest, never a second copy of the original URL.
-export function buildJevRequest({ signals, reputation, bodyText, categories, asked }) {
+export function buildJevRequest({ signals, reputation, bodyText, categories, spamInstructions, asked }) {
   const domains = {};
   for (const domain of linkDomains(signals)) {
     domains[domain] = Object.fromEntries(
@@ -628,7 +661,7 @@ export function buildJevRequest({ signals, reputation, bodyText, categories, ask
       criteria: Object.fromEntries(categories.map(c => [c.id, c.description])),
     };
   }
-  if (asked.spam) questions.spam = { kind: 'noul', instructions: SPAM_INSTRUCTIONS };
+  if (asked.spam) questions.spam = { kind: 'noul', instructions: spamInstructions };
   return {
     state: JSON.stringify({ ...signals, linkDomains: domains, linkUrls: urls, bodyText: firstChars(bodyText, BODY_CHARS) }),
     questions,

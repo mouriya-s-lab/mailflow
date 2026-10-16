@@ -79,6 +79,7 @@ function resetServer() {
         { id: 'news', label: 'News', description: 'Newsletters' },
       ],
     },
+    spamInstructions: { instructions: 'Is this email spam?', custom: false },
     accounts: [
       { id: MS, emailAddress: 'ms@example.invalid', labelStore: false, config: config(), newMailFloors: {}, folders: ['Archive', 'INBOX', 'Junk', 'MailFlow-Test/Work'] },
       { id: GMAIL, emailAddress: 'g@example.invalid', labelStore: true, config: config({ enabled: false }), newMailFloors: {}, folders: ['Inbox', 'MailFlow-Test/News'] },
@@ -115,6 +116,13 @@ globalThis.fetch = async (url, init = {}) => {
     if (method === 'GET') return json(server.categories);
     server.categories = { revision: server.categories.revision + 1, categories: body.categories };
     return json({ revision: server.categories.revision });
+  }
+  if (path === '/api/jev-classify/spam-instructions') {
+    if (method === 'GET') return json(server.spamInstructions);
+    server.spamInstructions = body.instructions === null
+      ? { instructions: 'Is this email spam?', custom: false }
+      : { instructions: body.instructions, custom: true };
+    return json(server.spamInstructions);
   }
   if (path === '/api/jev-classify/accounts' && method === 'GET') return json(server.accounts);
   const match = ROUTE.exec(path);
@@ -301,6 +309,32 @@ describe('Jev classification settings', () => {
     // The accounts route the saved categories.
     assert.ok($(`[data-testid="jev-account-${MS}"] [data-testid="jev-route-rechnungen-belege"]`));
     assert.equal($(`[data-testid="jev-account-${MS}"] [data-testid="jev-route-news"]`), null);
+  });
+
+  test('the spam prompt shows the saved text, sends an edit as the user\'s own, and restores the default with null', async () => {
+    await mount();
+    const editor = $('[data-testid="jev-spam-instructions"]');
+    const field = editor.querySelector('textarea');
+    assert.equal(field.value, 'Is this email spam?');
+    assert.equal(buttonByText('jevClassify.spam.restore', editor).disabled, true, 'the default has nothing to restore');
+
+    await setValue(field, '   ');
+    await click(buttonByText('jevClassify.spam.save', editor));
+    assert.deepEqual($$('[data-testid="jev-spam-instructions"] [data-testid="field-error"]').map(e => e.textContent), ['jevClassify.categories.required']);
+    assert.equal(callsTo('PUT', '/api/jev-classify/spam-instructions').length, 0, 'a blank prompt is not sent');
+
+    await setValue(field, '  Is this a phishing attempt?  ');
+    await click(buttonByText('jevClassify.spam.save', editor));
+    await until(() => /jevClassify\.spam\.saved/.test(editor.textContent), 'the save confirmation');
+    assert.deepEqual(callsTo('PUT', '/api/jev-classify/spam-instructions').map(c => c.body), [{ instructions: 'Is this a phishing attempt?' }]);
+    assert.equal(buttonByText('jevClassify.spam.restore', editor).disabled, false, 'a custom prompt can be restored');
+
+    await click(buttonByText('jevClassify.spam.restore', editor));
+    await until(() => /jevClassify\.spam\.restored/.test(editor.textContent), 'the restore confirmation');
+    assert.deepEqual(callsTo('PUT', '/api/jev-classify/spam-instructions').map(c => c.body), [
+      { instructions: 'Is this a phishing attempt?' }, { instructions: null },
+    ]);
+    assert.equal($('[data-testid="jev-spam-instructions"] textarea').value, 'Is this email spam?');
   });
 
   test('a category saved as new-1 stays its own row when the editor is opened again and a row is added, edited and removed', async () => {
