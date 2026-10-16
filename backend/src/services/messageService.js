@@ -1,8 +1,9 @@
 import { query } from './db.js';
 import { resolveAccountScope } from './unifiedInbox.js';
 import { draftMessageSql } from '../utils/mailUtils.js';
+import { BUILTIN_TABS, tabExpr } from './categoryTabs.js';
 
-export async function listMessages({ userId, accountId, folder = 'INBOX', limit = 50, offset = 0, unreadOnly, threaded, category }) {
+export async function listMessages({ userId, accountId, folder = 'INBOX', limit = 50, offset = 0, unreadOnly, threaded, category, tabs = BUILTIN_TABS }) {
   const accountsResult = await query(
     'SELECT id, include_in_unified_inbox FROM email_accounts WHERE user_id = $1 AND enabled = true',
     [userId]
@@ -33,9 +34,13 @@ export async function listMessages({ userId, accountId, folder = 'INBOX', limit 
   const isUnreadOnly = unreadOnly === 'true' || unreadOnly === true;
   if (isUnreadOnly) whereConditions.push('m.is_read = false');
 
-  // Category filter: 'primary' matches NULL and 'primary'; others match exactly.
+  // Category filter, for the tab source in effect (categoryTabs.js). The caller validates the id.
+  // Built-in: 'primary' matches NULL and 'primary'; others match exactly.
   const safeCategory = typeof category === 'string' && category.length > 0 ? category : null;
-  if (safeCategory && safeCategory !== 'primary') {
+  if (safeCategory && tabs.kind === 'jev') {
+    whereConditions.push(`${tabExpr(tabs)} = $${p++}`);
+    values.push(safeCategory);
+  } else if (safeCategory && safeCategory !== 'primary') {
     whereConditions.push(`m.category = $${p++}`);
     values.push(safeCategory);
   } else if (safeCategory === 'primary') {

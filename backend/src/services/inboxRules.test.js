@@ -10,6 +10,7 @@ vi.mock('../utils/mailUtils.js', () => ({
   adjustFolderCounts: vi.fn(),
 }));
 vi.mock('./ruleForwarder.js', () => ({ forwardRuleMessage: vi.fn() }));
+vi.mock('./categoryTabs.js', () => ({ categoryTabsFor: vi.fn(async () => ({ kind: 'builtin', ids: [] })) }));
 
 const { query } = await import('./db.js');
 const {
@@ -21,6 +22,7 @@ const {
   adjustFolderCounts,
 } = await import('../utils/mailUtils.js');
 const { forwardRuleMessage } = await import('./ruleForwarder.js');
+const { categoryTabsFor } = await import('./categoryTabs.js');
 import { applyInboxRules } from './inboxRules.js';
 
 const account = { id: 'acc-1', user_id: 'user-1', folder_mappings: {} };
@@ -838,6 +840,15 @@ describe('applyInboxRules — set_category (#489)', () => {
       expect(remaining).toEqual([msg]); // not a destination: still in the inbox
       expect(mockImap.bulkMoveMessages).not.toHaveBeenCalled();
     }
+  });
+
+  it('stores no category while Jev owns the tabs, and leaves the message alone', async () => {
+    categoryTabsFor.mockResolvedValueOnce({ kind: 'jev', categories: [{ id: 'personal', label: 'Personal' }] });
+    query.mockResolvedValueOnce({ rows: [mkRule([{ type: 'set_category', value: 'newsletter' }])] });
+    const msg = mkMsg();
+    const { remaining } = await applyInboxRules([msg], account, mockImap);
+    expect(query.mock.calls.some(([sql]) => /SET category/.test(sql))).toBe(false);
+    expect(remaining).toEqual([msg]);
   });
 
   it('ignores a category it does not know', async () => {

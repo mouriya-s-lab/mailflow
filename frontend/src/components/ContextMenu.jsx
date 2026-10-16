@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { copyToClipboard } from '../utils/clipboard.js';
 import { useStore } from '../store/index.js';
 import { api } from '../utils/api.js';
+import { JEV_PLUGIN_ID, builtinCategoryWritesOn } from '../utils/categoryTabs.js';
 import { getContextMenuPolicy, resolveContextMenuMessage } from '../utils/contextMenuPolicy.js';
 import { downloadEml } from '../utils/downloadEml.js';
 import { usePluginCollected } from '../plugins/PluginSlot.jsx';
@@ -34,7 +35,9 @@ export default function ContextMenu({ x, y, message, onClose, onAction, defaultM
   const account = useStore(s => s.accounts.find(a => a.id === message.account_id));
   const accountFolders = useStore(s => s.folders[message.account_id] || []);
   const categorizationEnabled = useStore(s => s.categorizationEnabled);
-  const categorizationActive = categorizationEnabled || !!account?.categorization_enabled;
+  const jev = useStore(s => s.enabledPlugins.includes(JEV_PLUGIN_ID));
+  // Manual categorize writes the built-in categories; Jev's tabs take no manual value.
+  const categorizationActive = builtinCategoryWritesOn({ jev, globalOn: categorizationEnabled, accountOn: !!account?.categorization_enabled });
   const menuRef = useRef(null);
   const [headerMessage, setHeaderMessage] = useState(null);
   // A plugin submenu (render fn) takes over the menu content area, like categorizeView/moveView.

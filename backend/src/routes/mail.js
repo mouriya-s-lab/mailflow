@@ -13,6 +13,7 @@ import { snippetFromBody, decodeMimeWords, parseRawHeaders, parseMailboxList, bu
 import { draftMessageSql, resolveTrashFolder, resolveAllTrashPaths, resolveAllDraftsPaths, resolveArchiveFolder, isAllMailFolder, resolveSpamFolder, resolveAllSpamPaths, getDeleteStrategy, adjustFolderCounts, fanOutReadToSiblings, fanOutStarToSiblings, fanOutBulkReadToSiblings } from '../utils/mailUtils.js';
 import { pluginRegistry } from '../plugins/registry.js';
 import { listMessages } from '../services/messageService.js';
+import { categoryTabsFor, tabIds, tabExpr } from '../services/categoryTabs.js';
 import { recordSyncSignal } from '../services/diagnosticsRing.js';
 import { resolveAccountScope } from '../services/unifiedInbox.js';
 import { validateHost } from '../services/hostValidation.js';
@@ -150,13 +151,13 @@ router.get('/messages', async (req, res) => {
 
   if (!isValidFolderName(folder)) return res.status(400).json({ error: 'Invalid folder name' });
 
-  // Validate category param — only allow known values to prevent SQL injection via the
-  // WHERE clause in listMessages (even though it uses parameterised queries, belt-and-suspenders).
-  const VALID_CATEGORIES = new Set(['primary', 'newsletter', 'promotion', 'automated', 'social']);
-  const safeCategory = VALID_CATEGORIES.has(category) ? category : undefined;
+  // Only the ids of the tab source in effect pass; the id is then a parameter, never SQL text.
+  const tabs = await categoryTabsFor(req.session.userId);
+  const safeCategory = tabIds(tabs).includes(category) ? category : undefined;
 
   const { messages, total, threaded: isThreaded, resolvedAccountId } = await listMessages({
     userId: req.session.userId,
+    tabs,
     accountId,
     folder,
     limit,
@@ -2433,19 +2434,22 @@ router.get('/category-counts', async (req, res) => {
   const { accountIds: scopedIds } = resolveAccountScope(accountsResult.rows, accountId);
   if (!scopedIds.length) return res.json({ counts: {} });
 
+  const tabs = await categoryTabsFor(req.session.userId);
+  const expr = tabExpr(tabs);
   const result = await query(`
-    SELECT COALESCE(m.category, 'primary') AS category,
+    SELECT ${expr} AS category,
            COUNT(*) FILTER (WHERE m.is_read = false)::int AS unread_count
     FROM messages m
     WHERE m.account_id = ANY($1)
       AND m.folder = 'INBOX'
       AND m.is_deleted = false
-    GROUP BY COALESCE(m.category, 'primary')
+    GROUP BY ${expr}
   `, [scopedIds]);
 
+  // A message with no tab in this source (Jev has not decided it) counts for no tab.
   const counts = {};
   for (const row of result.rows) {
-    counts[row.category] = row.unread_count;
+    if (row.category !== null) counts[row.category] = row.unread_count;
   }
   res.set('Cache-Control', 'no-store');
   res.json({ counts });
@@ -2457,6 +2461,10 @@ router.patch('/messages/:id/category', async (req, res) => {
   const { id } = req.params;
   if (!UUID_RE.test(id)) return res.status(400).json({ error: 'Invalid message id' });
 
+  // While Jev classifies, the tabs read Jev's decisions; a manual value would be stored and shown nowhere.
+  if ((await categoryTabsFor(req.session.userId)).kind === 'jev') {
+    return res.status(409).json({ error: 'Categories are set by Jev classification' });
+  }
   const { category } = req.body;
   const VALID_CATEGORIES = new Set(['primary', 'newsletter', 'promotion', 'automated', 'social']);
   if (!VALID_CATEGORIES.has(category)) {

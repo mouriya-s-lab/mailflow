@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { invalidateSocialDomainCache, backfillCategories, aiClassifyMessage, BUILTIN_SETS } from '../services/categorizer.js';
 import { validateHost } from '../services/hostValidation.js';
 import { safeFetch } from '../services/safeFetch.js';
+import { categoryTabsFor } from '../services/categoryTabs.js';
 
 const router = Router();
 
@@ -231,6 +232,9 @@ const UUID_RE_CAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 router.post('/categories/ai-classify/:messageId', requireAuth, async (req, res) => {
   const { messageId } = req.params;
   if (!UUID_RE_CAT.test(messageId)) return res.status(400).json({ error: 'Invalid message id' });
+  if ((await categoryTabsFor(req.session.userId)).kind === 'jev') {
+    return res.status(409).json({ error: 'Categories are set by Jev classification' });
+  }
 
   const msgResult = await query(`
     SELECT m.subject, m.from_email, m.snippet

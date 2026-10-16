@@ -1,4 +1,5 @@
 import { query } from './db.js';
+import { categoryTabsFor } from './categoryTabs.js';
 import { resolveArchiveFolder, isAllMailFolder, resolveTrashFolder, resolveAllTrashPaths, getDeleteStrategy, adjustFolderCounts } from '../utils/mailUtils.js';
 
 async function getRulesForAccount(userId, accountId) {
@@ -426,6 +427,8 @@ async function applyAction(action, msg, account, imapManager, ruleId, resolverCa
       // category wins, and it is stored as chosen ('primary' included) so Recategorize and a
       // re-sync leave it alone (#489). Not a destination: the message stays where it is.
       if (!RULE_CATEGORIES.has(action.value)) return false;
+      // Under Jev's tabs no tab reads messages.category, so the rule would do nothing: skip it.
+      if ((await categoryTabsFor(account.user_id)).kind === 'jev') return false;
       await query('UPDATE messages SET category = $1 WHERE id = $2', [action.value, msg.id]);
       msg.category = action.value;
       return false;

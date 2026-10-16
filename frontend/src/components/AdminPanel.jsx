@@ -43,6 +43,7 @@ import BackupSettings from './BackupSettings.jsx';
 import { AddAccountView } from '../../fork-features/ProxyAccountForm.jsx';
 import { ExternalServicesTab } from '../../fork-features/ExternalServicesTab.jsx';
 import PluginResultsPanel from '../../fork-features/plugin-results/PluginResultsPanel.jsx';
+import { JEV_PLUGIN_ID, jevOn } from '../utils/categoryTabs.js';
 
 // ─── Shared field component ───────────────────────────────────────────────────
 function Field({ label, required, children }) {
@@ -87,7 +88,9 @@ function isMicrosoftImapHost(host) {
 
 function AccountForm({ initial, onSave, onCancel }) {
   const { t } = useTranslation();
-  const { categorizationEnabled } = useStore();
+  const { categorizationEnabled, enabledPlugins } = useStore();
+  // Jev's category tabs are global too, so the account's own switch does not apply while Jev is on.
+  const globallyOn = categorizationEnabled || jevOn(enabledPlugins);
 
   const isEdit = !!initial?.id;
   const [form, setForm] = useState(initial || {
@@ -444,21 +447,21 @@ function AccountForm({ initial, onSave, onCancel }) {
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
             {t('admin.accounts.categorizationSection')}
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, opacity: categorizationEnabled ? 0.5 : 1 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, opacity: globallyOn ? 0.5 : 1 }}>
             <button
               type="button"
-              disabled={categorizationEnabled}
-              onClick={() => !categorizationEnabled && set('categorization_enabled', !form.categorization_enabled)}
+              disabled={globallyOn}
+              onClick={() => !globallyOn && set('categorization_enabled', !form.categorization_enabled)}
               style={{
                 width: 36, height: 20, borderRadius: 10, border: 'none',
-                cursor: categorizationEnabled ? 'not-allowed' : 'pointer', padding: 0,
-                background: (categorizationEnabled || form.categorization_enabled) ? 'var(--accent)' : TOGGLE_OFF_BACKGROUND,
+                cursor: globallyOn ? 'not-allowed' : 'pointer', padding: 0,
+                background: (globallyOn || form.categorization_enabled) ? 'var(--accent)' : TOGGLE_OFF_BACKGROUND,
                 position: 'relative', transition: 'background 0.2s', flexShrink: 0, marginTop: 1,
               }}
             >
               <span style={{
                 position: 'absolute', top: 2,
-                left: (categorizationEnabled || form.categorization_enabled) ? 18 : 2,
+                left: (globallyOn || form.categorization_enabled) ? 18 : 2,
                 width: 16, height: 16,
                 borderRadius: '50%', background: 'white', transition: 'left 0.2s',
               }} />
@@ -466,7 +469,7 @@ function AccountForm({ initial, onSave, onCancel }) {
             <div>
               <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('admin.accounts.categorizationEnabled')}</div>
               <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                {categorizationEnabled ? t('admin.accounts.enabledGlobally') : t('admin.accounts.categorizationEnabledDesc')}
+                {globallyOn ? t('admin.accounts.enabledGlobally') : t('admin.accounts.categorizationEnabledDesc')}
               </div>
             </div>
           </div>
@@ -4626,7 +4629,8 @@ function AiActionsTab() {
 // ─── Categories Section ───────────────────────────────────────────────────────
 function CategoriesSection({ initialSubTab }) {
   const { t } = useTranslation();
-  const { accounts, categorizationEnabled, setCategorizationEnabled } = useStore();
+  const { accounts, categorizationEnabled, setCategorizationEnabled, enabledPlugins, setPluginActivated } = useStore();
+  const jev = jevOn(enabledPlugins);
   const [sources, setSources] = useState([]);
   const [builtinSets, setBuiltinSets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -4645,7 +4649,7 @@ function CategoriesSection({ initialSubTab }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const enabledAccounts = categorizationEnabled ? accounts : accounts.filter(a => a.categorization_enabled);
+  const enabledAccounts = (categorizationEnabled || jev) ? accounts : accounts.filter(a => a.categorization_enabled);
   const addedBuiltins = new Set(sources.filter(s => s.source_type === 'builtin').map(s => s.value));
 
   const handleAddManual = async (e) => {
@@ -4733,24 +4737,50 @@ function CategoriesSection({ initialSubTab }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20 }}>
+      {/* Jev classification owns the category tabs while it is on; the built-in global switch is then inert. */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
         <button
           type="button"
-          onClick={() => setCategorizationEnabled(!categorizationEnabled)}
+          aria-pressed={jev}
+          onClick={() => setPluginActivated(JEV_PLUGIN_ID, !jev).catch(() => setMsg({ type: 'error', text: t('admin.plugins.error') }))}
           style={{
             width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', padding: 0,
-            background: categorizationEnabled ? 'var(--accent)' : TOGGLE_OFF_BACKGROUND,
+            background: jev ? 'var(--accent)' : TOGGLE_OFF_BACKGROUND,
             position: 'relative', transition: 'background 0.2s', flexShrink: 0, marginTop: 1,
           }}
         >
           <span style={{
-            position: 'absolute', top: 2, left: categorizationEnabled ? 18 : 2, width: 16, height: 16,
+            position: 'absolute', top: 2, left: jev ? 18 : 2, width: 16, height: 16,
+            borderRadius: '50%', background: 'white', transition: 'left 0.2s',
+          }} />
+        </button>
+        <div>
+          <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{t('admin.categories.jevEnabled')}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{t('admin.categories.jevEnabledDesc')}</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20, opacity: jev ? 0.5 : 1 }}>
+        <button
+          type="button"
+          disabled={jev}
+          onClick={() => setCategorizationEnabled(!categorizationEnabled)}
+          style={{
+            width: 36, height: 20, borderRadius: 10, border: 'none', cursor: jev ? 'not-allowed' : 'pointer', padding: 0,
+            background: (categorizationEnabled && !jev) ? 'var(--accent)' : TOGGLE_OFF_BACKGROUND,
+            position: 'relative', transition: 'background 0.2s', flexShrink: 0, marginTop: 1,
+          }}
+        >
+          <span style={{
+            position: 'absolute', top: 2, left: (categorizationEnabled && !jev) ? 18 : 2, width: 16, height: 16,
             borderRadius: '50%', background: 'white', transition: 'left 0.2s',
           }} />
         </button>
         <div>
           <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{t('admin.categories.globalEnabled')}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{t('admin.categories.globalEnabledDesc')}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+            {jev ? t('admin.categories.globalDisabledByJev') : t('admin.categories.globalEnabledDesc')}
+          </div>
         </div>
       </div>
 

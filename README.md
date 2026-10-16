@@ -29,7 +29,7 @@ If you contribute code, please read the [Contributor License Agreement](CLA.md).
 
 - **Unified inbox** — all accounts merged in one view, sorted by date
 - **Sender imagery** — real manual/CardDAV contact photos take priority, with optional domain favicons proxied and cached through Twenty Icons and deterministic initials as the offline fallback; disable sender favicons under Appearance to prevent lookups for your user
-- **Email categorization** — automatic inbox tabs (Primary, Newsletters, Social, Notifications, Other) sort incoming mail by type using header detection and sender heuristics; AI reclassify button for misclassifications
+- **Email categorization** — automatic inbox tabs (Primary, Newsletters, Social, Notifications, Other) sort incoming mail by type using header detection and sender heuristics; AI reclassify button for misclassifications. When the Jev classification plugin is activated, its own categories are the tabs instead, for all accounts
 - **Unsubscribe** — one-click unsubscribe button appears in the message pane for detected newsletters; sends the request or opens the unsubscribe URL automatically
 - **Conversation threads** — messages grouped into reply chains with inline sent replies
 - **Rich text compose** — WYSIWYG editor with font family, size, color, highlight, tables, emoji, links, attachments, image resize handles, and Excel table paste

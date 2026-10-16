@@ -8,6 +8,10 @@ vi.mock('../middleware/auth.js', () => ({
   },
 }));
 vi.mock('../index.js', () => ({ imapManager: {} }));
+vi.mock('../services/categoryTabs.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  categoryTabsFor: vi.fn(async () => ({ kind: 'builtin', ids: ['primary', 'newsletter', 'promotion', 'automated', 'social'] })),
+}));
 
 import express from 'express';
 import mailRoutes from './mail.js';

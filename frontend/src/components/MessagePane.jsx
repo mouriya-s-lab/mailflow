@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } fr
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/index.js';
 import { api } from '../utils/api.js';
+import { JEV_PLUGIN_ID, builtinCategoryWritesOn } from '../utils/categoryTabs.js';
 import { format } from 'date-fns';
 import { shortcutBus } from '../utils/shortcutBus.js';
 import { canHandlePaneShortcut } from '../utils/shortcutApplicability.js';
@@ -111,7 +112,7 @@ export default function MessagePane({ windowMessage = null, onWindowClose = null
     updateMessage, removeMessage, decrementUnread, incrementUnread, openCompose, accounts, addNotification,
     imageWhitelist, addToImageWhitelist, blockRemoteImages, threadMessages,
     replyDefault, shortcuts, recentFolders, favoriteFolders, todoistConnected,
-    categorizationEnabled, setCategoryCounts, adjustCategoryCount,
+    categorizationEnabled, enabledPlugins, setCategoryCounts, adjustCategoryCount,
     aiActions, setShowAdmin, setAdminTab,
   } = useStore();
 
@@ -2437,7 +2438,11 @@ export default function MessagePane({ windowMessage = null, onWindowClose = null
           )}
 
           {/* AI classify banner — shown for messages with no category signal when AI is available */}
-          {!message.category && (categorizationEnabled || accounts.find(a => a.id === message.account_id)?.categorization_enabled) && aiStatus?.enabled && (
+          {!message.category && builtinCategoryWritesOn({
+            jev: enabledPlugins.includes(JEV_PLUGIN_ID),
+            globalOn: categorizationEnabled,
+            accountOn: !!accounts.find(a => a.id === message.account_id)?.categorization_enabled,
+          }) && aiStatus?.enabled && (
             <div className="msg-notice" style={{
               marginBottom: 10, padding: '9px 14px',
               background: 'var(--bg-secondary)',
@@ -2584,7 +2589,11 @@ export default function MessagePane({ windowMessage = null, onWindowClose = null
               </button>
             </div>
           )}
-          {!message.category && (categorizationEnabled || accounts.find(a => a.id === message.account_id)?.categorization_enabled) && aiStatus?.enabled && (
+          {!message.category && builtinCategoryWritesOn({
+            jev: enabledPlugins.includes(JEV_PLUGIN_ID),
+            globalOn: categorizationEnabled,
+            accountOn: !!accounts.find(a => a.id === message.account_id)?.categorization_enabled,
+          }) && aiStatus?.enabled && (
             <div className="msg-notice" style={{
               marginBottom: 10, padding: '9px 14px',
               background: 'var(--bg-secondary)', border: '1px solid var(--border)',

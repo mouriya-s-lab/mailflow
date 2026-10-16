@@ -22,6 +22,9 @@ import { decide as decideJev, status as jevConfigStatus } from '../../fork-featu
 import { loadJevConfig } from '../../fork-features/service-config/index.js';
 import { moveMessagesVerified as _moveMessagesVerified } from '../../fork-features/verified-move/index.js';
 import { ensureMessageBodies as _ensureMessageBodies } from '../../fork-features/message-bodies/index.js';
+import { isPluginActivated } from './activation.js';
+import { loadCategories } from './jev-classify/records.js';
+import { PLUGIN_ID as JEV_PLUGIN_ID } from './jev-classify/model.js';
 
 // ── Labels (read) ─────────────────────────────────────────────────────────────
 // Thread-aware read over a set of label folders: heads grouped by label with thread-level
@@ -67,6 +70,11 @@ export { summarizeMessage, summarizeAvailable } from '../services/summarize.js';
 // setting on every call, so both are async. No access to the key or the HTTP client itself.
 export const jevDecide = async (request, options) => decideJev(await loadJevConfig(), request, options);
 export const jevStatus = async () => jevConfigStatus(await loadJevConfig());
+// Jev's category tabs for a user: { id, label } of its category definition while Jev is activated
+// for them, else null. Read on every call, like the activation it depends on.
+export const jevCategoryTabs = async (userId) => (await isPluginActivated(userId, JEV_PLUGIN_ID))
+  ? (await loadCategories(userId)).categories.map(({ id, label }) => ({ id, label }))
+  : null;
 
 // ── Link reputation ───────────────────────────────────────────────────────────
 // One lookup per source, each asking only its own service from the settings the admin saved

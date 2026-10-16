@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, selectSelectedMessageMid, selectSelectedMessageAccountId } from '../store/index.js';
 import { api } from '../utils/api.js';
+import { jevClassifyApi } from '../plugins/jev-classify/api.js';
+import { jevOn, categoryTabsOn, BUILTIN_CATEGORY_IDS } from '../utils/categoryTabs.js';
 import { LAYOUTS } from '../layouts.js';
 import { senderColor } from '../themes.js';
 import { useMobile } from '../hooks/useMobile.js';
@@ -184,6 +186,7 @@ export default function MessageList() {
 
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [activeCategory, setActiveCategory] = useState('primary');
+  const [jevCategories, setJevCategories] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const currentPageRef = useRef(1);
   const archiveViewKeyRef = useRef(null);
@@ -274,7 +277,27 @@ export default function MessageList() {
 
   // Fetch unread counts per category for the tab bar badges.
   // Re-fetches whenever the account/folder changes or new mail arrives.
-  const categorizationActive = categorizationEnabled || (!isUnified && selectedAccount?.categorization_enabled);
+  const jevTabs = jevOn(enabledPlugins);
+  const categorizationActive = categoryTabsOn({
+    jev: jevTabs, globalOn: categorizationEnabled, accountOn: !isUnified && !!selectedAccount?.categorization_enabled,
+  });
+  // The tab bar: Jev's categories while Jev owns the tabs, else the built-in five.
+  const categoryTabs = useMemo(() => (jevTabs
+    ? jevCategories
+    : BUILTIN_CATEGORY_IDS.map(id => ({ id, label: t(`messageList.categories.${id}`) }))),
+  [jevTabs, jevCategories, t]);
+  useEffect(() => {
+    if (!jevTabs) return;
+    let cancelled = false;
+    jevClassifyApi.getCategories()
+      .then(data => { if (!cancelled) setJevCategories(data.categories); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [jevTabs]);
+  useEffect(() => {
+    if (!categorizationActive || !categoryTabs.length) return;
+    if (!categoryTabs.some(({ id }) => id === activeCategory)) setActiveCategory(categoryTabs[0].id);
+  }, [categorizationActive, categoryTabs, activeCategory]);
   archiveViewKeyRef.current = archiveViewKey({
     selectedAccountId,
     selectedFolder,
@@ -412,7 +435,7 @@ export default function MessageList() {
         }
         if (unreadOnly) params.unreadOnly = 'true';
         if (threadedView) params.threaded = 'true';
-        if (selectedFolder === 'INBOX' && (categorizationEnabled || selectedAccount?.categorization_enabled)) params.category = activeCategory;
+        if (selectedFolder === 'INBOX' && categorizationActive) params.category = activeCategory;
         await refreshRequestRef.current.run(
           () => api.getMessages(params),
           (data) => {
@@ -455,7 +478,7 @@ export default function MessageList() {
     };
     run();
     return () => { cancelled = true; };
-  }, [selectedAccountId, selectedFolder, unreadOnly, activeCategory, pageSize, scrollMode, accountsReady, unifiedInboxAccountKey, messagesRefreshToken, threadedView, categorizationEnabled, selectedAccount?.categorization_enabled, applyReadGuard, setHasMoreMessages, setLoadingMessages, setMessages, setMessagesOffset, setMessagesTotal]);
+  }, [selectedAccountId, selectedFolder, unreadOnly, activeCategory, pageSize, scrollMode, accountsReady, unifiedInboxAccountKey, messagesRefreshToken, threadedView, categorizationActive, applyReadGuard, setHasMoreMessages, setLoadingMessages, setMessages, setMessagesOffset, setMessagesTotal]);
 
   // Load next page (called by scroll or button)
   const loadMore = useCallback(async () => {
@@ -471,7 +494,7 @@ export default function MessageList() {
       }
       if (unreadOnly) params.unreadOnly = 'true';
       if (useStore.getState().threadedView) params.threaded = 'true';
-      if (selectedFolder === 'INBOX' && (categorizationEnabled || selectedAccount?.categorization_enabled)) params.category = activeCategory;
+      if (selectedFolder === 'INBOX' && categorizationActive) params.category = activeCategory;
       const data = await api.getMessages(params);
       appendMessages(applyReadGuard(data.messages));
       setMessagesOffset(currentOffset + data.messages.length);
@@ -481,7 +504,7 @@ export default function MessageList() {
     } finally {
       setLoadingMessages(false);
     }
-  }, [selectedAccountId, selectedFolder, unreadOnly, activeCategory, pageSize, loadingMessages, hasMoreMessages, categorizationEnabled, selectedAccount?.categorization_enabled, applyReadGuard, appendMessages, setHasMoreMessages, setLoadingMessages, setMessagesOffset]);
+  }, [selectedAccountId, selectedFolder, unreadOnly, activeCategory, pageSize, loadingMessages, hasMoreMessages, categorizationActive, applyReadGuard, appendMessages, setHasMoreMessages, setLoadingMessages, setMessagesOffset]);
 
   // Listen for background refresh events from WebSocket. If a message was just
   // opened, give its body request a brief head start before reloading the full list.
@@ -503,7 +526,7 @@ export default function MessageList() {
         if (selectedAccountId) { params.accountId = selectedAccountId; params.folder = selectedFolder; }
         if (unreadOnly) params.unreadOnly = 'true';
         if (state.threadedView) params.threaded = 'true';
-        if (selectedFolder === 'INBOX' && (categorizationEnabled || selectedAccount?.categorization_enabled)) params.category = activeCategory;
+        if (selectedFolder === 'INBOX' && categorizationActive) params.category = activeCategory;
         await refreshRequestRef.current.run(
           () => api.getMessages(params),
           (data) => {
@@ -544,7 +567,7 @@ export default function MessageList() {
       window.removeEventListener('mailflow:refresh', handler);
       clearTimeout(deferredRefreshTimerRef.current);
     };
-  }, [selectedAccountId, selectedFolder, unreadOnly, activeCategory, searchQuery, categorizationEnabled, selectedAccount?.categorization_enabled, applyReadGuard, setHasMoreMessages, setMessages, setMessagesOffset, setMessagesTotal]);
+  }, [selectedAccountId, selectedFolder, unreadOnly, activeCategory, searchQuery, categorizationActive, applyReadGuard, setHasMoreMessages, setMessages, setMessagesOffset, setMessagesTotal]);
 
   // Search
   useEffect(() => {
@@ -670,7 +693,7 @@ export default function MessageList() {
       if (selectedAccountId) { params.accountId = selectedAccountId; params.folder = selectedFolder; }
       if (unreadOnly) params.unreadOnly = 'true';
       if (threadedView) params.threaded = 'true';
-      if (selectedFolder === 'INBOX' && (categorizationEnabled || selectedAccount?.categorization_enabled)) params.category = activeCategory;
+      if (selectedFolder === 'INBOX' && categorizationActive) params.category = activeCategory;
       await refreshRequestRef.current.run(
         () => api.getMessages(params),
         (data) => {
@@ -687,7 +710,7 @@ export default function MessageList() {
     } finally {
       setLoadingMessages(false);
     }
-  }, [selectedAccountId, selectedFolder, unreadOnly, activeCategory, pageSize, loadingMessages, threadedView, categorizationEnabled, selectedAccount?.categorization_enabled, applyReadGuard, setExpandedThreadId, setHasMoreMessages, setLoadingMessages, setMessages, setMessagesOffset, setMessagesTotal]);
+  }, [selectedAccountId, selectedFolder, unreadOnly, activeCategory, pageSize, loadingMessages, threadedView, categorizationActive, applyReadGuard, setExpandedThreadId, setHasMoreMessages, setLoadingMessages, setMessages, setMessagesOffset, setMessagesTotal]);
 
   const handleSync = async () => {
     if (syncing) return;
@@ -2668,7 +2691,7 @@ export default function MessageList() {
   const headerCountKnown = headerSamples.length > 0 && headerSamples.every(s => s?.known && s.totalCount != null);
   const headerCountStale = headerSamples.some(s => !s?.known || s?.stale);
   const headerServerTotal = headerSamples.reduce((sum, s) => sum + (s?.totalCount || 0), 0);
-  const filteredCount = unreadOnly || (activeCategory && categorizationEnabled);
+  const filteredCount = unreadOnly || (activeCategory && categorizationActive);
 
   // Derived bulk-selection values (computed fresh each render, no stale closure risk)
   const selectionMode = selectedIds.size > 0 || selectionModeActive;
@@ -3301,7 +3324,7 @@ export default function MessageList() {
               background: 'var(--bg-secondary)',
             }}
           >
-            {categorizationActive && ['primary', 'newsletter', 'promotion', 'automated', 'social'].map(cat => {
+            {categorizationActive && categoryTabs.map(({ id: cat, label }) => {
               const unread = categoryCounts[cat] || 0;
               const isActive = activeCategory === cat && !activeGtdTab;
               return (
@@ -3320,7 +3343,7 @@ export default function MessageList() {
                     display: 'flex', alignItems: 'center', gap: 5,
                   }}
                 >
-                  {t(`messageList.categories.${cat}`)}
+                  {label}
                   {unread > 0 && (
                     <span style={{
                       fontSize: 10, fontWeight: 600, lineHeight: 1,

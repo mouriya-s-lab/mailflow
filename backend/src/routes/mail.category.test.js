@@ -8,10 +8,15 @@ vi.mock('../middleware/auth.js', () => ({
   },
 }));
 vi.mock('../index.js', () => ({ imapManager: {} }));
+vi.mock('../services/categoryTabs.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  categoryTabsFor: vi.fn(async () => ({ kind: 'builtin', ids: ['primary', 'newsletter', 'promotion', 'automated', 'social'] })),
+}));
 
 import express from 'express';
 import mailRoutes from './mail.js';
 import { query } from '../services/db.js';
+import { categoryTabsFor } from '../services/categoryTabs.js';
 
 const ID = '00000000-0000-4000-8000-000000000001';
 
@@ -47,5 +52,12 @@ describe('PATCH /api/mail/messages/:id/category (#489)', () => {
     expect((await patch('automated')).status).toBe(200);
     expect(query.mock.calls[0][1][0]).toBe('automated');
     expect((await patch('spam')).status).toBe(400);
+  });
+
+  it('refuses a manual category while Jev owns the tabs, and writes nothing', async () => {
+    categoryTabsFor.mockResolvedValueOnce({ kind: 'jev', categories: [{ id: 'personal', label: 'Personal' }] });
+    const response = await patch('automated');
+    expect(response.status).toBe(409);
+    expect(query).not.toHaveBeenCalled();
   });
 });
