@@ -2435,21 +2435,20 @@ router.get('/category-counts', async (req, res) => {
   if (!scopedIds.length) return res.json({ counts: {} });
 
   const tabs = await categoryTabsFor(req.session.userId);
-  const expr = tabExpr(tabs);
+  const tab = tabExpr(tabs, 2);
   const result = await query(`
-    SELECT ${expr} AS category,
+    SELECT ${tab.sql} AS category,
            COUNT(*) FILTER (WHERE m.is_read = false)::int AS unread_count
     FROM messages m
     WHERE m.account_id = ANY($1)
       AND ${tabs.kind === 'jev' ? jevFolderScope('m') : "m.folder = 'INBOX'"}
       AND m.is_deleted = false
-    GROUP BY ${expr}
-  `, [scopedIds]);
+    GROUP BY ${tab.sql}
+  `, [scopedIds, ...tab.params]);
 
-  // A message with no tab in this source (Jev has not decided it) counts for no tab.
   const counts = {};
   for (const row of result.rows) {
-    if (row.category !== null) counts[row.category] = row.unread_count;
+    counts[row.category] = row.unread_count;
   }
   res.set('Cache-Control', 'no-store');
   res.json({ counts });

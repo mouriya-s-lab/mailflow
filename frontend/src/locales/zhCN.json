@@ -440,7 +440,8 @@
       "newsletter": "订阅邮件",
       "promotion": "促销",
       "automated": "自动邮件",
-      "social": "社交"
+      "social": "社交",
+      "other": "其他"
     },
     "categoryAlways": {
       "done": "来自 {{value}} 的邮件现在归入{{category}}",

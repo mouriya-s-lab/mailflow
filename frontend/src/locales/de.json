@@ -440,7 +440,8 @@
       "newsletter": "Newsletter",
       "promotion": "Werbung",
       "automated": "Automatisch",
-      "social": "Sozial"
+      "social": "Sozial",
+      "other": "Sonstige"
     },
     "categoryAlways": {
       "done": "E-Mails von {{value}} landen jetzt in {{category}}",

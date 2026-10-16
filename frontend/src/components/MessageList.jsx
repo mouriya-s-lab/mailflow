@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore, selectSelectedMessageMid, selectSelectedMessageAccountId } from '../store/index.js';
 import { api } from '../utils/api.js';
 import { jevClassifyApi } from '../plugins/jev-classify/api.js';
-import { jevOn, categoryTabsOn, BUILTIN_CATEGORY_IDS } from '../utils/categoryTabs.js';
+import { jevOn, jevTabList, categoryTabsOn, BUILTIN_CATEGORY_IDS } from '../utils/categoryTabs.js';
 import { LAYOUTS } from '../layouts.js';
 import { senderColor } from '../themes.js';
 import { useMobile } from '../hooks/useMobile.js';
@@ -281,9 +281,9 @@ export default function MessageList() {
   const categorizationActive = categoryTabsOn({
     jev: jevTabs, globalOn: categorizationEnabled, accountOn: !isUnified && !!selectedAccount?.categorization_enabled,
   });
-  // The tab bar: Jev's categories while Jev owns the tabs, else the built-in five.
+  // The tab bar: Jev's categories and Other while Jev owns the tabs, else the built-in five.
   const categoryTabs = useMemo(() => (jevTabs
-    ? jevCategories
+    ? jevTabList(jevCategories, t('messageList.categories.other'))
     : BUILTIN_CATEGORY_IDS.map(id => ({ id, label: t(`messageList.categories.${id}`) }))),
   [jevTabs, jevCategories, t]);
   useEffect(() => {

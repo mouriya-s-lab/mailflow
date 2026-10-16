@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { jevOn, categoryTabsOn, builtinCategoryWritesOn } from './categoryTabs.js';
+import { jevOn, jevTabList, categoryTabsOn, builtinCategoryWritesOn } from './categoryTabs.js';
 
 describe('jevOn', () => {
   it('reads the activation of the Jev plugin only', () => {
@@ -21,5 +21,18 @@ describe('category switches', () => {
     assert.equal(builtinCategoryWritesOn({ jev: true, globalOn: true, accountOn: true }), false);
     assert.equal(builtinCategoryWritesOn({ jev: false, globalOn: true, accountOn: false }), true);
     assert.equal(builtinCategoryWritesOn({ jev: false, globalOn: false, accountOn: false }), false);
+  });
+});
+
+describe('jevTabList', () => {
+  it("lists Jev's categories in order, then Other", () => {
+    assert.deepEqual(
+      jevTabList([{ id: 'personal', label: 'Personal' }, { id: 'review', label: 'Review' }], 'Other'),
+      [{ id: 'personal', label: 'Personal' }, { id: 'review', label: 'Review' }, { id: 'other', label: 'Other' }],
+    );
+  });
+
+  it('is empty until the categories have loaded, so no tab is chosen from a partial list', () => {
+    assert.deepEqual(jevTabList([], 'Other'), []);
   });
 });

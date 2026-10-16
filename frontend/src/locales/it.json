@@ -440,7 +440,8 @@
       "newsletter": "Newsletter",
       "promotion": "Promozioni",
       "automated": "Automatico",
-      "social": "Social"
+      "social": "Social",
+      "other": "Altro"
     },
     "categoryAlways": {
       "done": "La posta da {{value}} ora va in {{category}}",

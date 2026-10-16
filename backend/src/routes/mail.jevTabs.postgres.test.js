@@ -93,6 +93,9 @@ describe.skipIf(!process.env.MAILFLOW_TEST_DATABASE_URL)('Jev category tabs Post
     await insert('labelled-inbox', 'INBOX', annotation('personal', labeled('Labels/Personal')));
     await insert('label-copy-row', 'Labels/Personal', annotation('personal', labeled('Labels/Personal')));
     await insert('inbox-review', 'INBOX', annotation('review'));
+    await insert('undecided-inbox', 'INBOX', '{}');
+    await insert('retired-inbox', 'INBOX', annotation('retired-category'));
+    await insert('undecided-trash', 'Trash', '{}');
   };
   const subjects = messages => messages.map(m => m.subject).sort();
 
@@ -113,6 +116,14 @@ describe.skipIf(!process.env.MAILFLOW_TEST_DATABASE_URL)('Jev category tabs Post
     expect(subjects(messages)).toEqual(['inbox-review']);
   });
 
+  it('shows undecided and retired-category INBOX mail under Other, and nothing else', async () => {
+    await seed();
+    const { messages } = await listMessages({
+      userId: 'owner', category: 'other', tabs: { kind: 'jev', categories: JEV_TABS },
+    });
+    expect(subjects(messages)).toEqual(['retired-inbox', 'undecided-inbox']);
+  });
+
   it('serves the same Jev tab list through GET /api/mail/messages', async () => {
     await seed();
     const response = await fetch(`${base}/api/mail/messages?folder=INBOX&category=personal`);
@@ -120,10 +131,10 @@ describe.skipIf(!process.env.MAILFLOW_TEST_DATABASE_URL)('Jev category tabs Post
     expect(subjects((await response.json()).messages)).toEqual(['inbox-personal', 'labelled-inbox', 'moved-to-personal']);
   });
 
-  it('counts each Jev tab over the same folder scope, with no duplicate label copy', async () => {
+  it('counts each Jev tab, Other included, over the same folder scope with no duplicate label copy', async () => {
     await seed();
     const response = await fetch(`${base}/api/mail/category-counts`);
-    expect((await response.json()).counts).toEqual({ personal: 3, review: 1 });
+    expect((await response.json()).counts).toEqual({ personal: 3, review: 1, other: 2 });
   });
 
   it('answers 409 to a manual categorize while Jev owns the tabs', async () => {

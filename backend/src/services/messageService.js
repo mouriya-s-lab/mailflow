@@ -43,8 +43,10 @@ export async function listMessages({ userId, accountId, folder = 'INBOX', limit 
 
   // Built-in: 'primary' matches NULL and 'primary'; others match exactly.
   if (jevTabView) {
-    whereConditions.push(`${tabExpr(tabs)} = $${p++}`);
-    values.push(safeCategory);
+    const tab = tabExpr(tabs, p);
+    whereConditions.push(`${tab.sql} = $${p + tab.params.length}`);
+    values.push(...tab.params, safeCategory);
+    p += tab.params.length + 1;
   } else if (safeCategory && safeCategory !== 'primary') {
     whereConditions.push(`m.category = $${p++}`);
     values.push(safeCategory);

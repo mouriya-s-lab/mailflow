@@ -19,23 +19,28 @@ describe('categoryTabsFor', () => {
     expect(tabIds(tabs)).toEqual([...BUILTIN_CATEGORY_IDS]);
   });
 
-  it("uses Jev's own categories, in their order, while Jev is activated", async () => {
+  it("uses Jev's categories, in their order, followed by Other, while Jev is activated", async () => {
     jevCategoryTabs.mockResolvedValueOnce(JEV);
     const tabs = await categoryTabsFor('user-1');
     expect(tabs.kind).toBe('jev');
-    expect(tabIds(tabs)).toEqual(['personal', 'review']);
+    expect(tabIds(tabs)).toEqual(['personal', 'review', 'other']);
     expect(jevCategoryTabs).toHaveBeenCalledWith('user-1');
   });
 });
 
 describe('tabExpr', () => {
-  it('reads the built-in column, with NULL as primary', () => {
-    expect(tabExpr({ kind: 'builtin', ids: [] }, 'm')).toBe("COALESCE(m.category, 'primary')");
+  it('binds the current Jev category ids as one parameter, never inlined', () => {
+    const tab = tabExpr({ kind: 'jev', categories: JEV }, 3, 'm');
+    expect(tab.params).toEqual([['personal', 'review']]);
+    expect(tab.sql).toContain('= ANY($3::text[])');
+    expect(tab.sql).not.toContain('personal');
+    expect(tab.sql).toContain("ELSE 'other' END");
   });
 
-  it("reads Jev's recorded choice from the message annotation, never the built-in column", () => {
-    const expr = tabExpr({ kind: 'jev', categories: JEV }, 'm');
-    expect(expr).toBe(`(m.plugin_annotations #>> '{"jev-classify",category,decision,choice}')`);
-    expect(expr).not.toContain('m.category');
+  it('binds nothing for the built-in column, which reads NULL as primary', () => {
+    expect(tabExpr({ kind: 'builtin', ids: [] }, 1, 'm')).toEqual({
+      sql: "COALESCE(m.category, 'primary')",
+      params: [],
+    });
   });
 });

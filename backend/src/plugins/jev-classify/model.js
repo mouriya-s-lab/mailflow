@@ -20,6 +20,9 @@ export const HAM_AT_MOST = 0.1;
 export const BODY_CHARS = 8000;
 export const MIN_CATEGORIES = 2;
 export const MAX_CATEGORIES = 24;
+// The tab of mail Jev has not decided, or decided for a category since removed. Not a category:
+// users cannot define it, and the Jev question never offers it.
+export const OTHER_TAB_ID = 'other';
 
 const CATEGORY_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_LABEL_CHARS = 100;
@@ -89,6 +92,9 @@ export function parseCategoriesBody(body) {
   for (const extra of unknownFields(body, ['categories'])) fields[extra] = 'is not a field of this request';
   const parsed = parseCategories(body.categories, 'categories');
   Object.assign(fields, parsed.fields);
+  (parsed.categories ?? []).forEach((category, index) => {
+    if (category?.id === OTHER_TAB_ID) fields[`categories[${index}].id`] = `"${OTHER_TAB_ID}" is reserved for the Other tab`;
+  });
   return Object.keys(fields).length ? rejected(fields) : ok(parsed.categories);
 }
 

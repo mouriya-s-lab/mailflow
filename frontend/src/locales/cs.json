@@ -300,7 +300,8 @@
       "newsletter": "Newslettery",
       "promotion": "Propagace",
       "automated": "Automatické",
-      "social": "Sociální sítě"
+      "social": "Sociální sítě",
+      "other": "Ostatní"
     },
     "categoryAlways": {
       "done": "Pošta od {{value}} teď půjde do: {{category}}",

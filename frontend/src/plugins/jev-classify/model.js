@@ -8,6 +8,8 @@ export const MAX_CATEGORIES = 24;
 export const MAX_LABEL_CHARS = 100;
 export const MAX_DESCRIPTION_CHARS = 1000;
 const MAX_ID_CHARS = 64;
+// Not a category: the Other tab's id, which no category may take (the server rejects it too).
+export const OTHER_TAB_ID = 'other';
 
 export const isInbox = path => path.toUpperCase() === 'INBOX';
 
@@ -49,7 +51,7 @@ export function parseCategoryDrafts(drafts) {
   const size = drafts.length < MIN_CATEGORIES || drafts.length > MAX_CATEGORIES
     ? { min: MIN_CATEGORIES, max: MAX_CATEGORIES, current: drafts.length }
     : null;
-  const taken = new Set(drafts.flatMap(draft => (draft.id === null ? [] : [draft.id])));
+  const taken = new Set([OTHER_TAB_ID, ...drafts.flatMap(draft => (draft.id === null ? [] : [draft.id]))]);
   const rows = {};
   const categories = drafts.map(draft => {
     const label = draft.label.trim();

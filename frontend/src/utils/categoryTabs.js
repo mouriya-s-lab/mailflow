@@ -2,11 +2,19 @@
 // tabs while it is on: the built-in global and per-account switches are then inert, and the tabs
 // show Jev's categories for every account. Mirrors backend/src/services/categoryTabs.js.
 
+import { OTHER_TAB_ID } from '../plugins/jev-classify/model.js';
+
 export const JEV_PLUGIN_ID = 'jev-classify';
 
 export const BUILTIN_CATEGORY_IDS = Object.freeze(['primary', 'newsletter', 'promotion', 'automated', 'social']);
 
 export const jevOn = enabledPlugins => enabledPlugins.includes(JEV_PLUGIN_ID);
+
+// Jev's tab bar: its categories, then Other. Empty until the categories have loaded, so the
+// active tab is never chosen from a partial list.
+export const jevTabList = (categories, otherLabel) => (categories.length
+  ? [...categories, { id: OTHER_TAB_ID, label: otherLabel }]
+  : []);
 
 // Whether the category tab bar and its INBOX filter apply.
 export const categoryTabsOn = ({ jev, globalOn, accountOn }) => jev || globalOn || accountOn;

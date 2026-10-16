@@ -436,7 +436,8 @@
       "newsletter": "뉴스레터",
       "promotion": "프로모션",
       "automated": "자동 알림",
-      "social": "소셜"
+      "social": "소셜",
+      "other": "기타"
     },
     "categoryAlways": {
       "done": "{{value}}의 메일이 이제 {{category}}(으)로 분류됩니다",

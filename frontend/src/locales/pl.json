@@ -454,7 +454,8 @@
       "newsletter": "Newslettery",
       "promotion": "Promocje",
       "automated": "Automatyczne",
-      "social": "Społecznościowe"
+      "social": "Społecznościowe",
+      "other": "Inne"
     },
     "categoryAlways": {
       "done": "Poczta od {{value}} trafia teraz do: {{category}}",
