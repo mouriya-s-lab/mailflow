@@ -105,6 +105,9 @@ export {
   getAccountMessageBodyTexts as getMessageBodyTexts,
   getAccountMessageLinks as getMessageLinks,
 } from '../../fork-features/signals/index.js';
+// Map<id, { kind: 'ready', document: string } | { kind: 'failed', reason: 'conversion_failed' }>.
+// HTML is cleaned to Markdown with OMP's converter; text-only mail stays text. Missing ids stay absent.
+export { getAccountMessageBodyMarkdowns as getMessageBodyMarkdowns } from '../../fork-features/signals/markdown.js';
 
 // ensureMessageBodies(accountId, ids, { deadlineMs }) → Map<id, BodyOutcome>: makes sure each of
 // the account's messages has its body stored before it is judged, fetching a missing one from the

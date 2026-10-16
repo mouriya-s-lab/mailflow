@@ -14,7 +14,7 @@
 
 import {
   logger, isPluginActivated, markMessages, currentUidFloors, listQueuedMessages, countQueued,
-  listMessagesInQueueState, setMessageAnnotation, getMessageSignals, getMessageBodyTexts,
+  listMessagesInQueueState, setMessageAnnotation, getMessageSignals, getMessageBodyMarkdowns,
   ensureMessageBodies, ensureMessageTags, jevDecide, recordJevSpamVerdict,
   requestSpamRetrain, ensureSpamVerdict, moveMessagesVerified, isLabelStoreAccount, applyLabel,
   ensureLabelFolders,
@@ -194,7 +194,7 @@ async function processQueue(ctx) {
   }
 
   // Bodies first: a message is asked only with its body stored (or known to have none), so the
-  // signals and the body text are read for those alone.
+  // signals and the cleaned Markdown body are read for those alone.
   const askIds = work.filter(w => { const due = questionsDue(w.lines, now); return due.category || due.spam; }).map(w => w.row.id);
   const bodyOutcomes = askIds.length && remaining(ctx) >= MIN_MESSAGE_BUDGET_MS
     ? await ensureMessageBodies(account.id, askIds, { deadlineMs: remaining(ctx) })
@@ -203,7 +203,7 @@ async function processQueue(ctx) {
   const [signals, bodies] = readIds.length && remaining(ctx) >= MIN_MESSAGE_BUDGET_MS
     ? await Promise.all([
       getMessageSignals(account.id, readIds, { deadlineMs: remaining(ctx) }),
-      getMessageBodyTexts(account.id, readIds),
+      getMessageBodyMarkdowns(account.id, readIds),
     ])
     : [new Map(), new Map()];
 
@@ -246,7 +246,20 @@ async function processMessage(ctx, { row, annotation, lines: start }, { bodyOutc
           // Not read this tick (no time was left), or the row is gone; it stays queued as it is.
           return { kind: 'not_run' };
         }
-        const decision = await decide(ctx, row, messageSignals, bodies.get(row.id) ?? '', asked, annotation.revision, lines);
+        const body = bodies.get(row.id);
+        if (!body) return { kind: 'not_run' };
+        switch (body.kind) {
+          case 'failed':
+            logger.warn(`jev-classify: message ${row.id} body Markdown conversion failed`);
+            lines = promote(failDecisions(lines, asked, { kind: 'terminal', errorKind: 'body_conversion_failed' }, now));
+            break;
+          case 'ready':
+            break;
+          default:
+            throw new Error(`unhandled body document ${JSON.stringify(body.kind)}`);
+        }
+        if (body.kind === 'failed') break;
+        const decision = await decide(ctx, row, messageSignals, body.document, asked, annotation.revision, lines);
         if (decision.kind === 'unconfigured') {
           ctx.jevUnconfigured = true;
           return { kind: 'not_run' };

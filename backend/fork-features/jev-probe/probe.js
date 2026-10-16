@@ -15,12 +15,13 @@ import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { JEV_DEFAULTS, decide, status } from '../jev/index.js';
-import { extractSignals, messageBodyText } from '../signals/index.js';
+import { extractSignals } from '../signals/index.js';
+import { messageBodyMarkdown } from '../signals/markdown.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MAX_BODY_CHARS = 20_000;
 
-const bodyOf = ({ message }) => messageBodyText({ bodyText: message.body_text, bodyHtml: message.body_html }).slice(0, MAX_BODY_CHARS);
+const bodyOf = ({ message }) => messageBodyMarkdown({ bodyText: message.body_text, bodyHtml: message.body_html }).slice(0, MAX_BODY_CHARS);
 
 function fullState(fixture) {
   return { ...extractSignals(fixture), bodyText: bodyOf(fixture) };
