@@ -2017,16 +2017,6 @@
       "enabled": "Em atividade",
       "paused": "Em pausa"
     },
-    "backfill": {
-      "title": "Classificação dos e-mails existentes",
-      "description": "Classifique os e-mails que já estão nesta conta: todas as pastas, exceto Enviados, Rascunhos e Lixeira.",
-      "idle": "A classificação dos e-mails existentes ainda não foi executada.",
-      "running": "Em execução desde {{startedAt}}: {{processed}} de {{marked}} mensagens processadas, {{failed}} com falha.",
-      "completed": "Concluída em {{finishedAt}}: {{processed}} mensagens processadas, {{failed}} com falha.",
-      "stopped": "Interrompida em {{stoppedAt}}: {{processed}} de {{marked}} mensagens processadas, {{failed}} com falha.",
-      "start": "Iniciar classificação dos e-mails existentes",
-      "stop": "Interromper classificação dos e-mails existentes"
-    },
     "queue": {
       "title": "Fila",
       "backfill": "Dos e-mails existentes",
@@ -2059,25 +2049,12 @@
     }
   },
   "reputationTags": {
-    "description": "Verifique a configuração da fonte e preencha as tags de reputação das mensagens antigas de cada conta.",
+    "description": "Verifique a configuração da fonte das tags de reputação. O preenchimento de todas as contas é iniciado em Configurações → Plugins.",
     "configured": "Fonte configurada",
     "unconfigured": "Não configurada — peça a um administrador para inserir a chave em Administração → Serviços externos.",
     "disabled": "Desativada — peça a um administrador para ativar o RDAP em Administração → Serviços externos.",
-    "idle": "Nenhum preenchimento iniciado",
-    "running": "Em andamento · iniciado {{time}}",
-    "completed": "Concluído · finalizado {{time}}",
-    "stopped": "Interrompido · parado {{time}}",
-    "counts": "Marcadas: {{marked}} · Processadas: {{processed}} · Falhas: {{failed}}",
-    "start": "Iniciar preenchimento",
-    "stop": "Parar preenchimento",
-    "stopHint": "Parar impede novos lotes. As mensagens já na fila continuam sendo processadas e o contador pode aumentar.",
     "refresh": "Atualizar estado",
-    "refreshFailed": "Falha ao atualizar o estado: {{error}}",
-    "startConflict": "Já existe um preenchimento em andamento. O estado foi atualizado.",
-    "stopConflict": "Não há preenchimento em andamento. O estado foi atualizado.",
-    "accountNotFound": "Conta não encontrada ou não está mais acessível.",
-    "actionFailed": "Falha na ação de preenchimento: {{error}}",
-    "noAccounts": "Não há contas de e-mail para preencher."
+    "refreshFailed": "Falha ao atualizar o estado: {{error}}"
   },
   "pluginBackfill": {
     "title": "Preencher dados dos plugins ativados",
@@ -2104,7 +2081,7 @@
     "skipped": "Ignorado",
     "failed": "Falhou",
     "submissionHint": "Enviar uma solicitação não significa que o preenchimento foi concluído. Cada resultado abaixo confirma se o preenchimento para aquele plugin e aquela conta foi iniciado, já estava em andamento, foi ignorado ou falhou.",
-    "waitingHint": "O progresso pode depender da conexão da conta de e-mail e do próximo ciclo em segundo plano, que ocorre a cada 60 segundos. Fechar esta página não interrompe o processamento. Para interromper um preenchimento, use o controle de parada existente nas configurações do plugin.",
+    "waitingHint": "O progresso pode aguardar a conexão da conta de e-mail e o próximo ciclo em segundo plano, executado a cada 60 segundos. Fechar esta página não interrompe o processamento. Um preenchimento em andamento ainda não pode ser interrompido nesta página.",
     "partialFailure": "Algumas solicitações falharam. Confira cada resultado; outros preenchimentos podem ter sido iniciados ou já estar em andamento.",
     "reason": {
       "plugin_inactive": "O plugin não está ativado.",

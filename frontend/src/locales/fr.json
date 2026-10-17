@@ -2017,16 +2017,6 @@
       "enabled": "Actif",
       "paused": "En pause"
     },
-    "backfill": {
-      "title": "Classification des messages existants",
-      "description": "Classifier les messages déjà présents dans ce compte : tous les dossiers sauf Envoyés, Brouillons et Corbeille.",
-      "idle": "Aucune classification des messages existants n’a encore été lancée.",
-      "running": "En cours depuis {{startedAt}} : {{processed}} messages traités sur {{marked}}, {{failed}} échecs.",
-      "completed": "Terminée le {{finishedAt}} : {{processed}} messages traités, {{failed}} échecs.",
-      "stopped": "Arrêtée le {{stoppedAt}} : {{processed}} messages traités sur {{marked}}, {{failed}} échecs.",
-      "start": "Lancer la classification des messages existants",
-      "stop": "Arrêter la classification des messages existants"
-    },
     "queue": {
       "title": "File d’attente",
       "backfill": "Messages existants",
@@ -2059,25 +2049,12 @@
     }
   },
   "reputationTags": {
-    "description": "Vérifiez la configuration de la source et ajoutez les étiquettes de réputation aux anciens messages de chaque compte.",
+    "description": "Vérifiez la configuration de la source des étiquettes de réputation. Le rattrapage de tous les comptes se lance dans Paramètres → Plugins.",
     "configured": "Configurée",
     "unconfigured": "Non configurée — demandez à un administrateur de saisir la clé dans Administration → Services externes.",
     "disabled": "Désactivée — demandez à un administrateur d’activer RDAP dans Administration → Services externes.",
-    "idle": "Aucun rattrapage lancé",
-    "running": "En cours · lancé {{time}}",
-    "completed": "Terminé · fin {{time}}",
-    "stopped": "Arrêté · arrêt {{time}}",
-    "counts": "Marqués : {{marked}} · Traités : {{processed}} · Échecs : {{failed}}",
-    "start": "Lancer le rattrapage",
-    "stop": "Arrêter le rattrapage",
-    "stopHint": "L’arrêt empêche de nouveaux lots. Les messages déjà en file continuent d’être traités ; le compteur peut encore augmenter.",
     "refresh": "Actualiser l’état",
-    "refreshFailed": "Échec de l’actualisation : {{error}}",
-    "startConflict": "Un rattrapage est déjà en cours. L’état a été actualisé.",
-    "stopConflict": "Aucun rattrapage n’est en cours. L’état a été actualisé.",
-    "accountNotFound": "Compte introuvable ou devenu inaccessible.",
-    "actionFailed": "Échec de l’action de rattrapage : {{error}}",
-    "noAccounts": "Aucun compte de messagerie à traiter."
+    "refreshFailed": "Échec de l’actualisation : {{error}}"
   },
   "pluginBackfill": {
     "title": "Rattrapage des plugins activés",
@@ -2104,7 +2081,7 @@
     "skipped": "Ignoré",
     "failed": "Échec",
     "submissionHint": "L’envoi d’une demande ne signifie pas que le traitement est terminé. Chaque résultat ci-dessous indique si le rattrapage pour le plugin et le compte concernés a démarré, était déjà en cours, a été ignoré ou a échoué.",
-    "waitingHint": "Le traitement peut attendre la connexion du compte de messagerie et le prochain cycle en arrière-plan, qui a lieu toutes les 60 secondes. Fermer cette page n’arrête pas le traitement. Pour arrêter un rattrapage, utilisez la commande d’arrêt existante dans les paramètres du plugin.",
+    "waitingHint": "La progression peut attendre la connexion du compte de messagerie et le prochain cycle en arrière-plan, exécuté toutes les 60 secondes. Fermer cette page n’arrête pas le traitement. Un rattrapage en cours ne peut pas encore être arrêté depuis cette page.",
     "partialFailure": "Certaines demandes ont échoué. Consultez chaque résultat ; d’autres rattrapages peuvent avoir démarré ou être déjà en cours.",
     "reason": {
       "plugin_inactive": "Le plugin n’est pas activé.",

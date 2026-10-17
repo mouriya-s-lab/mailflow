@@ -2036,16 +2036,6 @@
       "enabled": "Aktivní",
       "paused": "Pozastaveno"
     },
-    "backfill": {
-      "title": "Klasifikace stávající pošty",
-      "description": "Klasifikujte poštu, která už je v tomto účtu: všechny složky kromě Odeslané, Koncepty a Koš.",
-      "idle": "Klasifikace stávající pošty zatím nebyla spuštěna.",
-      "running": "Probíhá od {{startedAt}}. Zpracované zprávy: {{processed}} z {{marked}}; neúspěšné: {{failed}}.",
-      "completed": "Dokončeno {{finishedAt}}. Zpracované zprávy: {{processed}}; neúspěšné: {{failed}}.",
-      "stopped": "Zastaveno {{stoppedAt}}. Zpracované zprávy: {{processed}} z {{marked}}; neúspěšné: {{failed}}.",
-      "start": "Spustit klasifikaci stávající pošty",
-      "stop": "Zastavit klasifikaci stávající pošty"
-    },
     "queue": {
       "title": "Fronta",
       "backfill": "Ze stávající pošty",
@@ -2078,25 +2068,12 @@
     }
   },
   "reputationTags": {
-    "description": "Zkontrolujte nastavení zdroje a doplňte reputační štítky starších zpráv v jednotlivých účtech.",
+    "description": "Zkontrolujte nastavení zdroje reputačních štítků. Doplnění pro všechny účty spustíte v Nastavení → Pluginy.",
     "configured": "Nastaveno",
     "unconfigured": "Nenastaveno — požádejte správce o zadání klíče v části Správa → Externí služby.",
     "disabled": "Vypnuto — požádejte správce o zapnutí RDAP v části Správa → Externí služby.",
-    "idle": "Doplnění zatím nebylo spuštěno",
-    "running": "Probíhá · spuštěno {{time}}",
-    "completed": "Dokončeno · ukončeno {{time}}",
-    "stopped": "Zastaveno · zastavení {{time}}",
-    "counts": "Označeno: {{marked}} · Zpracováno: {{processed}} · Selhalo: {{failed}}",
-    "start": "Spustit doplnění",
-    "stop": "Zastavit doplnění",
-    "stopHint": "Zastavení zabrání novým dávkám. Zprávy již ve frontě se zpracují, takže počet zpracovaných může dále růst.",
     "refresh": "Obnovit stav",
-    "refreshFailed": "Obnovení stavu selhalo: {{error}}",
-    "startConflict": "Doplnění již probíhá. Stav byl obnoven.",
-    "stopConflict": "Žádné doplnění neprobíhá. Stav byl obnoven.",
-    "accountNotFound": "Účet nebyl nalezen nebo již není přístupný.",
-    "actionFailed": "Akce doplnění selhala: {{error}}",
-    "noAccounts": "Nejsou k dispozici žádné poštovní účty pro doplnění."
+    "refreshFailed": "Obnovení stavu selhalo: {{error}}"
   },
   "pluginBackfill": {
     "title": "Doplnění pro aktivované pluginy",
@@ -2123,7 +2100,7 @@
     "skipped": "Přeskočeno",
     "failed": "Selhalo",
     "submissionHint": "Odeslání požadavku neznamená dokončení. Každý výsledek níže potvrzuje, zda se doplnění pro daný plugin a účet spustilo, již probíhalo, bylo přeskočeno nebo selhalo.",
-    "waitingHint": "Zpracování může čekat na připojení poštovního účtu a na další cyklus na pozadí, který probíhá každých 60 sekund. Zavření této stránky zpracování nezastaví. Chcete-li doplnění zastavit, použijte stávající ovládací prvek pro zastavení v nastavení pluginu.",
+    "waitingHint": "Průběh může čekat na připojení poštovního účtu a na další cyklus na pozadí, který běží každých 60 sekund. Zavření této stránky zpracování nezastaví. Probíhající doplnění zatím nelze zastavit z této stránky.",
     "partialFailure": "Některé požadavky selhaly. Zkontrolujte jednotlivé výsledky; ostatní doplnění se mohla spustit nebo již mohou probíhat.",
     "reason": {
       "plugin_inactive": "Plugin není aktivován.",

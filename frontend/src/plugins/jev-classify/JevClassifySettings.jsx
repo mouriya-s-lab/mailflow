@@ -1,6 +1,6 @@
 // Jev classification plugin — settings block under Settings → Categories, rendered only while the
 // user has the plugin activated. Three parts: the category list, each account's settings, and the
-// running state from /status (services, queue, backfill, failures, incidents).
+// running state from /status (services, queue, failures, incidents).
 //
 // Two sources, kept apart: the configuration being edited comes from GET /categories and
 // GET /accounts and is replaced only by what a save returns; the running state comes from
@@ -400,27 +400,6 @@ function runStateText(t, state) {
   }
 }
 
-function backfillText(t, run) {
-  switch (run.kind) {
-    case 'idle':
-      return t('jevClassify.backfill.idle');
-    case 'running':
-      return t('jevClassify.backfill.running', {
-        startedAt: formatTime(run.startedAt), processed: run.processed, marked: run.marked, failed: run.failed,
-      });
-    case 'completed':
-      return t('jevClassify.backfill.completed', {
-        finishedAt: formatTime(run.finishedAt), processed: run.processed, failed: run.failed,
-      });
-    case 'stopped':
-      return t('jevClassify.backfill.stopped', {
-        stoppedAt: formatTime(run.stoppedAt), processed: run.processed, marked: run.marked, failed: run.failed,
-      });
-    default:
-      throw new Error(`unknown backfill run ${JSON.stringify(run.kind)}`);
-  }
-}
-
 function nextDueText(t, nextDue) {
   switch (nextDue.kind) {
     case 'none': return null;
@@ -459,30 +438,10 @@ function AccountStatus({ accountId, status, refreshStatus, isMobile }) {
   };
 
   if (!status) return <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('common.loading')}</div>;
-  const running = status.backfill.kind === 'running';
   const due = nextDueText(t, status.nextDue);
 
   return (
     <div data-testid={`jev-status-${accountId}`}>
-      <div style={headingStyle}>{t('jevClassify.backfill.title')}</div>
-      <p style={hintStyle}>{t('jevClassify.backfill.description')}</p>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-        <span data-testid="jev-backfill" style={{ fontSize: 13, color: 'var(--text-primary)', flex: isMobile ? '1 1 100%' : 1, minWidth: isMobile ? 0 : 200, overflowWrap: 'anywhere' }}>
-          {backfillText(t, status.backfill)}
-        </span>
-        {running ? (
-          <button type="button" disabled={busy !== null} style={secondaryButton(busy !== null, isMobile)}
-            onClick={() => act('stop', () => jevClassifyApi.stopBackfill(accountId))}>
-            {t('jevClassify.backfill.stop')}
-          </button>
-        ) : (
-          <button type="button" disabled={busy !== null} style={primaryButton(busy !== null, isMobile)}
-            onClick={() => act('start', () => jevClassifyApi.startBackfill(accountId))}>
-            {t('jevClassify.backfill.start')}
-          </button>
-        )}
-      </div>
-
       <div style={headingStyle}>{t('jevClassify.queue.title')}</div>
       {isMobile ? (
         <div style={{ display: 'grid', gap: 10, marginBottom: 6, minWidth: 0 }}>
