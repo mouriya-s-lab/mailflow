@@ -2017,16 +2017,6 @@
       "enabled": "Attivo",
       "paused": "In pausa"
     },
-    "backfill": {
-      "title": "Classificazione della posta esistente",
-      "description": "Classifica la posta già presente in questo account: tutte le cartelle tranne Inviati, Bozze e Cestino.",
-      "idle": "La classificazione della posta esistente non è ancora stata eseguita.",
-      "running": "In corso da {{startedAt}}: {{processed}} messaggi elaborati su {{marked}}, {{failed}} non riusciti.",
-      "completed": "Completata il {{finishedAt}}: {{processed}} messaggi elaborati, {{failed}} non riusciti.",
-      "stopped": "Interrotta il {{stoppedAt}}: {{processed}} messaggi elaborati su {{marked}}, {{failed}} non riusciti.",
-      "start": "Avvia classificazione della posta esistente",
-      "stop": "Interrompi classificazione della posta esistente"
-    },
     "queue": {
       "title": "Coda",
       "backfill": "Dalla posta esistente",
@@ -2059,25 +2049,12 @@
     }
   },
   "reputationTags": {
-    "description": "Controlla la configurazione della fonte e aggiungi i tag di reputazione ai messaggi storici di ogni account.",
+    "description": "Controlla la configurazione della fonte dei tag di reputazione. Il recupero per tutti gli account si avvia da Impostazioni → Plugin.",
     "configured": "Configurata",
     "unconfigured": "Non configurata — chiedi a un amministratore di inserire la chiave in Amministrazione → Servizi esterni.",
     "disabled": "Disattivata — chiedi a un amministratore di attivare RDAP in Amministrazione → Servizi esterni.",
-    "idle": "Nessun recupero avviato",
-    "running": "In corso · avviato {{time}}",
-    "completed": "Completato · terminato {{time}}",
-    "stopped": "Interrotto · arrestato {{time}}",
-    "counts": "Contrassegnati: {{marked}} · Elaborati: {{processed}} · Falliti: {{failed}}",
-    "start": "Avvia recupero",
-    "stop": "Interrompi recupero",
-    "stopHint": "L’arresto impedisce nuovi lotti. I messaggi già in coda vengono ancora elaborati, quindi il contatore può aumentare.",
     "refresh": "Aggiorna stato",
-    "refreshFailed": "Aggiornamento dello stato non riuscito: {{error}}",
-    "startConflict": "Un recupero è già in corso. Lo stato è stato aggiornato.",
-    "stopConflict": "Nessun recupero è in corso. Lo stato è stato aggiornato.",
-    "accountNotFound": "Account non trovato o non più accessibile.",
-    "actionFailed": "Azione di recupero non riuscita: {{error}}",
-    "noAccounts": "Nessun account di posta da recuperare."
+    "refreshFailed": "Aggiornamento dello stato non riuscito: {{error}}"
   },
   "pluginBackfill": {
     "title": "Recupero per i plugin attivi",
@@ -2104,7 +2081,7 @@
     "skipped": "Saltato",
     "failed": "Non riuscito",
     "submissionHint": "L'invio della richiesta non equivale al completamento. Ogni risultato qui sotto indica se il recupero per quel plugin e account è stato avviato, era già in corso, è stato saltato o non è riuscito.",
-    "waitingHint": "L'elaborazione potrebbe dover attendere la connessione dell'account di posta e il prossimo ciclo in background, eseguito ogni 60 secondi. Chiudere questa pagina non interrompe l'elaborazione. Per interrompere un recupero, usa il comando di arresto già presente nelle impostazioni del plugin.",
+    "waitingHint": "Il avanzamento può attendere la connessione dell'account di posta e il ciclo di sfondo successivo, eseguito ogni 60 secondi. Chiudere questa pagina non interrompe l'elaborazione. Un recupero in corso non può ancora essere interrotto da questa pagina.",
     "partialFailure": "Alcune richieste non sono riuscite. Controlla ogni risultato; altri recuperi potrebbero essere stati avviati o essere già in corso.",
     "reason": {
       "plugin_inactive": "Il plugin non è attivo.",

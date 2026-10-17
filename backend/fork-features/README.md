@@ -13,7 +13,7 @@ This fork adds features to upstream [maathimself/mailflow](https://github.com/ma
 
 Fork settings use the existing `useMobile()` breakpoint (below 768 CSS pixels), without
 changing API requests or maintaining separate mobile state. OAuth proxy and external-service
-forms, Jev category/routing editors and reputation backfill controls keep their existing
+forms, Jev category/routing editors and the Plugins backfill panel keep their existing
 component instances. Mobile inputs use 16px text, action targets allow at least 44px of
 height, and long addresses, paths and diagnostics wrap instead of pushing controls off-screen.
 
@@ -289,7 +289,7 @@ remain exclusively in the administrator's external-service settings.
   ticks and synchronous ensures hold the same plugin/account turn, so progress and stop cannot
   overwrite one another.
 
-Settings → Categories shows each activated plugin's source configuration and per-account backfill status, `marked`/`processed`/`failed` counters, Start and Stop controls through the shared `frontend/src/plugins/reputation-tags/` settings component.
+Settings → Categories shows each activated plugin's source configuration only; it has no backfill controls. Backfill is started for all eligible accounts from Settings → Plugins (below). The per-account `POST`/`DELETE /accounts/:id/backfill` routes stay in the API, but no UI calls them, so nothing in the UI stops a running backfill.
 
 | Path | What |
 |---|---|
@@ -330,8 +330,7 @@ owner-produced account snapshots. An individual inspection failure remains visib
 `failed { error: 'status_failed' }`. The panel reads again after commands, activation changes
 and manual refresh; polling waits 15 seconds after each read settles so slow responses can
 still become visible. Leaving the page stops reads, not background processing.
-**Open plugin settings** leads to the existing per-account configuration and Stop controls
-under Settings → Categories.
+**Open plugin settings** leads to the plugin's source configuration under Settings → Categories, which has no backfill controls.
 
 | Path | What |
 |---|---|
