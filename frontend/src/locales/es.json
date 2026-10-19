@@ -820,6 +820,24 @@
       "externalServices": "Servicios externos"
     },
     "externalServices": {
+      "test": "Probar conexión",
+      "testing": "Probando…",
+      "testOk": "La conexión funciona con esta configuración.",
+      "testFail": "La conexión falló: {{reason}}.",
+      "testFailShort": "falló: {{reason}}",
+      "testWorks": "funciona",
+      "testNoKey": "sin clave, no probado",
+      "testReason": {
+        "http": "el servidor la rechazó con HTTP {{status}}",
+        "rate_limited": "límite de peticiones, inténtelo más tarde",
+        "network": "no se pudo contactar el endpoint",
+        "invalid_response": "la respuesta no tenía el formato esperado",
+        "invalid_request": "la petición fue rechazada",
+        "unconfigured": "no se introdujo ninguna clave",
+        "aborted": "la prueba se canceló",
+        "timeout": "tiempo agotado",
+        "error": "la fuente devolvió un error"
+      },
       "description": "Servicios que MailFlow consulta al clasificar el correo y comprobar sus enlaces. Las claves se almacenan cifradas y nunca vuelven a mostrarse después de guardarlas.",
       "saved": "Guardado",
       "keepKey": "Hay una clave almacenada. Deje los puntos para conservarla, borre el campo para eliminarla o pegue una nueva para reemplazarla.",

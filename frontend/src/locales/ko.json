@@ -819,6 +819,24 @@
       "externalServices": "외부 서비스"
     },
     "externalServices": {
+      "test": "연결 테스트",
+      "testing": "테스트 중…",
+      "testOk": "이 설정으로 연결이 작동합니다.",
+      "testFail": "연결 실패: {{reason}}.",
+      "testFailShort": "실패: {{reason}}",
+      "testWorks": "작동",
+      "testNoKey": "키가 입력되지 않아 테스트하지 않음",
+      "testReason": {
+        "http": "서버가 HTTP {{status}}로 거부했습니다",
+        "rate_limited": "요청 한도 초과, 나중에 다시 시도하세요",
+        "network": "엔드포인트에 연결할 수 없습니다",
+        "invalid_response": "응답 형식이 예상과 다릅니다",
+        "invalid_request": "요청이 거부되었습니다",
+        "unconfigured": "키가 입력되지 않았습니다",
+        "aborted": "테스트가 취소되었습니다",
+        "timeout": "시간 초과",
+        "error": "소스가 오류를 반환했습니다"
+      },
       "description": "MailFlow가 메일을 분류하고 메일에 포함된 링크를 확인할 때 요청하는 서비스입니다. 키는 암호화되어 저장되며 저장한 후에는 다시 표시되지 않습니다.",
       "saved": "저장됨",
       "keepKey": "키가 저장되어 있습니다. 유지하려면 점을 그대로 두고, 삭제하려면 필드를 비우거나, 새 키로 바꾸려면 새 키를 붙여넣으세요.",
