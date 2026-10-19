@@ -36,7 +36,7 @@ vi.mock('../api.js', async () => ({
 
 import * as api from '../api.js';
 import { runTick, requestDrain, requeueDisabledSpam, newMailDrainActive, jevCallCount, TICK_BUDGET_MS } from './processor.js';
-import { DEFAULT_CATEGORIES, resetTerminal } from './model.js';
+import { DEFAULT_CATEGORIES, DEFAULT_SPAM_INSTRUCTIONS, resetTerminal } from './model.js';
 import { clearIncidents } from './records.js';
 
 let accountSeq = 0;
@@ -641,6 +641,23 @@ describe('the state sent to Jev (row 12)', () => {
     });
     expect(request.questions.spam).toBeUndefined();
     expect(patchFor(r.id).category.decision).toMatchObject({ kind: 'done', revision: 3, choice: 'bills' });
+  });
+
+  it('asks spam with the saved spam prompt, or the default while none is saved', async () => {
+    const account = newAccount();
+    store.configs.set(account.id, config({ trainSpam: true }));
+    const r = row(410, fresh());
+    api.listQueuedMessages.mockResolvedValue([r]);
+    api.getMessageSignals.mockResolvedValue(new Map([[r.id, signalsFor([])]]));
+    api.ensureMessageTags.mockResolvedValue(new Map([[r.id, inactiveTags()]]));
+    api.jevDecide.mockImplementation(answering({ probability: 0.3 }));
+
+    await runTick({ mgr: mgr(), account });
+    expect(api.jevDecide.mock.calls[0][0].questions.spam).toEqual({ kind: 'noul', instructions: DEFAULT_SPAM_INSTRUCTIONS });
+
+    store.data.set(`user:${account.user_id}:spam-instructions`, { instructions: 'Is this a phishing attempt?' });
+    await runTick({ mgr: mgr(), account });
+    expect(api.jevDecide.mock.calls[1][0].questions.spam).toEqual({ kind: 'noul', instructions: 'Is this a phishing attempt?' });
   });
 
   it('keeps complete snapshots complete when current links are absent and preserves inactive sources', async () => {

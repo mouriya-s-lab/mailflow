@@ -56,6 +56,8 @@ const NO_KEYS = { spamhausDqsKey: '', urlhausAuthKey: '', safeBrowsingApiKey: ''
 
 describe('external service settings', () => {
   const calls = [];
+  const testCalls = [];
+  let testAnswers = {};
   let jev;
   let reputation;
   let root;
@@ -73,11 +75,20 @@ describe('external service settings', () => {
       reputation = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, typeof v === 'string' && v ? MASK : v]));
       return { ok: true, config: reputation };
     };
+    serviceConfigApi.testJev = async (data) => {
+      testCalls.push(['jev', data]);
+      return testAnswers.jev;
+    };
+    serviceConfigApi.testReputation = async (data) => {
+      testCalls.push(['reputation', data]);
+      return testAnswers.reputation;
+    };
   });
   afterEach(() => React.act(async () => root.unmount()));
 
   async function render() {
     calls.length = 0;
+    testCalls.length = 0;
     root = createRoot(document.getElementById('root'));
     await React.act(async () => { root.render(React.createElement(ExternalServicesTab)); });
   }
@@ -134,5 +145,51 @@ describe('external service settings', () => {
     await submit(1);
     assert.deepEqual(calls, [['reputation', { rdapEnabled: false, spamhausDqsKey: 'dqs-key', urlhausAuthKey: MASK, safeBrowsingApiKey: '' }]]);
     assert.equal(rdap.getAttribute('aria-checked'), 'false');
+  });
+
+  const text = () => document.getElementById('root').textContent;
+  const testButton = index => [...document.querySelectorAll('form')[index].querySelectorAll('button')]
+    .find(b => b.textContent === 'admin.externalServices.test');
+
+  test('a Jev test sends the form as it stands, mask included, reports the refusal, and saves nothing', async () => {
+    jev = { ...JEV, apiKey: MASK };
+    reputation = { rdapEnabled: true, ...NO_KEYS };
+    testAnswers = { jev: { ok: false, reason: 'http', status: 401 } };
+    await render();
+    await type(input('fork-jev-model'), 'typesafe/jev-next');
+    await click(testButton(0));
+    assert.deepEqual(testCalls, [['jev', { ...JEV, model: 'typesafe/jev-next', apiKey: MASK }]]);
+    assert.deepEqual(calls, [], 'a test writes nothing');
+    assert.match(text(), /admin\.externalServices\.testFail/);
+    assert.doesNotMatch(text(), /admin\.externalServices\.testOk/);
+  });
+
+  test('a successful Jev test says so', async () => {
+    jev = { ...JEV, apiKey: MASK };
+    reputation = { rdapEnabled: true, ...NO_KEYS };
+    testAnswers = { jev: { ok: true } };
+    await render();
+    await click(testButton(0));
+    assert.match(text(), /admin\.externalServices\.testOk/);
+  });
+
+  test('a reputation test runs each keyed source with its form key and names each outcome', async () => {
+    jev = { ...JEV, apiKey: '' };
+    reputation = { rdapEnabled: true, ...NO_KEYS, spamhausDqsKey: MASK };
+    testAnswers = { reputation: { results: {
+      spamhaus_dbl: { kind: 'ok' },
+      urlhaus: { kind: 'failed', reason: 'error', detail: 'HTTP 401' },
+      safe_browsing: { kind: 'unconfigured' },
+    } } };
+    await render();
+    await type(input('fork-reputation-urlhausAuthKey'), 'urlhaus-form-key');
+    await click(testButton(1));
+    assert.deepEqual(testCalls, [['reputation', {
+      rdapEnabled: true, spamhausDqsKey: MASK, urlhausAuthKey: 'urlhaus-form-key', safeBrowsingApiKey: '',
+    }]]);
+    assert.deepEqual(calls, [], 'a test writes nothing');
+    assert.match(text(), /admin\.externalServices\.testWorks/);
+    assert.match(text(), /admin\.externalServices\.testFailShort/);
+    assert.match(text(), /admin\.externalServices\.testNoKey/);
   });
 });

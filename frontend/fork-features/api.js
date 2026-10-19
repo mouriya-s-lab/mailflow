@@ -12,5 +12,7 @@ export const serviceConfigApi = {
   getJev: () => request('GET', '/admin/fork/jev'),
   saveJev: data => request('PUT', '/admin/fork/jev', data),
   getReputation: () => request('GET', '/admin/fork/reputation'),
+  testJev: data => request('POST', '/admin/fork/jev/test', data),
+  testReputation: data => request('POST', '/admin/fork/reputation/test', data),
   saveReputation: data => request('PUT', '/admin/fork/reputation', data),
 };

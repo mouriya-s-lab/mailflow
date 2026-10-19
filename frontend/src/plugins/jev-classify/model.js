@@ -73,6 +73,18 @@ export function parseCategoryDrafts(drafts) {
   return { ok: true, categories };
 }
 
+// ── Spam judgment prompt ──────────────────────────────────────────────────────
+
+export const MAX_SPAM_INSTRUCTIONS_CHARS = 2000;
+
+// The editor's text → { ok: true, instructions } | { ok: false, problem }, by the rules of PUT /spam-instructions.
+export function parseSpamInstructionsDraft(text) {
+  const instructions = text.trim();
+  if (!instructions) return { ok: false, problem: { kind: 'required' } };
+  if (instructions.length > MAX_SPAM_INSTRUCTIONS_CHARS) return { ok: false, problem: { kind: 'too_long', max: MAX_SPAM_INSTRUCTIONS_CHARS } };
+  return { ok: true, instructions };
+}
+
 // ── Account settings ──────────────────────────────────────────────────────────
 // The form keeps the confidence as the text in its input; routing maps category ids to targets.
 

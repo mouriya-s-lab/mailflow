@@ -821,6 +821,24 @@
       "externalServices": "Externe Dienste"
     },
     "externalServices": {
+      "test": "Verbindung testen",
+      "testing": "Wird getestet…",
+      "testOk": "Verbindung funktioniert mit diesen Einstellungen.",
+      "testFail": "Verbindung fehlgeschlagen: {{reason}}.",
+      "testFailShort": "fehlgeschlagen: {{reason}}",
+      "testWorks": "funktioniert",
+      "testNoKey": "kein Schlüssel eingegeben, nicht getestet",
+      "testReason": {
+        "http": "der Server hat mit HTTP {{status}} abgelehnt",
+        "rate_limited": "Anfragelimit erreicht, später erneut versuchen",
+        "network": "Endpunkt nicht erreichbar",
+        "invalid_response": "Antwort hatte nicht das erwartete Format",
+        "invalid_request": "Anfrage wurde abgelehnt",
+        "unconfigured": "kein Schlüssel eingegeben",
+        "aborted": "Test wurde abgebrochen",
+        "timeout": "Zeitüberschreitung",
+        "error": "die Quelle hat einen Fehler gemeldet"
+      },
       "description": "Dienste, die MailFlow bei der Klassifizierung von E-Mails und der Prüfung darin enthaltener Links abfragt. Schlüssel werden verschlüsselt gespeichert und nach dem Speichern nie wieder angezeigt.",
       "saved": "Gespeichert",
       "keepKey": "Ein Schlüssel ist gespeichert. Lassen Sie die Punkte stehen, um ihn beizubehalten, leeren Sie das Feld zum Entfernen oder fügen Sie einen neuen Schlüssel zum Ersetzen ein.",
@@ -1995,6 +2013,16 @@
       "save": "Kategorien speichern",
       "add": "Kategorie hinzufügen"
     },
+    "spam": {
+      "title": "Spam-Prüfungsanweisung",
+      "description": "Die Frage, die Jev für jede Nachricht zur Spam-Erkennung beantwortet. Gilt für Nachrichten ab jetzt; bereits geprüfte Mails behalten ihr Ergebnis.",
+      "label": "Frage zur Spam-Prüfung",
+      "save": "Spam-Anweisung speichern",
+      "restore": "Standard wiederherstellen",
+      "saved": "Spam-Anweisung gespeichert.",
+      "restored": "Standard-Spam-Anweisung wiederhergestellt.",
+      "saveFailed": "Spam-Anweisung konnte nicht gespeichert werden: {{error}}"
+    },
     "accounts": {
       "title": "Konten",
       "none": "Füge ein E-Mail-Konto hinzu, um dessen E-Mails zu klassifizieren.",
@@ -2020,16 +2048,6 @@
     "run": {
       "enabled": "Aktiv",
       "paused": "Pausiert"
-    },
-    "backfill": {
-      "title": "Nachträgliche Klassifizierung",
-      "description": "Bereits vorhandene E-Mails dieses Kontos klassifizieren: alle Ordner außer Gesendet, Entwürfe und Papierkorb.",
-      "idle": "Es wurde noch keine nachträgliche Klassifizierung ausgeführt.",
-      "running": "Läuft seit {{startedAt}}: {{processed}} von {{marked}} Nachrichten verarbeitet, {{failed}} fehlgeschlagen.",
-      "completed": "Abgeschlossen am {{finishedAt}}: {{processed}} Nachrichten verarbeitet, {{failed}} fehlgeschlagen.",
-      "stopped": "Gestoppt am {{stoppedAt}}: {{processed}} von {{marked}} Nachrichten verarbeitet, {{failed}} fehlgeschlagen.",
-      "start": "Nachträgliche Klassifizierung starten",
-      "stop": "Nachträgliche Klassifizierung stoppen"
     },
     "queue": {
       "title": "Warteschlange",
@@ -2063,25 +2081,12 @@
     }
   },
   "reputationTags": {
-    "description": "Prüfe die Quellenkonfiguration und ergänze Reputations-Tags für ältere Nachrichten jedes Kontos.",
+    "description": "Prüfe die Quellenkonfiguration der Reputations-Tags. Die Nachverarbeitung für alle Konten startest du unter Einstellungen → Plugins.",
     "configured": "Konfiguriert",
     "unconfigured": "Nicht konfiguriert — bitte einen Administrator, den Schlüssel unter Administration → Externe Dienste einzutragen.",
     "disabled": "Deaktiviert — bitte einen Administrator, RDAP unter Administration → Externe Dienste zu aktivieren.",
-    "idle": "Noch kein Rücklauf gestartet",
-    "running": "Läuft · gestartet {{time}}",
-    "completed": "Abgeschlossen · beendet {{time}}",
-    "stopped": "Gestoppt · angehalten {{time}}",
-    "counts": "Markiert: {{marked}} · Verarbeitet: {{processed}} · Fehlgeschlagen: {{failed}}",
-    "start": "Rücklauf starten",
-    "stop": "Rücklauf stoppen",
-    "stopHint": "Stoppen verhindert neue Stapel. Bereits eingereihte Nachrichten werden weiter verarbeitet; die Anzahl kann nach dem Stoppen steigen.",
     "refresh": "Status aktualisieren",
-    "refreshFailed": "Statusaktualisierung fehlgeschlagen: {{error}}",
-    "startConflict": "Ein Rücklauf läuft bereits. Der Status wurde aktualisiert.",
-    "stopConflict": "Es läuft kein Rücklauf. Der Status wurde aktualisiert.",
-    "accountNotFound": "Konto nicht gefunden oder nicht mehr zugänglich.",
-    "actionFailed": "Rücklaufaktion fehlgeschlagen: {{error}}",
-    "noAccounts": "Keine E-Mail-Konten für einen Rücklauf vorhanden."
+    "refreshFailed": "Statusaktualisierung fehlgeschlagen: {{error}}"
   },
   "pluginBackfill": {
     "title": "Rücklauf für aktivierte Plugins",
@@ -2108,7 +2113,7 @@
     "skipped": "Übersprungen",
     "failed": "Fehlgeschlagen",
     "submissionHint": "Die Übermittlung bedeutet nicht, dass die Verarbeitung abgeschlossen ist. Jedes Ergebnis unten bestätigt für das jeweilige Plugin und Konto, ob der Rücklauf gestartet wurde, bereits lief, übersprungen wurde oder fehlgeschlagen ist.",
-    "waitingHint": "Der Fortschritt kann auf die Verbindung des E-Mail-Kontos und den nächsten Hintergrunddurchlauf warten, der alle 60 Sekunden stattfindet. Das Schließen dieser Seite stoppt die Verarbeitung nicht. Verwende die vorhandene Stoppfunktion in den Plugin-Einstellungen, um einen Rücklauf zu stoppen.",
+    "waitingHint": "Der Fortschritt kann warten, bis das Konto verbunden ist und der nächste Hintergrundzyklus läuft (alle 60 Sekunden). Das Schließen dieser Seite stoppt die Verarbeitung nicht. Eine laufende Nachverarbeitung kann auf dieser Seite derzeit nicht gestoppt werden.",
     "partialFailure": "Einige Anfragen sind fehlgeschlagen. Prüfe jedes Ergebnis; andere Rückläufe wurden möglicherweise gestartet oder laufen bereits.",
     "reason": {
       "plugin_inactive": "Das Plugin ist nicht aktiviert.",

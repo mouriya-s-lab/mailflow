@@ -824,6 +824,24 @@
       "description": "Services MailFlow asks when it classifies mail and checks the links in it. Keys are stored encrypted and are never shown again after saving.",
       "saved": "Saved",
       "keepKey": "A key is stored. Leave the dots to keep it, clear the field to remove it, or paste a new key to replace it.",
+      "test": "Test connection",
+      "testing": "Testing…",
+      "testOk": "Connection works with these settings.",
+      "testFail": "Connection failed: {{reason}}.",
+      "testFailShort": "failed: {{reason}}",
+      "testWorks": "works",
+      "testNoKey": "no key entered, not tested",
+      "testReason": {
+        "http": "the server refused it with HTTP {{status}}",
+        "rate_limited": "rate limited, try again later",
+        "network": "the endpoint could not be reached",
+        "invalid_response": "the answer was not in the expected format",
+        "invalid_request": "the request was rejected",
+        "unconfigured": "no key entered",
+        "aborted": "the test was cancelled",
+        "timeout": "timed out",
+        "error": "the source returned an error"
+      },
       "jev": {
         "title": "Jev",
         "description": "Jev answers MailFlow's classification questions about messages. The endpoint and model start at their defaults; add an API key to turn Jev on.",
@@ -1995,6 +2013,16 @@
       "save": "Save categories",
       "add": "Add category"
     },
+    "spam": {
+      "title": "Spam judgment prompt",
+      "description": "The question Jev answers for each message to judge whether it is spam. Applies to messages judged from now on; mail already judged keeps its verdict.",
+      "label": "Spam judgment question",
+      "save": "Save spam prompt",
+      "restore": "Restore default",
+      "saved": "Spam prompt saved.",
+      "restored": "Default spam prompt restored.",
+      "saveFailed": "Could not save the spam prompt: {{error}}"
+    },
     "accounts": {
       "title": "Accounts",
       "none": "Add a mail account to classify its mail.",
@@ -2020,16 +2048,6 @@
     "run": {
       "enabled": "Active",
       "paused": "Paused"
-    },
-    "backfill": {
-      "title": "Backfill",
-      "description": "Classify the mail already in this account: every folder except Sent, Drafts and Trash.",
-      "idle": "No backfill has run yet.",
-      "running": "Running since {{startedAt}}: {{processed}} of {{marked}} messages done, {{failed}} failed.",
-      "completed": "Completed {{finishedAt}}: {{processed}} messages done, {{failed}} failed.",
-      "stopped": "Stopped {{stoppedAt}}: {{processed}} of {{marked}} messages done, {{failed}} failed.",
-      "start": "Start backfill",
-      "stop": "Stop backfill"
     },
     "queue": {
       "title": "Queue",
@@ -2063,25 +2081,12 @@
     }
   },
   "reputationTags": {
-    "description": "Check the source configuration and backfill reputation tags for historical mail in each account.",
+    "description": "Check the source configuration for reputation tags. Backfill for all accounts starts from Settings → Plugins.",
     "configured": "Configured",
     "unconfigured": "Not configured — ask an administrator to enter the key in Administration → External services.",
     "disabled": "Disabled — ask an administrator to enable RDAP in Administration → External services.",
-    "idle": "No backfill started",
-    "running": "Running · started {{time}}",
-    "completed": "Completed · finished {{time}}",
-    "stopped": "Stopped · stopped {{time}}",
-    "counts": "Marked: {{marked}} · Processed: {{processed}} · Failed: {{failed}}",
-    "start": "Start backfill",
-    "stop": "Stop backfill",
-    "stopHint": "Stopping prevents new batches. Mail already queued still finishes, so the processed count can increase after stopping.",
     "refresh": "Refresh status",
-    "refreshFailed": "Status refresh failed: {{error}}",
-    "startConflict": "A backfill is already running. Status has been refreshed.",
-    "stopConflict": "No backfill is running. Status has been refreshed.",
-    "accountNotFound": "Account not found or no longer accessible.",
-    "actionFailed": "Backfill action failed: {{error}}",
-    "noAccounts": "No mail accounts to backfill."
+    "refreshFailed": "Status refresh failed: {{error}}"
   },
   "pluginBackfill": {
     "title": "Backfill enabled plugins",
@@ -2108,7 +2113,7 @@
     "skipped": "Skipped",
     "failed": "Failed",
     "submissionHint": "Submission is not completion. Each result below confirms whether that plugin and account started, was already running, was skipped or failed.",
-    "waitingHint": "Progress may wait for the mail account to connect and the next background cycle, which runs every 60 seconds. Closing this page does not stop processing. Use the existing stop control in the plugin’s settings to stop a backfill.",
+    "waitingHint": "Progress may wait for the mail account to connect and the next background cycle, which runs every 60 seconds. Closing this page does not stop processing. A running backfill cannot be stopped from this page yet.",
     "partialFailure": "Some requests failed. Review each result; other backfills may have started or may already be running.",
     "reason": {
       "plugin_inactive": "Plugin is not activated.",

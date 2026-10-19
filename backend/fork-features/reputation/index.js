@@ -87,6 +87,11 @@ const outcome = (result, ttlMs = null) => ({ result, ttlMs, warning: null });
 const failure = (reason, warning) => ({ result: unknown(reason), ttlMs: null, warning });
 const DEADLINE_PASSED = failure('timeout', 'deadline passed');
 
+// Fixed subjects for the connection test: a registrable domain and an http(s) URL on it.
+const TEST_DOMAIN = 'example.com';
+const TEST_URL = 'https://example.com/';
+const TEST_DEADLINE_MS = 15_000;
+
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // A cached row is MailFlow's own JSON, but it is still read back into the exact result types.
@@ -549,7 +554,29 @@ export function createReputation({
     }
   }
 
-  return { lookupRdap, lookupSpamhausDbl, lookupUrlhaus, lookupSafeBrowsing, sourceStatus };
+  // Connection test for one source with a key that may not be saved yet: one uncached lookup of a
+  // fixed subject through the production lookup, so a key the source refuses is a failure. Reads
+  // and writes no cache. Resolves to { kind: 'ok' } or { kind: 'failed', reason, detail }.
+  async function testSource(source, key) {
+    const verdict = await probe(source, key, Date.now() + TEST_DEADLINE_MS);
+    return verdict.warning === null
+      ? { kind: 'ok' }
+      : { kind: 'failed', reason: verdict.result.reason, detail: verdict.warning };
+  }
+
+  async function probe(source, key, deadlineAt) {
+    switch (source) {
+      case 'spamhaus_dbl': return (await dblLookup(key)([TEST_DOMAIN], deadlineAt)).get(TEST_DOMAIN);
+      case 'urlhaus': return (await urlhausLookup(key)([TEST_DOMAIN], deadlineAt)).get(TEST_DOMAIN);
+      case 'safe_browsing': {
+        const { canonical, expressions } = urlExpressions(TEST_URL);
+        return (await safeBrowsingLookup(key, new Map([[canonical, expressions]]))([canonical], deadlineAt)).get(canonical);
+      }
+      default: throw new TypeError(`no connection test for source ${JSON.stringify(source)}`);
+    }
+  }
+
+  return { lookupRdap, lookupSpamhausDbl, lookupUrlhaus, lookupSafeBrowsing, sourceStatus, testSource };
 }
 
 const reputation = createReputation();
@@ -559,3 +586,4 @@ export const lookupSpamhausDbl = reputation.lookupSpamhausDbl;
 export const lookupUrlhaus = reputation.lookupUrlhaus;
 export const lookupSafeBrowsing = reputation.lookupSafeBrowsing;
 export const sourceStatus = reputation.sourceStatus;
+export const testReputationSource = reputation.testSource;

@@ -13,7 +13,7 @@ This fork adds features to upstream [maathimself/mailflow](https://github.com/ma
 
 Fork settings use the existing `useMobile()` breakpoint (below 768 CSS pixels), without
 changing API requests or maintaining separate mobile state. OAuth proxy and external-service
-forms, Jev category/routing editors and reputation backfill controls keep their existing
+forms, Jev category/routing editors and the Plugins backfill panel keep their existing
 component instances. Mobile inputs use 16px text, action targets allow at least 44px of
 height, and long addresses, paths and diagnostics wrap instead of pushing controls off-screen.
 
@@ -289,7 +289,7 @@ remain exclusively in the administrator's external-service settings.
   ticks and synchronous ensures hold the same plugin/account turn, so progress and stop cannot
   overwrite one another.
 
-Settings → Categories shows each activated plugin's source configuration and per-account backfill status, `marked`/`processed`/`failed` counters, Start and Stop controls through the shared `frontend/src/plugins/reputation-tags/` settings component.
+Settings → Categories shows each activated plugin's source configuration only; it has no backfill controls. Backfill is started for all eligible accounts from Settings → Plugins (below). The per-account `POST`/`DELETE /accounts/:id/backfill` routes stay in the API, but no UI calls them, so nothing in the UI stops a running backfill.
 
 | Path | What |
 |---|---|
@@ -331,8 +331,7 @@ owner-produced account snapshots. An individual inspection failure remains visib
 `failed { error: 'status_failed' }`. The panel reads again after commands, activation changes
 and manual refresh; polling waits 15 seconds after each read settles so slow responses can
 still become visible. Leaving the page stops reads, not background processing.
-**Open plugin settings** leads to the existing per-account configuration and Stop controls
-under Settings → Categories.
+**Open plugin settings** leads to the plugin's source configuration under Settings → Categories, which has no backfill controls.
 
 | Path | What |
 |---|---|
@@ -644,6 +643,7 @@ The plugin `jev-classify` (`backend/src/plugins/jev-classify/`) asks Jev to clas
 
 - **Categories** (per user, plugin data `user:<userId>:categories`): `{ revision, categories: [{ id, label, description }] }`, 2–24 entries. Until the user saves a list, the eight defaults (`action-required`, `important-update`, `personal`, `money-and-orders`, `newsletters`, `routine-notifications`, `cold-outreach`, `review`) apply at revision 0. Saving makes the next revision; nothing is re-classified until the user starts a backfill.
 - **Markdown input.** Jev reads `getMessageBodyMarkdowns` after body acquisition and applies the existing 8000-Unicode-code-point cap after conversion. A missing document leaves the message untouched; a conversion failure records `body_conversion_failed` as an immediate terminal decision failure, emits a content-free warning and sends no Jev or reputation request for that message. Other messages continue. A legitimately empty cleaned document can still be classified. Existing completed decisions are not automatically reclassified; the normal Retry failed control can requeue terminal failures after a converter change. Markdown may repeat link destinations already present in the structured signals, so conversion alone does not guarantee that the complete state fits the provider's context window.
+- **Spam prompt** (per user, plugin data `user:<userId>:spam-instructions`): `{ instructions }`, where null means the default question `DEFAULT_SPAM_INSTRUCTIONS` ("Is this email spam, a scam, or phishing? …"). A saved text is trimmed and at most 2000 characters. `GET /spam-instructions` returns `{ instructions, custom }`; `PUT` takes `{ instructions }`, with `null` restoring the default, and returns the same view. The tick reads it once per run, so a save applies to spam decisions made from then on; a decision already made keeps its verdict, since spam decisions are not keyed to the category revision. The editor is the spam block in Settings → Categories, under the categories editor.
 - **Account configuration** (`plugin_account_config`): `{ enabled, classifyNewMail, newMailFloors, routing, createFolders, trainSpam, routingMinConfidence }`. `routing` maps category ids to folder paths, never INBOX. `newMailFloors` is kept by the server: switching `classifyNewMail` on records each processable folder's UIDVALIDITY and next UID, and mail at or above that UID is new; a folder seen for the first time, or whose UIDVALIDITY changed, gets a fresh floor on the next tick, so history re-ingested after a rebuild is not new mail.
 - **Per message** (`plugin_annotations['jev-classify']`): the work queue's `revision` and `queue`, plus a category line `{ decision, action }` and, while `trainSpam` is on, a spam line `{ decision, training }`, each segment a `kind`-tagged state as K9 in [mouriya-s-lab/mailflow#5](https://github.com/mouriya-s-lab/mailflow/issues/5) defines them. A finished action is `{ kind: 'done', target, effect: 'moved' | 'labeled' }`. The queue state is derived from the segments on every write.
 - **One attempt** asks Jev once, only the questions still open (category as `choice` over the user's `id → description`, spam as `noul`). Before asking, the tick has the body of every message it will ask about stored with `ensureMessageBodies`; a message is asked only when its body is `stored`, `fetched` or `empty` on the server (then the state has its headers alone), so Jev never receives a state whose body could not be had. The state sent is the message signals, per-link tag evidence from `ensureMessageTags` and the first 8000 Unicode code points of the cleaned Markdown document described above; attachments go only as names and types. `linkDomains[domain]` holds RDAP, Spamhaus DBL and URLhaus TagStates; `linkUrls[digest]` holds the host and Safe Browsing TagState without duplicating the URL (the existing signals still contain `href`). Complete snapshots retain `checkedAt` and only the matching subject, or empty subjects when current links are absent from the snapshot; inactive, unconfigured and plugin-failed states remain explicit. Then training: probability ≥ 0.9 is recorded as spam, ≤ 0.1 as ham, anything between is `below_threshold`. Then the action, for INBOX mail only: a message outside INBOX is `skipped not_in_inbox`; anti-spam's verdict is asked with `ensureSpamVerdict`, and spam (or a user's spam mark) is skipped; then a confidence under `routingMinConfidence` and a category without a folder are skipped; otherwise the message is moved with `moveMessagesVerified` or labelled with `applyLabel`. With `createFolders` the target folder is created and synced once first. Everything the attempt changed is written back with one annotation write. A row deleted or replaced during the attempt drops its result; the replacement carries the marked annotation and is worked again.

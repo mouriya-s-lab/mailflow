@@ -837,6 +837,24 @@
       "externalServices": "Usługi zewnętrzne"
     },
     "externalServices": {
+      "test": "Testuj połączenie",
+      "testing": "Testowanie…",
+      "testOk": "Połączenie działa z tymi ustawieniami.",
+      "testFail": "Połączenie nie powiodło się: {{reason}}.",
+      "testFailShort": "nie powiodło się: {{reason}}",
+      "testWorks": "działa",
+      "testNoKey": "nie podano klucza, nie testowano",
+      "testReason": {
+        "http": "serwer odrzucił żądanie, HTTP {{status}}",
+        "rate_limited": "limit żądań, spróbuj później",
+        "network": "punkt końcowy jest nieosiągalny",
+        "invalid_response": "odpowiedź miała nieoczekiwany format",
+        "invalid_request": "żądanie zostało odrzucone",
+        "unconfigured": "nie podano klucza",
+        "aborted": "test został anulowany",
+        "timeout": "przekroczono czas",
+        "error": "źródło zwróciło błąd"
+      },
       "description": "Usługi, do których MailFlow odwołuje się podczas klasyfikowania poczty i sprawdzania znajdujących się w niej linków. Klucze są przechowywane w postaci zaszyfrowanej i po zapisaniu nigdy nie są ponownie wyświetlane.",
       "saved": "Zapisano",
       "keepKey": "Klucz jest zapisany. Pozostaw kropki, aby go zachować, wyczyść pole, aby go usunąć, albo wklej nowy klucz, aby go zastąpić.",
@@ -2014,6 +2032,16 @@
       "save": "Zapisz kategorie",
       "add": "Dodaj kategorię"
     },
+    "spam": {
+      "title": "Polecenie oceny spamu",
+      "description": "Pytanie, na które Jev odpowiada dla każdej wiadomości, oceniając, czy to spam. Dotyczy wiadomości ocenianych od teraz; poczta już oceniona zachowuje swój werdykt.",
+      "label": "Pytanie oceny spamu",
+      "save": "Zapisz polecenie",
+      "restore": "Przywróć domyślne",
+      "saved": "Polecenie zapisane.",
+      "restored": "Przywrócono domyślne polecenie.",
+      "saveFailed": "Nie udało się zapisać polecenia: {{error}}"
+    },
     "accounts": {
       "title": "Konta",
       "none": "Dodaj konto pocztowe, aby klasyfikować jego pocztę.",
@@ -2039,16 +2067,6 @@
     "run": {
       "enabled": "Aktywne",
       "paused": "Wstrzymane"
-    },
-    "backfill": {
-      "title": "Klasyfikacja istniejącej poczty",
-      "description": "Sklasyfikuj pocztę już znajdującą się na tym koncie: wszystkie foldery z wyjątkiem Wysłane, Szkice i Kosz.",
-      "idle": "Klasyfikacja istniejącej poczty nie była jeszcze uruchamiana.",
-      "running": "Trwa od {{startedAt}}. Przetworzone wiadomości: {{processed}} z {{marked}}; błędy: {{failed}}.",
-      "completed": "Zakończono {{finishedAt}}. Przetworzone wiadomości: {{processed}}; błędy: {{failed}}.",
-      "stopped": "Zatrzymano {{stoppedAt}}. Przetworzone wiadomości: {{processed}} z {{marked}}; błędy: {{failed}}.",
-      "start": "Rozpocznij klasyfikację istniejącej poczty",
-      "stop": "Zatrzymaj klasyfikację istniejącej poczty"
     },
     "queue": {
       "title": "Kolejka",
@@ -2082,25 +2100,12 @@
     }
   },
   "reputationTags": {
-    "description": "Sprawdź konfigurację źródła i uzupełnij tagi reputacji starszych wiadomości na każdym koncie.",
+    "description": "Sprawdź konfigurację źródła tagów reputacji. Uzupełnienie dla wszystkich kont uruchamiasz w Ustawienia → Wtyczki.",
     "configured": "Skonfigurowane",
     "unconfigured": "Nieskonfigurowane — poproś administratora o wpisanie klucza w Administracja → Usługi zewnętrzne.",
     "disabled": "Wyłączone — poproś administratora o włączenie RDAP w Administracja → Usługi zewnętrzne.",
-    "idle": "Nie rozpoczęto uzupełniania",
-    "running": "W toku · rozpoczęto {{time}}",
-    "completed": "Zakończono · koniec {{time}}",
-    "stopped": "Zatrzymano · zatrzymanie {{time}}",
-    "counts": "Oznaczone: {{marked}} · Przetworzone: {{processed}} · Błędy: {{failed}}",
-    "start": "Rozpocznij uzupełnianie",
-    "stop": "Zatrzymaj uzupełnianie",
-    "stopHint": "Zatrzymanie blokuje nowe partie. Wiadomości już w kolejce będą przetwarzane, więc licznik może nadal rosnąć.",
     "refresh": "Odśwież stan",
-    "refreshFailed": "Nie udało się odświeżyć stanu: {{error}}",
-    "startConflict": "Uzupełnianie już trwa. Stan został odświeżony.",
-    "stopConflict": "Uzupełnianie nie trwa. Stan został odświeżony.",
-    "accountNotFound": "Nie znaleziono konta lub nie masz już do niego dostępu.",
-    "actionFailed": "Akcja uzupełniania nie powiodła się: {{error}}",
-    "noAccounts": "Brak kont pocztowych do uzupełnienia."
+    "refreshFailed": "Nie udało się odświeżyć stanu: {{error}}"
   },
   "pluginBackfill": {
     "title": "Uzupełnij wyniki włączonych wtyczek",
@@ -2127,7 +2132,7 @@
     "skipped": "Pominięto",
     "failed": "Nie powiodło się",
     "submissionHint": "Wysłanie żądania nie oznacza zakończenia przetwarzania. Każdy z poniższych wyników potwierdza, czy uzupełnianie dla danej wtyczki i konta zostało rozpoczęte, już trwało, zostało pominięte czy zakończyło się błędem.",
-    "waitingHint": "Przetwarzanie może czekać na połączenie konta pocztowego i następny cykl w tle, uruchamiany co 60 sekund. Zamknięcie tej strony nie zatrzymuje przetwarzania. Aby zatrzymać uzupełnianie, użyj istniejącego przycisku zatrzymania w ustawieniach wtyczki.",
+    "waitingHint": "Postęp może czekać na połączenie konta pocztowego i następny cykl w tle, uruchamiany co 60 sekund. Zamknięcie tej strony nie zatrzymuje przetwarzania. Trwającego uzupełnienia nie można jeszcze zatrzymać na tej stronie.",
     "partialFailure": "Niektóre żądania nie powiodły się. Sprawdź każdy wynik; inne uzupełnienia mogły zostać rozpoczęte lub już trwać.",
     "reason": {
       "plugin_inactive": "Wtyczka nie jest aktywowana.",

@@ -6,6 +6,7 @@ import { expressionHash, urlExpressions } from './safeBrowsing.js';
 
 const DQS_KEY = 'dqskeynotarealsecret0000001';
 const URLHAUS_KEY = 'urlhaus-key-not-a-real-secret';
+
 const SAFE_BROWSING_KEY = 'safe-browsing-key-not-a-real-secret';
 const KEYS = [DQS_KEY, URLHAUS_KEY, SAFE_BROWSING_KEY];
 const START = Date.parse('2026-10-12T08:00:00.000Z');
@@ -357,6 +358,29 @@ describe('switch, keys and status', () => {
       await expect(lookup(['www.example.com'])).rejects.toThrow('domains[0] is not a registrable domain');
     }
     await expect(rep.lookupSafeBrowsing(['mailto:someone@example.com'])).rejects.toThrow('urls[0] is not an http(s) URL');
+  });
+});
+
+describe('connection test per source', () => {
+  it('fails a refused key, passes a working one, sends the form key and reads and writes no cache', async () => {
+    const database = { queryFn: vi.fn(async () => ({ rows: [] })) };
+    const sentKeys = [];
+    const fetchFn = async (url, init) => {
+      sentKeys.push(init.headers['Auth-Key']);
+      return sentKeys.length === 1
+        ? new Response('forbidden', { status: 401 })
+        : new Response(JSON.stringify({ query_status: 'no_results' }), { status: 200 });
+    };
+    const rep = reputation({ database, fetchFn });
+    expect(await rep.testSource('urlhaus', 'refused-key-not-real')).toMatchObject({ kind: 'failed' });
+    expect(await rep.testSource('urlhaus', URLHAUS_KEY)).toEqual({ kind: 'ok' });
+    expect(sentKeys).toEqual(['refused-key-not-real', URLHAUS_KEY]);
+    expect(database.queryFn).not.toHaveBeenCalled();
+  });
+
+  it('fails a Safe Browsing key the API refuses', async () => {
+    const rep = reputation({ database: { queryFn: vi.fn(async () => ({ rows: [] })) }, fetchFn: async () => new Response('', { status: 403 }) });
+    expect(await rep.testSource('safe_browsing', 'refused-key-not-real')).toMatchObject({ kind: 'failed' });
   });
 });
 
