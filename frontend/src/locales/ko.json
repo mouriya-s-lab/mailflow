@@ -1429,6 +1429,9 @@
       "urlSubBtn": "구독",
       "globalEnabled": "전역적으로 분류 활성화",
       "globalEnabledDesc": "통합 받은 편지함을 포함하여 모든 계정에 대해 카테고리 탭을 활성화합니다.",
+      "jevEnabled": "Jev 분류",
+      "jevEnabledDesc": "모든 계정(통합 받은편지함 포함)의 카테고리 탭으로 Jev 카테고리를 표시합니다. 기본 제공 카테고리를 대체합니다.",
+      "globalDisabledByJev": "Jev 분류가 켜져 있는 동안에는 사용할 수 없습니다.",
       "sourcesTitle": "소셜 카테고리 소스",
       "refresh": "새로 고침",
       "urlSubPh": "https://example.com/social-domains.txt",
@@ -1990,6 +1993,16 @@
       "saveFailed": "카테고리를 저장할 수 없습니다: {{error}}",
       "save": "카테고리 저장",
       "add": "카테고리 추가"
+    },
+    "spam": {
+      "title": "스팸 판단 프롬프트",
+      "description": "Jev가 각 메시지가 스팸인지 판단할 때 답하는 질문입니다. 지금부터 판단되는 메시지에 적용되며, 이미 판단된 메일은 결과를 유지합니다.",
+      "label": "스팸 판단 질문",
+      "save": "스팸 프롬프트 저장",
+      "restore": "기본값 복원",
+      "saved": "스팸 프롬프트를 저장했습니다.",
+      "restored": "기본 스팸 프롬프트를 복원했습니다.",
+      "saveFailed": "스팸 프롬프트를 저장할 수 없습니다: {{error}}"
     },
     "accounts": {
       "title": "계정",

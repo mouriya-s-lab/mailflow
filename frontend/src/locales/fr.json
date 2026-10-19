@@ -1427,6 +1427,9 @@
       "description": "Trie automatiquement les e-mails entrants dans des onglets. Activer la catégorisation dans les paramètres du compte.",
       "globalEnabled": "Activer la catégorisation globalement",
       "globalEnabledDesc": "Active les onglets de catégories pour tous les comptes, y compris la boîte de réception unifiée.",
+      "jevEnabled": "Classification Jev",
+      "jevEnabledDesc": "Affiche les catégories de Jev comme onglets pour tous les comptes, y compris la boîte unifiée. Remplace les catégories intégrées.",
+      "globalDisabledByJev": "Indisponible tant que la classification Jev est active.",
       "sourcesTitle": "Sources de la catégorie Social",
       "sourcesDesc": "Seule la catégorie Social se configure par domaines. Ajoutez des domaines ou adresses e-mail à classer comme Social — des ensembles intégrés et des abonnements URL sont aussi disponibles. Les autres catégories sont détectées automatiquement à partir des en-têtes des e-mails et ne peuvent pas être associées par domaine.",
       "addManualPh": "ex. twitter.com",
@@ -1990,6 +1993,16 @@
       "saveFailed": "Impossible d’enregistrer les catégories : {{error}}",
       "save": "Enregistrer les catégories",
       "add": "Ajouter une catégorie"
+    },
+    "spam": {
+      "title": "Consigne de détection du spam",
+      "description": "La question à laquelle Jev répond pour chaque message afin de juger s’il est indésirable. S’applique aux messages jugés à partir de maintenant ; les messages déjà jugés gardent leur verdict.",
+      "label": "Question de détection du spam",
+      "save": "Enregistrer la consigne",
+      "restore": "Rétablir la valeur par défaut",
+      "saved": "Consigne enregistrée.",
+      "restored": "Consigne par défaut rétablie.",
+      "saveFailed": "Impossible d’enregistrer la consigne : {{error}}"
     },
     "accounts": {
       "title": "Comptes",
