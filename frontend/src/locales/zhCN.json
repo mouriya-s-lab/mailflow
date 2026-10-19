@@ -2048,16 +2048,6 @@
       "enabled": "运行中",
       "paused": "已暂停"
     },
-    "backfill": {
-      "title": "回填",
-      "description": "为此账户中已有的邮件分类：除已发送、草稿箱和已删除外的所有文件夹。",
-      "idle": "尚未运行过回填。",
-      "running": "自 {{startedAt}} 起运行中：{{marked}} 封中已完成 {{processed}} 封，失败 {{failed}} 封。",
-      "completed": "已于 {{finishedAt}} 完成：已完成 {{processed}} 封，失败 {{failed}} 封。",
-      "stopped": "已于 {{stoppedAt}} 停止：{{marked}} 封中已完成 {{processed}} 封，失败 {{failed}} 封。",
-      "start": "开始回填",
-      "stop": "停止回填"
-    },
     "queue": {
       "title": "队列",
       "backfill": "来自回填",
@@ -2090,25 +2080,12 @@
     }
   },
   "reputationTags": {
-    "description": "查看来源配置，并为各账户的历史邮件回填信誉标签。",
+    "description": "查看信誉标签的来源配置。所有账户的回填请在 设置 → 插件 中统一启动。",
     "configured": "已配置",
     "unconfigured": "未配置 — 请管理员在管理 → 外部服务中填写 key。",
     "disabled": "已关闭 — 请管理员在管理 → 外部服务中启用 RDAP。",
-    "idle": "尚未开始回填",
-    "running": "回填中 · 开始于 {{time}}",
-    "completed": "已完成 · 完成于 {{time}}",
-    "stopped": "已停止 · 停止于 {{time}}",
-    "counts": "已标记：{{marked}} · 已处理：{{processed}} · 失败：{{failed}}",
-    "start": "开始回填",
-    "stop": "停止回填",
-    "stopHint": "停止会阻止新的批次入队。已排队的邮件仍会处理，因此停止后已处理计数可能继续增加。",
     "refresh": "刷新状态",
-    "refreshFailed": "刷新状态失败：{{error}}",
-    "startConflict": "已有回填正在运行，已刷新状态。",
-    "stopConflict": "没有正在运行的回填，已刷新状态。",
-    "accountNotFound": "账户不存在或已无法访问。",
-    "actionFailed": "回填操作失败：{{error}}",
-    "noAccounts": "没有可回填的邮件账户。"
+    "refreshFailed": "刷新状态失败：{{error}}"
   },
   "pluginBackfill": {
     "title": "回填已启用插件",
@@ -2135,7 +2112,7 @@
     "skipped": "已跳过",
     "failed": "失败",
     "submissionHint": "提交请求不代表处理完成。下方逐项显示每个插件与账户是已启动、已在运行、已跳过还是失败。",
-    "waitingHint": "进度可能需要等待邮件账户连接，以及每 60 秒运行一次的下一个后台周期。关闭此页面不会停止处理；如需停止回填，请使用插件原有设置页中的停止控件。",
+    "waitingHint": "进度可能需要等待邮件账户连接及下一个每 60 秒运行的后台周期。关闭此页面不会停止处理。目前无法在此页面停止正在运行的回填。",
     "partialFailure": "部分请求失败，请逐项查看结果；其他回填可能已启动或已在运行。",
     "reason": {
       "plugin_inactive": "插件尚未启用。",

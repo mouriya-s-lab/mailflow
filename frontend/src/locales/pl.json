@@ -2067,16 +2067,6 @@
       "enabled": "Aktywne",
       "paused": "Wstrzymane"
     },
-    "backfill": {
-      "title": "Klasyfikacja istniejącej poczty",
-      "description": "Sklasyfikuj pocztę już znajdującą się na tym koncie: wszystkie foldery z wyjątkiem Wysłane, Szkice i Kosz.",
-      "idle": "Klasyfikacja istniejącej poczty nie była jeszcze uruchamiana.",
-      "running": "Trwa od {{startedAt}}. Przetworzone wiadomości: {{processed}} z {{marked}}; błędy: {{failed}}.",
-      "completed": "Zakończono {{finishedAt}}. Przetworzone wiadomości: {{processed}}; błędy: {{failed}}.",
-      "stopped": "Zatrzymano {{stoppedAt}}. Przetworzone wiadomości: {{processed}} z {{marked}}; błędy: {{failed}}.",
-      "start": "Rozpocznij klasyfikację istniejącej poczty",
-      "stop": "Zatrzymaj klasyfikację istniejącej poczty"
-    },
     "queue": {
       "title": "Kolejka",
       "backfill": "Z klasyfikacji istniejącej poczty",
@@ -2109,25 +2099,12 @@
     }
   },
   "reputationTags": {
-    "description": "Sprawdź konfigurację źródła i uzupełnij tagi reputacji starszych wiadomości na każdym koncie.",
+    "description": "Sprawdź konfigurację źródła tagów reputacji. Uzupełnienie dla wszystkich kont uruchamiasz w Ustawienia → Wtyczki.",
     "configured": "Skonfigurowane",
     "unconfigured": "Nieskonfigurowane — poproś administratora o wpisanie klucza w Administracja → Usługi zewnętrzne.",
     "disabled": "Wyłączone — poproś administratora o włączenie RDAP w Administracja → Usługi zewnętrzne.",
-    "idle": "Nie rozpoczęto uzupełniania",
-    "running": "W toku · rozpoczęto {{time}}",
-    "completed": "Zakończono · koniec {{time}}",
-    "stopped": "Zatrzymano · zatrzymanie {{time}}",
-    "counts": "Oznaczone: {{marked}} · Przetworzone: {{processed}} · Błędy: {{failed}}",
-    "start": "Rozpocznij uzupełnianie",
-    "stop": "Zatrzymaj uzupełnianie",
-    "stopHint": "Zatrzymanie blokuje nowe partie. Wiadomości już w kolejce będą przetwarzane, więc licznik może nadal rosnąć.",
     "refresh": "Odśwież stan",
-    "refreshFailed": "Nie udało się odświeżyć stanu: {{error}}",
-    "startConflict": "Uzupełnianie już trwa. Stan został odświeżony.",
-    "stopConflict": "Uzupełnianie nie trwa. Stan został odświeżony.",
-    "accountNotFound": "Nie znaleziono konta lub nie masz już do niego dostępu.",
-    "actionFailed": "Akcja uzupełniania nie powiodła się: {{error}}",
-    "noAccounts": "Brak kont pocztowych do uzupełnienia."
+    "refreshFailed": "Nie udało się odświeżyć stanu: {{error}}"
   },
   "pluginBackfill": {
     "title": "Uzupełnij wyniki włączonych wtyczek",
@@ -2154,7 +2131,7 @@
     "skipped": "Pominięto",
     "failed": "Nie powiodło się",
     "submissionHint": "Wysłanie żądania nie oznacza zakończenia przetwarzania. Każdy z poniższych wyników potwierdza, czy uzupełnianie dla danej wtyczki i konta zostało rozpoczęte, już trwało, zostało pominięte czy zakończyło się błędem.",
-    "waitingHint": "Przetwarzanie może czekać na połączenie konta pocztowego i następny cykl w tle, uruchamiany co 60 sekund. Zamknięcie tej strony nie zatrzymuje przetwarzania. Aby zatrzymać uzupełnianie, użyj istniejącego przycisku zatrzymania w ustawieniach wtyczki.",
+    "waitingHint": "Postęp może czekać na połączenie konta pocztowego i następny cykl w tle, uruchamiany co 60 sekund. Zamknięcie tej strony nie zatrzymuje przetwarzania. Trwającego uzupełnienia nie można jeszcze zatrzymać na tej stronie.",
     "partialFailure": "Niektóre żądania nie powiodły się. Sprawdź każdy wynik; inne uzupełnienia mogły zostać rozpoczęte lub już trwać.",
     "reason": {
       "plugin_inactive": "Wtyczka nie jest aktywowana.",

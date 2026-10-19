@@ -2048,16 +2048,6 @@
       "enabled": "Activo",
       "paused": "En pausa"
     },
-    "backfill": {
-      "title": "Clasificación del correo existente",
-      "description": "Clasificar los mensajes que ya están en esta cuenta: todas las carpetas excepto Enviados, Borradores y Papelera.",
-      "idle": "Aún no se ha ejecutado ninguna clasificación del correo existente.",
-      "running": "En curso desde {{startedAt}}: {{processed}} de {{marked}} mensajes procesados, {{failed}} fallidos.",
-      "completed": "Completada el {{finishedAt}}: {{processed}} mensajes procesados, {{failed}} fallidos.",
-      "stopped": "Detenida el {{stoppedAt}}: {{processed}} de {{marked}} mensajes procesados, {{failed}} fallidos.",
-      "start": "Iniciar la clasificación del correo existente",
-      "stop": "Detener la clasificación del correo existente"
-    },
     "queue": {
       "title": "Cola",
       "backfill": "Del correo existente",
@@ -2090,25 +2080,12 @@
     }
   },
   "reputationTags": {
-    "description": "Comprueba la configuración de la fuente y añade etiquetas de reputación al correo histórico de cada cuenta.",
+    "description": "Comprueba la configuración de la fuente de las etiquetas de reputación. El relleno de todas las cuentas se inicia en Ajustes → Plugins.",
     "configured": "Configurada",
     "unconfigured": "Sin configurar — pide a un administrador que introduzca la clave en Administración → Servicios externos.",
     "disabled": "Desactivada — pide a un administrador que active RDAP en Administración → Servicios externos.",
-    "idle": "Sin relleno iniciado",
-    "running": "En curso · iniciado {{time}}",
-    "completed": "Completado · finalizado {{time}}",
-    "stopped": "Detenido · parado {{time}}",
-    "counts": "Marcados: {{marked}} · Procesados: {{processed}} · Fallidos: {{failed}}",
-    "start": "Iniciar relleno",
-    "stop": "Detener relleno",
-    "stopHint": "Detener impide nuevos lotes. El correo ya en cola se sigue procesando y el contador puede aumentar después.",
     "refresh": "Actualizar estado",
-    "refreshFailed": "No se pudo actualizar el estado: {{error}}",
-    "startConflict": "Ya hay un relleno en curso. Se ha actualizado el estado.",
-    "stopConflict": "No hay ningún relleno en curso. Se ha actualizado el estado.",
-    "accountNotFound": "Cuenta no encontrada o ya no accesible.",
-    "actionFailed": "La acción de relleno falló: {{error}}",
-    "noAccounts": "No hay cuentas de correo para rellenar."
+    "refreshFailed": "No se pudo actualizar el estado: {{error}}"
   },
   "pluginBackfill": {
     "title": "Rellenar con los plugins activados",
@@ -2135,7 +2112,7 @@
     "skipped": "Omitido",
     "failed": "Fallido",
     "submissionHint": "Enviar una solicitud no significa que el relleno haya finalizado. Cada resultado que aparece a continuación confirma si el relleno de ese plugin y esa cuenta se ha iniciado, ya estaba en curso, se ha omitido o ha fallado.",
-    "waitingHint": "El progreso puede tener que esperar a que se conecte la cuenta de correo y al siguiente ciclo en segundo plano, que se ejecuta cada 60 segundos. Cerrar esta página no detiene el procesamiento. Para detener un relleno, usa el control de detención existente en la configuración del plugin.",
+    "waitingHint": "El progreso puede esperar a que la cuenta de correo se conecte y al siguiente ciclo en segundo plano, que se ejecuta cada 60 segundos. Cerrar esta página no detiene el procesamiento. Un relleno en curso todavía no se puede detener desde esta página.",
     "partialFailure": "Algunas solicitudes han fallado. Revisa cada resultado; otros rellenos pueden haberse iniciado o estar ya en curso.",
     "reason": {
       "plugin_inactive": "El plugin no está activado.",

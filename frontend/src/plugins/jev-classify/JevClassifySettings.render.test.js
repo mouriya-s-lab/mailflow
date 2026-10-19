@@ -1,7 +1,7 @@
 // Render test of the Jev classification settings block (mouriya-s-lab/mailflow#18) against a fake
 // /api/jev-classify: activation gating, the status panel (Jev unconfigured, reputation, queue),
 // retrying terminal failures, clearing incidents, the category editor's field errors, the account
-// form's targets and body, backfill start/stop and the 15-second status refresh.
+// form's targets and body and the 15-second status refresh.
 //
 // Same loader hooks as BackupSettings.render.test.js: node --test cannot parse JSX, and
 // react-i18next is stubbed so t(key, values) renders the key followed by the values as JSON.
@@ -99,7 +99,7 @@ function resetServer() {
   };
 }
 
-const ROUTE = /^\/api\/jev-classify\/accounts\/([^/]+)(?:\/(backfill|retry-failed|incidents))?$/;
+const ROUTE = /^\/api\/jev-classify\/accounts\/([^/]+)(?:\/(retry-failed|incidents))?$/;
 const statusOfAccount = id => server.status.accounts.find(a => a.id === id);
 
 globalThis.fetch = async (url, init = {}) => {
@@ -132,18 +132,6 @@ globalThis.fetch = async (url, init = {}) => {
       const view = { ...server.accounts.find(a => a.id === id), config: body };
       server.accounts = server.accounts.map(a => (a.id === id ? view : a));
       return json(view);
-    }
-    if (action === 'backfill' && method === 'POST') {
-      const run = { kind: 'running', revision: 3, startedAt: '2026-10-12T10:00:00.000Z', marked: 50, processed: 7, failed: 1 };
-      statusOfAccount(id).backfill = run;
-      return json({ backfill: run });
-    }
-    if (action === 'backfill' && method === 'DELETE') {
-      const { kind, ...rest } = statusOfAccount(id).backfill;
-      assert.equal(kind, 'running');
-      const run = { ...rest, kind: 'stopped', stoppedAt: '2026-10-12T10:05:00.000Z' };
-      statusOfAccount(id).backfill = run;
-      return json({ backfill: run });
     }
     if (action === 'retry-failed' && method === 'POST') {
       const reset = statusOfAccount(id).terminalFailed;
@@ -421,22 +409,6 @@ describe('Jev classification settings', () => {
     await click(buttonByText('jevClassify.accounts.save', ms));
     assert.deepEqual($$(`[data-testid="jev-account-${MS}"] [data-testid="field-error"]`).map(e => e.textContent), ['jevClassify.accounts.minConfidenceError']);
     assert.equal(callsTo('PUT', `/api/jev-classify/accounts/${MS}`).length, 0);
-  });
-
-  test('Start backfill shows the running progress, Stop shows it stopped', async () => {
-    await mount();
-    const card = $(`[data-testid="jev-status-${MS}"]`);
-    assert.equal(card.querySelector('[data-testid="jev-backfill"]').textContent, 'jevClassify.backfill.idle');
-
-    await click(buttonByText('jevClassify.backfill.start', card));
-    await until(() => buttonByText('jevClassify.backfill.stop', card), 'the Stop button');
-    assert.equal(callsTo('POST', `/api/jev-classify/accounts/${MS}/backfill`).length, 1);
-    assert.match(card.querySelector('[data-testid="jev-backfill"]').textContent, /^jevClassify\.backfill\.running \{"startedAt":".+","processed":7,"marked":50,"failed":1\}$/);
-
-    await click(buttonByText('jevClassify.backfill.stop', card));
-    await until(() => buttonByText('jevClassify.backfill.start', card), 'the Start button again');
-    assert.equal(callsTo('DELETE', `/api/jev-classify/accounts/${MS}/backfill`).length, 1);
-    assert.match(card.querySelector('[data-testid="jev-backfill"]').textContent, /^jevClassify\.backfill\.stopped \{"stoppedAt":".+","processed":7,"marked":50,"failed":1\}$/);
   });
 
   test('the status is fetched on mount and every 15 seconds until unmount, and a slow answer never replaces a newer one', async () => {

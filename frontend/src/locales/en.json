@@ -2048,16 +2048,6 @@
       "enabled": "Active",
       "paused": "Paused"
     },
-    "backfill": {
-      "title": "Backfill",
-      "description": "Classify the mail already in this account: every folder except Sent, Drafts and Trash.",
-      "idle": "No backfill has run yet.",
-      "running": "Running since {{startedAt}}: {{processed}} of {{marked}} messages done, {{failed}} failed.",
-      "completed": "Completed {{finishedAt}}: {{processed}} messages done, {{failed}} failed.",
-      "stopped": "Stopped {{stoppedAt}}: {{processed}} of {{marked}} messages done, {{failed}} failed.",
-      "start": "Start backfill",
-      "stop": "Stop backfill"
-    },
     "queue": {
       "title": "Queue",
       "backfill": "From backfill",
@@ -2090,25 +2080,12 @@
     }
   },
   "reputationTags": {
-    "description": "Check the source configuration and backfill reputation tags for historical mail in each account.",
+    "description": "Check the source configuration for reputation tags. Backfill for all accounts starts from Settings → Plugins.",
     "configured": "Configured",
     "unconfigured": "Not configured — ask an administrator to enter the key in Administration → External services.",
     "disabled": "Disabled — ask an administrator to enable RDAP in Administration → External services.",
-    "idle": "No backfill started",
-    "running": "Running · started {{time}}",
-    "completed": "Completed · finished {{time}}",
-    "stopped": "Stopped · stopped {{time}}",
-    "counts": "Marked: {{marked}} · Processed: {{processed}} · Failed: {{failed}}",
-    "start": "Start backfill",
-    "stop": "Stop backfill",
-    "stopHint": "Stopping prevents new batches. Mail already queued still finishes, so the processed count can increase after stopping.",
     "refresh": "Refresh status",
-    "refreshFailed": "Status refresh failed: {{error}}",
-    "startConflict": "A backfill is already running. Status has been refreshed.",
-    "stopConflict": "No backfill is running. Status has been refreshed.",
-    "accountNotFound": "Account not found or no longer accessible.",
-    "actionFailed": "Backfill action failed: {{error}}",
-    "noAccounts": "No mail accounts to backfill."
+    "refreshFailed": "Status refresh failed: {{error}}"
   },
   "pluginBackfill": {
     "title": "Backfill enabled plugins",
@@ -2135,7 +2112,7 @@
     "skipped": "Skipped",
     "failed": "Failed",
     "submissionHint": "Submission is not completion. Each result below confirms whether that plugin and account started, was already running, was skipped or failed.",
-    "waitingHint": "Progress may wait for the mail account to connect and the next background cycle, which runs every 60 seconds. Closing this page does not stop processing. Use the existing stop control in the plugin’s settings to stop a backfill.",
+    "waitingHint": "Progress may wait for the mail account to connect and the next background cycle, which runs every 60 seconds. Closing this page does not stop processing. A running backfill cannot be stopped from this page yet.",
     "partialFailure": "Some requests failed. Review each result; other backfills may have started or may already be running.",
     "reason": {
       "plugin_inactive": "Plugin is not activated.",
